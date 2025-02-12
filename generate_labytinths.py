@@ -4,6 +4,38 @@ import random
 import matplotlib.pyplot as plt
 
 
+def find_start(maze, width, height)
+    # Set the starting point randomly so it is always on a valid path (0)
+    path_cells = [(y, x) for y in range(height) for x in range(width) if maze[y, x] == 0]
+    if path_cells:
+        start_y, start_x = random.choice(path_cells)
+        maze[start_y, start_x] = 2  # Use `2` to mark the starting position
+
+    return maze
+
+def find_exit(maze, width, height):
+    # Add a single exit (randomly choose any valid cell on the perimeter)
+    perimeter_cells = []
+
+    # Collect potential perimeter cells for the exit
+    for x in range(width):
+        if maze[1, x] == 0:  # Top edge
+            perimeter_cells.append((0, x))
+        if maze[height - 2, x] == 0:  # Bottom edge
+            perimeter_cells.append((height - 1, x))
+    for y in range(height):
+        if maze[y, 1] == 0:  # Left edge
+            perimeter_cells.append((y, 0))
+        if maze[y, width - 2] == 0:  # Right edge
+            perimeter_cells.append((y, width - 1))
+
+    # Randomly select one perimeter cell as the exit
+    if perimeter_cells:
+        exit_y, exit_x = random.choice(perimeter_cells)
+        maze[exit_y, exit_x] = 0
+
+    return maze
+
 def generate_maze(width, height):
     """
     Generate a random rectangular maze with walls and paths.
@@ -47,31 +79,11 @@ def generate_maze(width, height):
     # Ensure all paths are interconnected
     ensure_all_paths_connected(maze)
 
-    # Set the starting point randomly so it is always on a valid path (0)
-    path_cells = [(y, x) for y in range(height) for x in range(width) if maze[y, x] == 0]
-    if path_cells:
-        start_y, start_x = random.choice(path_cells)
-        maze[start_y, start_x] = 2  # Use `2` to mark the starting position
+    #set starting point
+    maze = find_start(maze, width, height)
 
-    # Add a single exit (randomly choose any valid cell on the perimeter)
-    perimeter_cells = []
-
-    # Collect potential perimeter cells for the exit
-    for x in range(width):
-        if maze[1, x] == 0:  # Top edge
-            perimeter_cells.append((0, x))
-        if maze[height - 2, x] == 0:  # Bottom edge
-            perimeter_cells.append((height - 1, x))
-    for y in range(height):
-        if maze[y, 1] == 0:  # Left edge
-            perimeter_cells.append((y, 0))
-        if maze[y, width - 2] == 0:  # Right edge
-            perimeter_cells.append((y, width - 1))
-
-    # Randomly select one perimeter cell as the exit
-    if perimeter_cells:
-        exit_y, exit_x = random.choice(perimeter_cells)
-        maze[exit_y, exit_x] = 0
+    # find exit
+    maze = find_exit(maze, width, height);
 
     return maze
 
