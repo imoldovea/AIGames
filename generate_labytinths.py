@@ -4,7 +4,7 @@ import random
 import matplotlib.pyplot as plt
 
 
-def find_start(maze, width, height)
+def find_start(maze, width, height):
     # Set the starting point randomly so it is always on a valid path (0)
     path_cells = [(y, x) for y in range(height) for x in range(width) if maze[y, x] == 0]
     if path_cells:
