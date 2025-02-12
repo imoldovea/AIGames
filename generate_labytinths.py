@@ -47,17 +47,11 @@ def generate_maze(width, height):
     # Ensure all paths are interconnected
     ensure_all_paths_connected(maze)
 
-    # Set the starting point randomly near the center of the maze
-    center_range = [(height // 2 - 1, width // 2 - 1), (height // 2 - 1, width // 2),
-                    (height // 2 - 1, width // 2 + 1), (height // 2, width // 2 - 1),
-                    (height // 2, width // 2), (height // 2, width // 2 + 1),
-                    (height // 2 + 1, width // 2 - 1), (height // 2 + 1, width // 2),
-                    (height // 2 + 1, width // 2 + 1)]
-    random.shuffle(center_range)
-    for start_y, start_x in center_range:
-        if maze[start_y, start_x] == 0:  # Check if it's a valid path
-            maze[start_y, start_x] = 2  # Use `2` to mark the starting position
-            break
+    # Set the starting point randomly so it is always on a valid path (0)
+    path_cells = [(y, x) for y in range(height) for x in range(width) if maze[y, x] == 0]
+    if path_cells:
+        start_y, start_x = random.choice(path_cells)
+        maze[start_y, start_x] = 2  # Use `2` to mark the starting position
 
     # Add a single exit (randomly choose any valid cell on the perimeter)
     perimeter_cells = []
@@ -167,7 +161,7 @@ def plot_maze(maze):
 
 def main():
     NUM_MAZES = 10
-    WIDTH, HEIGHT = 21, 21  # Ensure odd dimensions
+    WIDTH, HEIGHT = 11, 11  # Ensure odd dimensions
     OUTPUT_FOLDER = 'output'
     MAZES_FILENAME = 'mazes.npy'
 
