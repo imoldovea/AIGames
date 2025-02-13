@@ -1,7 +1,6 @@
 import numpy as np
 import json
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import logging
 
 
@@ -142,7 +141,7 @@ class Maze:
     def get_maze_as_json(self) -> json:
         """
         Get the current maze configuration to a JSON file.
-
+    
         The JSON file will include:
           - grid: the maze grid as a list of lists
           - path: the ordered sequence of path coordinates
@@ -161,17 +160,17 @@ class Maze:
     def get_maze_as_png(self, show_path=True, show_solution=True) -> np.ndarray:
         """
         Returns the current maze configuration as an RGB NumPy image.
-
+    
         Parameters:
           - show_path: if True, the path taken is highlighted in red.
-
+    
         Color scheme:
           - Walls: black
           - Corridors: white
           - Path: red (if show_path is True)
           - Start: green
           - Exit: blue (if defined)
-
+    
         Returns:
           An RGB image (as a NumPy array) that represents the maze.
         """
@@ -189,7 +188,7 @@ class Maze:
                 if 0 <= r < self.rows and 0 <= c < self.cols:
                     # Calculate the gradient color
                     t = idx / (path_length - 1) if path_length > 1 else 0
-                    color = [255, int(255 * (1 - t) + 255 * t), int(255 * t)]
+                    color = [255, int(255 * (1 - t)), int(203 * (1 - t) + 255 * t)]
                     img[r, c] = color
 
         # Optionally overlay the solution in red
@@ -238,11 +237,11 @@ class Maze:
     def plot_maze(self, show_path=True, show_solution=True):
         """
         Plots the current maze configuration on the screen.
-
+    
         Parameters:
           - show_path: if True, the path taken is overlaid on the maze.
         """
-        img = self.get_maze_as_png(show_path=show_path)
+        img = self.get_maze_as_png(show_path=True, show_solution=False)
         plt.imshow(img)
         plt.title("Maze Visualization")
         plt.axis("off")
