@@ -73,7 +73,8 @@ def test_backtracking_solver():
                 print(f"No solution found for maze {i + 1}.")
 
             # Visualize the solved maze (with the solution path highlighted)
-            maze_obj.plot_maze(show_path=True)
+            maze_obj.set_solution(solution)
+            maze_obj.plot_maze(show_path=True, show_solution=False)
     except Exception as e:
         print(f"An error occurred: {e}")
 

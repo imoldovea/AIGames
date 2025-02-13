@@ -1,6 +1,7 @@
 import numpy as np
 import json
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import logging
 
 
@@ -17,6 +18,7 @@ class Maze:
         The constructor finds the starting marker, records its coordinates, replaces it with 0,
         and initializes the path with the starting position.
         """
+        self._solution = []  # To hold the maze solution as a list of coordinates
         self.grid = np.array(grid, copy=True)
         self.rows, self.cols = self.grid.shape
         self.logger = logging.getLogger(__name__)
@@ -24,7 +26,7 @@ class Maze:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(handler)
-        self.logger.info("Maze initialized with dimensions (%d, %d)", self.rows, self.cols)
+        self.logger.debug("Maze initialized with dimensions (%d, %d)", self.rows, self.cols)
 
         # Locate the starting position using the provided start_marker
         start_positions = np.argwhere(self.grid == start_marker)
@@ -32,12 +34,12 @@ class Maze:
             self.logger.error("Starting marker %d not found in maze matrix.", start_marker)
             raise ValueError(f"Starting marker {start_marker} not found in maze matrix.")
         self.start_position = tuple(start_positions[0])
-        self.logger.info("Starting position located at %s", self.start_position)
+        self.logger.debug("Starting position located at %s", self.start_position)
         self.current_position = self.start_position
 
         # Replace the starting marker with a corridor (0)
         self.grid[self.start_position] = 0
-        self.logger.info("Starting marker replaced with corridor at %s", self.start_position)
+        self.logger.debug("Starting marker replaced with corridor at %s", self.start_position)
 
         # Initialize the path with the starting position
         self.path = [self.start_position]
@@ -54,7 +56,7 @@ class Maze:
             for c in range(self.cols):
                 if (r == 0 or r == self.rows - 1 or c == 0 or c == self.cols - 1) and self.grid[r, c] == 0:
                     self.exit = (r, c)
-                    self.logger.info("Exit automatically set at position %s", self.exit)
+                    self.logger.debug("Exit automatically set at position %s", self.exit)
                     return
         self.logger.error("No valid exit found on the maze border.")
         raise ValueError("No valid exit found on the maze border.")
@@ -91,7 +93,7 @@ class Maze:
         if self.is_valid_move(position):
             self.current_position = position
             self.path.append(position)
-            self.logger.info("Moved to position %s", position)
+            self.logger.debug("Moved to position %s", position)
             return True
         self.logger.warning("Invalid move attempted to position %s", position)
         return False
@@ -107,6 +109,19 @@ class Maze:
         possible_moves = [(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)]
         return [pos for pos in possible_moves if self.is_valid_move(pos)]
 
+    def get_solution(self):
+        """
+        Getter method to retrieve the solution as a list of coordinates.
+        """
+        return self._solution
+
+    def set_solution(self, solution):
+        """
+        Setter method to define the solution as a list of coordinates.
+        """
+        if not isinstance(solution, list):
+            raise ValueError("Solution must be a list of coordinates.")
+        self._solution = solution
 
     def at_exit(self):
         """
@@ -124,32 +139,31 @@ class Maze:
         """
         return self.path
 
-    def save_maze_as_json(self, filename):
+    def get_maze_as_json(self) -> json:
         """
-        Saves the current maze configuration to a JSON file.
-    
+        Get the current maze configuration to a JSON file.
+
         The JSON file will include:
           - grid: the maze grid as a list of lists
           - path: the ordered sequence of path coordinates
           - start_position: the starting position of the maze
           - exit: the exit position (if set)
         """
-        data = {
+        data = json.dumps({
             "grid": self.grid.tolist(),
+            "solution": self._solution,
             "path": self.path,
             "start_position": self.start_position,
             "exit": self.exit
-        }
-        with open(filename, "w") as f:
-            json.dump(data, f, indent=4)
+        })
+        return data
 
-    def save_maze_as_png(self, filename, show_path=True):
+    def get_maze_as_png(self, show_path=True, show_solution=True) -> np.ndarray:
         """
-        Saves the current maze configuration as a PNG image.
+        Returns the current maze configuration as an RGB NumPy image.
 
         Parameters:
-          - filename: the name of the output PNG file.
-          - show_path: if True, the path taken is overlaid on the maze.
+          - show_path: if True, the path taken is highlighted in red.
 
         Color scheme:
           - Walls: black
@@ -157,6 +171,9 @@ class Maze:
           - Path: red (if show_path is True)
           - Start: green
           - Exit: blue (if defined)
+
+        Returns:
+          An RGB image (as a NumPy array) that represents the maze.
         """
         # Create an RGB image based on the maze grid
         img = np.zeros((self.rows, self.cols, 3), dtype=np.uint8)
@@ -165,50 +182,67 @@ class Maze:
         img[corridors] = [255, 255, 255]  # White for corridors
         img[walls] = [0, 0, 0]  # Black for walls
 
-        # Optionally overlay the path in red
+        # Optionally overlay the path as a gradient from yellow to pink
         if show_path:
-            for (r, c) in self.path:
+            path_length = len(self.path)
+            for idx, (r, c) in enumerate(self.path):
+                if 0 <= r < self.rows and 0 <= c < self.cols:
+                    # Calculate the gradient color
+                    t = idx / (path_length - 1) if path_length > 1 else 0
+                    color = [255, int(255 * (1 - t) + 255 * t), int(255 * t)]
+                    img[r, c] = color
+
+        # Optionally overlay the solution in red
+        if show_solution:
+            for (r, c) in self._solution:
                 if 0 <= r < self.rows and 0 <= c < self.cols:
                     img[r, c] = [255, 0, 0]
 
-        # Mark the start in green and the exit in blue (if defined)
+        # Mark the start (green) and exit (blue, if defined)
         start_r, start_c = self.start_position
-        img[start_r, start_c] = [0, 255, 0]  # Start marker in green
+        img[start_r, start_c] = [0, 255, 0]  # Start in green
         if self.exit is not None:
             exit_r, exit_c = self.exit
-            img[exit_r, exit_c] = [0, 0, 255]  # Exit marker in blue
+            img[exit_r, exit_c] = [0, 0, 255]  # Exit in blue
 
-        plt.imsave(filename, img)
+        return img
 
-    def plot_maze(self, show_path=True):
+    def get_maze_as_text(self) -> str:
+        """
+        Return the maze as an ASCII string, showing the maze as a matrix with:
+        "1" - Walls
+        "0" - Path
+        "X" - Starting point
+        "O" - Exit point
+        """
+        # Initialize a list for ASCII rows
+        ascii_maze = []
+
+        for r in range(self.rows):
+            row = []
+            for c in range(self.cols):
+                if (r, c) == self.start_position:
+                    row.append('X')
+                elif self.exit is not None and (r, c) == self.exit:
+                    row.append('O')
+                else:
+                    row.append(str(self.grid[r, c]))
+                row.append(' ')
+            ascii_maze.append(''.join(row))
+
+        # Join rows with newline to create final ASCII maze
+        return '\n'.join(ascii_maze)
+
+        return text_maze
+
+    def plot_maze(self, show_path=True, show_solution=True):
         """
         Plots the current maze configuration on the screen.
 
         Parameters:
           - show_path: if True, the path taken is overlaid on the maze.
-
-        Color scheme is the same as in save_maze_as_png.
         """
-        # Create an RGB image based on the maze grid
-        img = np.zeros((self.rows, self.cols, 3), dtype=np.uint8)
-        corridors = (self.grid == 0)
-        walls = (self.grid == 1)
-        img[corridors] = [255, 255, 255]  # White for corridors
-        img[walls] = [0, 0, 0]  # Black for walls
-
-        # Optionally overlay the path in red
-        if show_path:
-            for (r, c) in self.path:
-                if 0 <= r < self.rows and 0 <= c < self.cols:
-                    img[r, c] = [255, 0, 0]
-
-        # Mark the start in green and the exit in blue (if defined)
-        start_r, start_c = self.start_position
-        img[start_r, start_c] = [0, 255, 0]
-        if self.exit is not None:
-            exit_r, exit_c = self.exit
-            img[exit_r, exit_c] = [0, 0, 255]
-
+        img = self.get_maze_as_png(show_path=show_path)
         plt.imshow(img)
         plt.title("Maze Visualization")
         plt.axis("off")
@@ -233,9 +267,9 @@ def test_maze():
 
         # Iterate through all the maze matrices and print each one
         for idx, maze_matrix in enumerate(maze_array):
-            print(f"Maze {idx}:\n{maze_matrix}")
             # Create a Maze object from the first maze matrix
             maze_obj = Maze(maze_matrix)
+            print(f"Maze {idx}:\n{maze_obj.get_maze_as_text()}")
 
             # Optionally, set an exit if you know where it should be (e.g., bottom right corner)
             #maze_obj.set_exit((maze_obj.rows - 2, maze_obj.cols - 2))
