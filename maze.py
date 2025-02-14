@@ -182,14 +182,14 @@ class Maze:
         image_data[corridors] = [255, 255, 255]  # White for corridors
         image_data[walls] = [0, 0, 0]  # Black for walls
 
-        # Optionally overlay the path as a gradient from yellow to pink
+        # Optionally overlay the path as a gradient from yellow to blue
         if show_path:
             path_length = len(self.path)
             for idx, (r, c) in enumerate(self.path):
                 if 0 <= r < self.rows and 0 <= c < self.cols:
                     # Calculate the gradient color
                     t = idx / (path_length - 1) if path_length > 1 else 0
-                    color = [255, int(255 * (1 - t) + 255 * t), int(255 * t)]
+                    color = [255, int(255 * (1 - t)), int(255 * t)]
                     image_data[r, c] = color
 
         # Optionally overlay the solution in red
@@ -203,7 +203,16 @@ class Maze:
         image_data[start_r, start_c] = [0, 255, 0]  # Start in green
         if self.exit is not None:
             exit_r, exit_c = self.exit
-            image_data[exit_r, exit_c] = [0, 0, 255]  # Exit in blue
+            image_data[exit_r, exit_c] = [0, 255, 0]  # Start of gradient (green to cyan).
+            if show_path:
+                path_length = len(self.path)
+                for idx, (r, c) in enumerate(self.path):
+                    if 0 <= r < self.rows and 0 <= c < self.cols:
+                        # Calculate the gradient color from green ([0, 255, 0]) to cyan ([0, 255, 255])
+                        t = idx / (path_length - 1) if path_length > 1 else 0
+                        color = [0, 255, int(255 * t)]
+                        image_data[r, c] = color
+              # Exit in blue
 
         return image_data
 

@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from maze import Maze
+import cProfile, pstats, io
+
 
 class MazeSolver(ABC):
     def __init__(self, maze: Maze):
@@ -17,6 +19,20 @@ class MazeSolver(ABC):
         the starting position to the exit.
         """
         pass
+
+    def profile(func):
+        def wrapper(*args, **kwargs):
+            profiler = cProfile.Profile()
+            profiler.enable()
+            result = func(*args, **kwargs)
+            profiler.disable()
+            s = io.StringIO()
+            stats = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+            stats.print_stats()
+            print(s.getvalue())
+            return result
+
+        return wrapper
 
     def loss(self):
         """

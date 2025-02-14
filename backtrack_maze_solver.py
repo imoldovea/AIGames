@@ -2,6 +2,7 @@ from maze_solver import MazeSolver
 from maze import Maze
 import numpy as np
 import logging
+import cProfile
 
 logging.basicConfig(level=logging.INFO)
 

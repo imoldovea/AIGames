@@ -132,6 +132,33 @@ def ensure_all_paths_connected(maze):
                     maze[y, x] = 0  # Connect to the main component
 
 
+def add_loops(maze, loop_probability=0.01):
+    """
+    Introduce loops in a perfect maze by removing additional walls.
+
+    Args:
+        maze (numpy.ndarray): 2D array representing the maze structure.
+        loop_probability (float): Likelihood (between 0 and 1) to remove an extra wall.
+
+    Returns:
+        numpy.ndarray: Maze with additional loops.
+    """
+    height, width = maze.shape
+
+    for y in range(1, height - 1):
+        for x in range(1, width - 1):
+            # Check if current cell is a wall that might separate two different paths.
+            if maze[y, x] == 1:
+                # Check horizontal wall candidates
+                if (maze[y, x - 1] == 0 and maze[y, x + 1] == 0) and random.random() < loop_probability:
+                    maze[y, x] = 0
+                # Check vertical wall candidates
+                elif (maze[y - 1, x] == 0 and maze[y + 1, x] == 0) and random.random() < loop_probability:
+                    maze[y, x] = 0
+
+    return maze
+
+
 def save_mazes_as_json(folder, filename, mazes):
     """
     Save mazes as a JSON file, representing mazes as 2D lists.
@@ -235,6 +262,7 @@ def main():
     for i in range(NUM_MAZES):
         logging.debug(f"Generating maze {i + 1}...")
         maze = generate_maze(WIDTH, HEIGHT)
+        maze = add_loops(maze)
         mazes.append(maze)
         # display_maze(maze)
         plot_maze(maze)

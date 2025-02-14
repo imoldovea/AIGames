@@ -1,12 +1,14 @@
 import os
-
 import numpy as np
 from backtrack_maze_solver import BacktrackingMazeSolver
+from bfs_maze_solver import BFSMazeSolver
 from maze import Maze
 from fpdf import FPDF
 import tempfile
 from PIL import Image
 import logging
+from line_profiler import LineProfiler
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -133,7 +135,15 @@ def main():
         logging.debug(f"Loaded {len(mazes)} mazes from {input_file}.")
 
         # Step 2: Solve mazes
+        lp = LineProfiler()
+        lp.add_function(solve_all_mazes)
         solved_mazes = solve_all_mazes(mazes, BacktrackingMazeSolver)
+        solved_mazes = solve_all_mazes(mazes, BFSMazeSolver)
+        lp.get_stats()
+
+        lp.disable()
+
+
 
         # Step 3: Save mazes to PDF
         save_mazes_as_pdf(solved_mazes, output_file)
