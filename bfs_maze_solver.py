@@ -4,7 +4,6 @@ from maze_solver import MazeSolver
 from maze import Maze
 from collections import deque
 import logging
-import cProfile
 
 logging.basicConfig(level=logging.INFO)
 
@@ -75,6 +74,7 @@ def test_bfs_solver():
             logging.debug(f"Solving maze {i + 1} with BFS...")
             maze_obj = Maze(maze_matrix)
             maze_obj.set_animate(True)
+            maze_obj.set_save_movie(True)
             solver = BFSMazeSolver(maze_obj)
             solution = solver.solve()
 
@@ -86,7 +86,7 @@ def test_bfs_solver():
 
             # Visualize the solved maze (with the solution path highlighted)
             maze_obj.set_solution(solution)
-            maze_obj.plot_maze(show_path=True, show_solution=False)
+            maze_obj.plot_maze(show_path=False, show_solution=True)
     except Exception as e:
         logging.error(f"An error occurred: {e}")
         throw_error(e)

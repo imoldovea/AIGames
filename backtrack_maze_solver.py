@@ -80,6 +80,7 @@ def test_backtracking_solver():
             # Create a Maze object from the maze matrix
             maze_obj = Maze(maze_matrix)
             maze_obj.set_animate(True)
+            maze_obj.set_save_movie(True)
 
             # Instantiate the backtracking maze solver
             solver = BacktrackingMazeSolver(maze_obj)
@@ -93,7 +94,7 @@ def test_backtracking_solver():
 
             # Visualize the solved maze (with the solution path highlighted)
             maze_obj.set_solution(solution)
-            maze_obj.plot_maze(show_path=True, show_solution=False,show_position=False)
+            aze_obj.plot_maze(show_path=False, show_solution=True)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")

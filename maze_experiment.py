@@ -9,7 +9,11 @@ from PIL import Image
 import logging
 from line_profiler import LineProfiler
 
+from matplotlib import animation
+from matplotlib.animation import FFMpegWriter
+import matplotlib.pyplot as plt
 
+OUTPUT_MOVIE__FILE = "output/maze_animation.mp4"
 logging.basicConfig(level=logging.INFO)
 
 # Define a custom PDF class (optional, for adding a header)
@@ -49,6 +53,7 @@ def solve_all_mazes(mazes, solver_class):
     solved_mazes = []
     for i, maze_matrix in enumerate(mazes):
         maze_obj = Maze(maze_matrix)
+        maze_obj.set_save_movie(True)
         solver = solver_class(maze_obj)
 
         try:
@@ -117,10 +122,38 @@ def display_all_mazes(solved_mazes):
     for i, (maze, solution) in enumerate(solved_mazes):
         try:
             logging.debug(f"Displaying maze {i + 1}...")
-            maze.plot_maze(show_path=True, show_solution=True)
+            maze.plot_maze(show_path=False, show_solution=True)
         except Exception as e:
             logging.warning(f"Could not display maze {i + 1}: {e}")
 
+
+def make_movie():
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.axis('off')  # Hide axes for a cleaner look
+
+    # Animation update function: update the maze frame based on the current path index.
+    def update(frame):
+        # Set the current position for this frame if within range
+        if frame < len(self.path):
+            self.current_position = self.path[frame]
+        ax.clear()
+        ax.axis('off')
+        img = ax.imshow(self.get_maze_as_png(show_path=show_path,
+                                             show_solution=show_solution,
+                                             show_position=show_position))
+        return [img]
+
+    # Create the animation.
+    ani = plt.matplotlib.animation.FuncAnimation(fig, update, frames=len(self.path), repeat=False)
+
+    try:
+        # Use FFMpegWriter to create the writer instance
+        writer = FFMpegWriter(fps=5, metadata=dict(artist='Ion'), bitrate=1800)
+        ani.save(OUTPUT_FILE, writer=writer)
+        plt.close(fig)
+        self.logger.info("Animation saved to %s", OUTPUT_FILE)
+    except Exception as e:
+        self.logger.error("Error saving animation: %s", e)
 
 def main():
     """

@@ -29,6 +29,7 @@ class Maze:
         self.logger.setLevel(logging.INFO)
         self.visited_cells = []
         self.animate = False
+        self.save_movie = False
 
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
@@ -117,28 +118,51 @@ class Maze:
         self.logger.warning("Invalid move attempted to position %s", position)
         return False
 
-    def get_animate(self):
+    def get_animate(self)->bool:
         """
         Getter for the 'animate' attribute.
-
+    
         Returns:
             bool: The value of the 'animate' attribute.
         """
         return self.animate
 
+    def get_save_movie(self)->bool:
+        """
+        Getter for the 'save_movie' attribute.
+    
+        Returns:
+            bool: The value of the 'save_movie' attribute.
+        """
+        return self.save_movie
+
     def set_animate(self, value):
         """
         Setter for the 'animate' attribute.
-
+    
         Args:
             value (bool): The new value for 'animate'.
-
+    
         Raises:
             ValueError: If the value is not a boolean.
         """
         if not isinstance(value, bool):
             raise ValueError("The 'animate' attribute must be a boolean.")
         self.animate = value
+
+    def set_save_movie(self, value):
+        """
+        Setter for the 'save_movie' attribute.
+    
+        Args:
+            value (bool): The new value for 'save_movie'.
+    
+        Raises:
+            ValueError: If the value is not a boolean.
+        """
+        if not isinstance(value, bool):
+            raise ValueError("The 'save_movie' attribute must be a boolean.")
+        self.save_movie = value
 
     def get_position(self):
         """
@@ -206,7 +230,7 @@ class Maze:
         })
         return data
 
-    def get_maze_as_png(self, show_path=True, show_solution=True, show_position=True) -> np.ndarray:
+    def get_maze_as_png(self, show_path=True, show_solution=True, show_position=False) -> np.ndarray:
         """
         Returns the current maze configuration as an RGB NumPy image.
 
@@ -288,7 +312,7 @@ class Maze:
         return '\n'.join(ascii_maze)
 
 
-    def plot_maze(self, show_path=True, show_solution=True, show_position=True):
+    def plot_maze(self, show_path=True, show_solution=True, show_position=False):
         """
         Plots the current maze configuration on the screen.
 
