@@ -1,6 +1,11 @@
 from maze_solver import MazeSolver
 from maze import Maze
 import numpy as np
+import logging
+import cProfile
+
+logging.basicConfig(level=logging.INFO)
+
 
 class BacktrackingMazeSolver(MazeSolver):
     def solve(self):
@@ -57,7 +62,7 @@ def test_backtracking_solver():
 
         # Iterate through each maze in the array
         for i, maze_matrix in enumerate(maze_array):
-            print(f"Solving maze {i + 1}...")
+            logging.debug(f"Solving maze {i + 1}...")
 
             # Create a Maze object from the maze matrix
             maze_obj = Maze(maze_matrix)
@@ -67,16 +72,16 @@ def test_backtracking_solver():
             solution = solver.solve()
 
             if solution:
-                print(f"Maze {i + 1} solution found:")
-                print(solution)
+                logging.debug(f"Maze {i + 1} solution found:")
+                logging.debug(solution)
             else:
-                print(f"No solution found for maze {i + 1}.")
+                logging.debug(f"No solution found for maze {i + 1}.")
 
             # Visualize the solved maze (with the solution path highlighted)
             maze_obj.set_solution(solution)
             maze_obj.plot_maze(show_path=True, show_solution=False)
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}")
 
 
 if __name__ == '__main__':

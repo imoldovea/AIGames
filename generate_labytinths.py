@@ -3,10 +3,7 @@ import os
 import random
 import json
 import matplotlib.pyplot as plt
-import pickle
-from PIL import Image
-
-
+import logging
 
 
 def find_start(maze, width, height):
@@ -135,6 +132,33 @@ def ensure_all_paths_connected(maze):
                     maze[y, x] = 0  # Connect to the main component
 
 
+def add_loops(maze, loop_probability=0.01):
+    """
+    Introduce loops in a perfect maze by removing additional walls.
+
+    Args:
+        maze (numpy.ndarray): 2D array representing the maze structure.
+        loop_probability (float): Likelihood (between 0 and 1) to remove an extra wall.
+
+    Returns:
+        numpy.ndarray: Maze with additional loops.
+    """
+    height, width = maze.shape
+
+    for y in range(1, height - 1):
+        for x in range(1, width - 1):
+            # Check if current cell is a wall that might separate two different paths.
+            if maze[y, x] == 1:
+                # Check horizontal wall candidates
+                if (maze[y, x - 1] == 0 and maze[y, x + 1] == 0) and random.random() < loop_probability:
+                    maze[y, x] = 0
+                # Check vertical wall candidates
+                elif (maze[y - 1, x] == 0 and maze[y + 1, x] == 0) and random.random() < loop_probability:
+                    maze[y, x] = 0
+
+    return maze
+
+
 def save_mazes_as_json(folder, filename, mazes):
     """
     Save mazes as a JSON file, representing mazes as 2D lists.
@@ -151,7 +175,8 @@ def save_mazes_as_json(folder, filename, mazes):
     mazes_list = [maze.tolist() for maze in mazes]
     with open(file_path, 'w') as file:
         json.dump({"mazes": mazes_list}, file, indent=4)
-    print(f"Mazes saved to {file_path}")
+    logging.debug(f"Mazes saved to {file_path}")
+
 
 import pickle
 
@@ -170,7 +195,7 @@ def save_mazes_as_pickle(folder, filename, mazes):
 
     with open(file_path, 'wb') as file:
         pickle.dump(mazes, file)
-    print(f"Mazes saved to {file_path}")
+    logging.debug(f"Mazes saved to {file_path}")
 
 
 def save_mazes_as_numpy(folder, filename, mazes):
@@ -186,9 +211,10 @@ def save_mazes_as_numpy(folder, filename, mazes):
         os.makedirs(folder, exist_ok=True)
         file_path = os.path.join(folder, filename)
         np.save(file_path, mazes)
-        print(f"Mazes saved to {file_path}")
+        logging.debug(f"Mazes saved to {file_path}")
     except (OSError, IOError) as e:
-        print(f"Error saving mazes: {e}")
+        logging.error(f"Error saving mazes: {e}")
+
 
 def save_mazes(folder, filename, mazes):
     save_mazes_as_numpy(folder, filename, mazes)
@@ -234,8 +260,9 @@ def main():
 
     mazes = []
     for i in range(NUM_MAZES):
-        print(f"Generating maze {i + 1}...")
+        logging.debug(f"Generating maze {i + 1}...")
         maze = generate_maze(WIDTH, HEIGHT)
+        maze = add_loops(maze)
         mazes.append(maze)
         # display_maze(maze)
         plot_maze(maze)
@@ -244,4 +271,5 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     main()

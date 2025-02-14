@@ -1,6 +1,7 @@
 import numpy as np
 import json
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import logging
 
 
@@ -141,7 +142,7 @@ class Maze:
     def get_maze_as_json(self) -> json:
         """
         Get the current maze configuration to a JSON file.
-    
+
         The JSON file will include:
           - grid: the maze grid as a list of lists
           - path: the ordered sequence of path coordinates
@@ -160,51 +161,60 @@ class Maze:
     def get_maze_as_png(self, show_path=True, show_solution=True) -> np.ndarray:
         """
         Returns the current maze configuration as an RGB NumPy image.
-    
+
         Parameters:
           - show_path: if True, the path taken is highlighted in red.
-    
+
         Color scheme:
           - Walls: black
           - Corridors: white
           - Path: red (if show_path is True)
           - Start: green
           - Exit: blue (if defined)
-    
+
         Returns:
           An RGB image (as a NumPy array) that represents the maze.
         """
         # Create an RGB image based on the maze grid
-        img = np.zeros((self.rows, self.cols, 3), dtype=np.uint8)
+        image_data = np.zeros((self.rows, self.cols, 3), dtype=np.uint8)
         corridors = (self.grid == 0)
         walls = (self.grid == 1)
-        img[corridors] = [255, 255, 255]  # White for corridors
-        img[walls] = [0, 0, 0]  # Black for walls
+        image_data[corridors] = [255, 255, 255]  # White for corridors
+        image_data[walls] = [0, 0, 0]  # Black for walls
 
-        # Optionally overlay the path as a gradient from yellow to pink
+        # Optionally overlay the path as a gradient from yellow to blue
         if show_path:
             path_length = len(self.path)
             for idx, (r, c) in enumerate(self.path):
                 if 0 <= r < self.rows and 0 <= c < self.cols:
                     # Calculate the gradient color
                     t = idx / (path_length - 1) if path_length > 1 else 0
-                    color = [255, int(255 * (1 - t)), int(203 * (1 - t) + 255 * t)]
-                    img[r, c] = color
+                    color = [255, int(255 * (1 - t)), int(255 * t)]
+                    image_data[r, c] = color
 
         # Optionally overlay the solution in red
         if show_solution:
             for (r, c) in self._solution:
                 if 0 <= r < self.rows and 0 <= c < self.cols:
-                    img[r, c] = [255, 0, 0]
+                    image_data[r, c] = [255, 0, 0]
 
         # Mark the start (green) and exit (blue, if defined)
         start_r, start_c = self.start_position
-        img[start_r, start_c] = [0, 255, 0]  # Start in green
+        image_data[start_r, start_c] = [0, 255, 0]  # Start in green
         if self.exit is not None:
             exit_r, exit_c = self.exit
-            img[exit_r, exit_c] = [0, 0, 255]  # Exit in blue
+            image_data[exit_r, exit_c] = [0, 255, 0]  # Start of gradient (green to cyan).
+            if show_path:
+                path_length = len(self.path)
+                for idx, (r, c) in enumerate(self.path):
+                    if 0 <= r < self.rows and 0 <= c < self.cols:
+                        # Calculate the gradient color from green ([0, 255, 0]) to cyan ([0, 255, 255])
+                        t = idx / (path_length - 1) if path_length > 1 else 0
+                        color = [0, 255, int(255 * t)]
+                        image_data[r, c] = color
+              # Exit in blue
 
-        return img
+        return image_data
 
     def get_maze_as_text(self) -> str:
         """
@@ -237,12 +247,12 @@ class Maze:
     def plot_maze(self, show_path=True, show_solution=True):
         """
         Plots the current maze configuration on the screen.
-    
+
         Parameters:
           - show_path: if True, the path taken is overlaid on the maze.
         """
-        img = self.get_maze_as_png(show_path=True, show_solution=False)
-        plt.imshow(img)
+        imgage_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution)
+        plt.imshow(imgage_data)
         plt.title("Maze Visualization")
         plt.axis("off")
         plt.show()

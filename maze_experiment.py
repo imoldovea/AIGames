@@ -1,11 +1,23 @@
 import os
 import numpy as np
 from backtrack_maze_solver import BacktrackingMazeSolver
+from bfs_maze_solver import BFSMazeSolver
 from maze import Maze
-from matplotlib.backends.backend_pdf import PdfPages
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-import matplotlib.pyplot as plt
+from fpdf import FPDF
+import tempfile
+from PIL import Image
+import logging
+from line_profiler import LineProfiler
+
+
+logging.basicConfig(level=logging.INFO)
+
+# Define a custom PDF class (optional, for adding a header)
+class PDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 16)
+        self.cell(0, 10, 'Collection of maze solution', ln=True, align='C')
+        self.ln(10)
 
 def load_mazes(file_path):
     """
@@ -43,50 +55,56 @@ def solve_all_mazes(mazes, solver_class):
             solution = solver.solve()
             maze_obj.set_solution(solution)
             solved_mazes.append((maze_obj, solution))
-            print(f"Maze {i + 1} solved successfully.")
+            logging.debug(f"Maze {i + 1} solved successfully.")
         except Exception as e:
             solved_mazes.append((maze_obj, None))
-            print(f"Failed to solve maze {i + 1}: {e}")
+            logging.error(f"Failed to solve maze {i + 1}: {e}")
 
     return solved_mazes
 
 
-def save_mazes_as_pdf(solved_mazes, output_path):
+def save_mazes_as_pdf(solved_mazes, output_filename="maze_solutions.pdf"):
     """
-    Saves all solved mazes and their visualizations as a PDF file.
+      Save a collection of maze strings to a PDF file.
 
-    Args:
-        solved_mazes (list): List of tuples with the maze and its solution.
-        output_path (str): Path to save the output PDF.
-    """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+      Parameters:
+          mazes (list of str): The list of maze representations.
+          filename (str): The filename for the output PDF.
+      """
+    try:
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Arial", size=12)
 
-    with PdfPages(output_path) as pdf:
-        for i, (maze, solution) in enumerate(solved_mazes):
+        # Set a base font for the document
+        pdf.set_font("Arial", size=12)
+
+        # Iterate over each maze in the list
+        for index, (maze_obj, solution) in enumerate(solved_mazes, start=1):
             try:
-                # Set up the PDF canvas
-                c = canvas.Canvas(output_filename, pagesize=letter)
-                width, height = letter
+                # Get the maze image as a numpy array
+                image_array = maze_obj.get_maze_as_png(show_path=True, show_solution=True)
 
-                # Add text
-                c.setFont("Helvetica", 14)
-                c.drawString(100, height - 100, f"Maze {i}")
+                # Save the numpy array as a temporary PNG file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+                    temp_image_path = tmp_file.name
+                Image.fromarray(image_array).save(temp_image_path)
 
-                # Add image
-
-                image = maze.get_maze_as_png(show_path=True, show_solution=False)
-                c.drawImage(image, 100, height - 300, width=200, height=150)
-                c.save()
-
-                # Load the image and add it to the PDF
-                img = Image.open(image)
-
-                c.save()
-                print(f"Maze {i + 1} solution added to PDF.")
+                pdf.add_page()
+                # Optionally add a title for each maze
+                pdf.cell(0, 10, f"Maze {index}", ln=True, align='C')
+                pdf.ln(5)
+                # Use multi_cell to allow for multi-line maze text
+                pdf.image(temp_image_path, x=10, y=30, w=pdf.w - 20)
+                os.remove(temp_image_path)
             except Exception as e:
-                print(f"Could not visualize maze {i + 1}: {e}")
+                logging.error(f"Error processing maze {index}: {e}")
 
-    print(f"All mazes successfully saved to {output_path}.")
+        # Save the PDF to the specified file
+        pdf.output(output_filename)
+        logging.info(f"Mazes saved as PDF: {output_filename}")
+    except Exception as e:
+        logging.error(f"Failed to save mazes to PDF: {e}")
 
 
 def display_all_mazes(solved_mazes):
@@ -98,12 +116,10 @@ def display_all_mazes(solved_mazes):
     """
     for i, (maze, solution) in enumerate(solved_mazes):
         try:
-            print(f"Displaying maze {i + 1}...")
+            logging.debug(f"Displaying maze {i + 1}...")
             maze.plot_maze(show_path=True, show_solution=True)
-            plt.title(f"Maze {i + 1}")
-            plt.show()
         except Exception as e:
-            print(f"Could not display maze {i + 1}: {e}")
+            logging.warning(f"Could not display maze {i + 1}: {e}")
 
 
 def main():
@@ -116,17 +132,25 @@ def main():
     try:
         # Step 1: Load mazes
         mazes = load_mazes(input_file)
-        print(f"Loaded {len(mazes)} mazes from {input_file}.")
+        logging.debug(f"Loaded {len(mazes)} mazes from {input_file}.")
 
         # Step 2: Solve mazes
+        lp = LineProfiler()
+        lp.add_function(solve_all_mazes)
         solved_mazes = solve_all_mazes(mazes, BacktrackingMazeSolver)
+        solved_mazes = solve_all_mazes(mazes, BFSMazeSolver)
+        lp.get_stats()
+
+        lp.disable()
+
+
 
         # Step 3: Save mazes to PDF
         save_mazes_as_pdf(solved_mazes, output_file)
         display_all_mazes(solved_mazes)
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}")
 
 
 if __name__ == "__main__":
