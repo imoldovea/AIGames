@@ -55,14 +55,12 @@ class BacktrackingMazeSolver(MazeSolver):
                 if sol is not None:
                     return sol
 
+        # Animate the current position
+        self.maze.move(current,backtrack=True)
         # Backtrack if no path found from the current position
         path.pop()
 
-        # Animate the current position
-        self.maze.move(current)
-
         return None
-
 
 # Example test function
 def test_backtracking_solver():
@@ -96,8 +94,6 @@ def test_backtracking_solver():
             # Visualize the solved maze (with the solution path highlighted)
             maze_obj.set_solution(solution)
             maze_obj.plot_maze(show_path=True, show_solution=False,show_position=False)
-
-            break
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")

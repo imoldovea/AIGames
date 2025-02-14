@@ -5,7 +5,8 @@ import json
 import matplotlib.pyplot as plt
 import logging
 
-
+PATH = 0
+WALL = 1
 def find_start(maze, width, height):
     # Set the starting point randomly so it is always on a valid path (0)
     path_cells = [(y, x) for y in range(height) for x in range(width) if maze[y, x] == 0]
@@ -14,7 +15,6 @@ def find_start(maze, width, height):
         maze[start_y, start_x] = 3  # Use `3` to mark the starting position
 
     return maze
-
 
 def find_exit(maze, width, height):
     # Add a single exit (randomly choose any valid cell on the perimeter)
@@ -72,11 +72,11 @@ def generate_maze(width, height):
             nx, ny = x + 2 * dx, y + 2 * dy  # Move two cells to carve
             if 0 < nx < width - 1 and 0 < ny < height - 1 and maze[ny, nx] == 1:
                 maze[ny - dy, nx - dx] = 0  # Break wall
-                maze[ny, nx] = 0  # Carve path
+                maze[ny, nx] = PATH  # Carve path
                 carve(nx, ny)
 
     # Carve maze starting from (1, 1)
-    maze[1, 1] = 0
+    maze[1, 1] = PATH
     carve(1, 1)
 
     # Ensure all paths are interconnected
@@ -129,7 +129,7 @@ def ensure_all_paths_connected(maze):
         for y in range(1, height - 1):
             for x in range(1, width - 1):
                 if maze_labels[y, x] > 1:  # If part of a disconnected component
-                    maze[y, x] = 0  # Connect to the main component
+                    maze[y, x] = PATH  # Connect to the main component
 
 
 def add_loops(maze, loop_probability=0.02):

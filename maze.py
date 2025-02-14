@@ -3,8 +3,13 @@ import json
 import matplotlib.pyplot as plt
 import logging
 
+from h5py.h5o import visit
+
 
 class Maze:
+    WALL = 1
+    CORRIDOR = 0
+
     def __init__(self, grid, start_marker=3):
         """
         Initializes the maze from a provided NumPy matrix.
@@ -22,6 +27,7 @@ class Maze:
         self.rows, self.cols = self.grid.shape
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
+        self.visited_cells = []
         self.animate = False
 
         handler = logging.StreamHandler()
@@ -70,13 +76,13 @@ class Maze:
         if not self.is_within_bounds(position):
             return True  # Out-of-bounds is treated as a wall.
         r, c = position
-        return self.grid[r, c] == 1
+        return self.grid[r, c] == self.WALL
 
     def is_corridor(self, position):
         if not self.is_within_bounds(position):
             return False
         r, c = position
-        return self.grid[r, c] == 0
+        return self.grid[r, c] == self.CORRIDOR
 
     def is_valid_move(self, position):
         """
@@ -84,7 +90,8 @@ class Maze:
         """
         return self.is_within_bounds(position) and not self.is_wall(position)
 
-    def move(self, position):
+
+    def move(self, position, backtrack=False):
         """
         Moves to a new position if the move is valid.
 
@@ -95,6 +102,13 @@ class Maze:
             self.current_position = position
             self.path.append(position)
             self.logger.debug("Moved to position %s", position)
+
+            if backtrack:
+                logging.debug("Backtracking to position %s", position)
+                self.path.pop()
+                logging.debug("Backtrack complete. Current position is %s", self.current_position, " ", len(self.path))
+                if position not in self.visited_cells:
+                    self.visited_cells.append(position)
 
             if self.animate:
                 self.plot_maze()
@@ -204,6 +218,7 @@ class Maze:
           - Corridors: white
           - Path: red (if show_path is True)
           - Start: green
+          - Visited cells: gray
           - Exit: blue (if defined)
 
         Returns:
@@ -215,16 +230,6 @@ class Maze:
         walls = (self.grid == 1)
         image_data[corridors] = [255, 255, 255]  # White for corridors
         image_data[walls] = [0, 0, 0]  # Black for walls
-
-        # Optionally overlay the path as a gradient from yellow to blue
-        if show_path:
-            path_length = len(self.path)
-            for idx, (r, c) in enumerate(self.path):
-                if 0 <= r < self.rows and 0 <= c < self.cols:
-                    # Calculate the gradient color
-                    t = idx / (path_length - 1) if path_length > 1 else 0
-                    color = [255, int(255 * (1 - t)), int(255 * t)]
-                    image_data[r, c] = color
 
         # Optionally overlay the solution in red
         if show_solution:
@@ -240,16 +245,19 @@ class Maze:
         image_data[start_r, start_c] = [0, 255, 0]  # Start in green
         if self.exit is not None:
             exit_r, exit_c = self.exit
-            image_data[exit_r, exit_c] = [0, 255, 0]  # Start of gradient (green to cyan).
+            image_data[exit_r, exit_c] = [0, 255, 255]  # Start of gradient (green to cyan).
             if show_path:
                 path_length = len(self.path)
-                for idx, (r, c) in enumerate(self.path):
+                for idx, (r, c) in enumerate(self.path): #show active track
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         # Calculate the gradient color from green ([0, 255, 0]) to cyan ([0, 255, 255])
                         t = idx / (path_length - 1) if path_length > 1 else 0
                         color = [0, 255, int(255 * t)]
                         image_data[r, c] = color
-              # Exit in blue
+                for (r, c) in self.visited_cells:  # show visited cells.
+                    if 0 <= r < self.rows and 0 <= c < self.cols:
+                        image_data[r, c] = [128, 128, 128]
+
 
         return image_data
 
@@ -279,7 +287,6 @@ class Maze:
         # Join rows with newline to create final ASCII maze
         return '\n'.join(ascii_maze)
 
-        return text_maze
 
     def plot_maze(self, show_path=True, show_solution=True, show_position=True):
         """

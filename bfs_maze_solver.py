@@ -1,3 +1,5 @@
+from numpy.f2py.auxfuncs import throw_error
+
 from maze_solver import MazeSolver
 from maze import Maze
 from collections import deque
@@ -37,7 +39,9 @@ class BFSMazeSolver(MazeSolver):
                 while current is not None:
                     path.append(current)
                     current = parent[current]
+                    #self.maze.move(current)
                 path.reverse()
+                #self.maze.move(current, backtrack=True)
                 # Optionally update the maze's path with the found solution.
                 self.maze.path = path
                 return path
@@ -48,6 +52,7 @@ class BFSMazeSolver(MazeSolver):
                     visited.add(neighbor)
                     parent[neighbor] = current
                     queue.append(neighbor)
+                    self.maze.move(current)
 
         # No solution found
         return None
@@ -69,6 +74,7 @@ def test_bfs_solver():
         for i, maze_matrix in enumerate(maze_array):
             logging.debug(f"Solving maze {i + 1} with BFS...")
             maze_obj = Maze(maze_matrix)
+            maze_obj.set_animate(True)
             solver = BFSMazeSolver(maze_obj)
             solution = solver.solve()
 
@@ -83,6 +89,7 @@ def test_bfs_solver():
             maze_obj.plot_maze(show_path=True, show_solution=False)
     except Exception as e:
         logging.error(f"An error occurred: {e}")
+        throw_error(e)
 
 
 if __name__ == '__main__':
