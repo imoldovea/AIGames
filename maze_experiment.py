@@ -13,7 +13,7 @@ from matplotlib import animation
 from matplotlib.animation import FFMpegWriter
 import matplotlib.pyplot as plt
 
-OUTPUT_MOVIE__FILE = "output/maze_animation.mp4"
+OUTPUT_MOVIE_FILE = "output/maze_animation.mp4"
 logging.basicConfig(level=logging.INFO)
 
 # Define a custom PDF class (optional, for adding a header)
@@ -64,7 +64,6 @@ def solve_all_mazes(mazes, solver_class):
         except Exception as e:
             solved_mazes.append((maze_obj, None))
             logging.error(f"Failed to solve maze {i + 1}: {e}")
-
     return solved_mazes
 
 
@@ -127,34 +126,6 @@ def display_all_mazes(solved_mazes):
             logging.warning(f"Could not display maze {i + 1}: {e}")
 
 
-def make_movie():
-    fig, ax = plt.subplots(figsize=(10, 10))
-    ax.axis('off')  # Hide axes for a cleaner look
-
-    # Animation update function: update the maze frame based on the current path index.
-    def update(frame):
-        # Set the current position for this frame if within range
-        if frame < len(self.path):
-            self.current_position = self.path[frame]
-        ax.clear()
-        ax.axis('off')
-        img = ax.imshow(self.get_maze_as_png(show_path=show_path,
-                                             show_solution=show_solution,
-                                             show_position=show_position))
-        return [img]
-
-    # Create the animation.
-    ani = plt.matplotlib.animation.FuncAnimation(fig, update, frames=len(self.path), repeat=False)
-
-    try:
-        # Use FFMpegWriter to create the writer instance
-        writer = FFMpegWriter(fps=5, metadata=dict(artist='Ion'), bitrate=1800)
-        ani.save(OUTPUT_FILE, writer=writer)
-        plt.close(fig)
-        self.logger.info("Animation saved to %s", OUTPUT_FILE)
-    except Exception as e:
-        self.logger.error("Error saving animation: %s", e)
-
 def main():
     """
     Main function to load, solve, and save all mazes into a PDF.
@@ -173,10 +144,7 @@ def main():
         solved_mazes = solve_all_mazes(mazes, BacktrackingMazeSolver)
         solved_mazes = solve_all_mazes(mazes, BFSMazeSolver)
         print(lp.get_stats())
-
         lp.disable()
-
-
 
         # Step 3: Save mazes to PDF
         save_mazes_as_pdf(solved_mazes, output_file)
