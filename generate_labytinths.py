@@ -132,7 +132,7 @@ def ensure_all_paths_connected(maze):
                     maze[y, x] = 0  # Connect to the main component
 
 
-def add_loops(maze, loop_probability=0.01):
+def add_loops(maze, loop_probability=0.02):
     """
     Introduce loops in a perfect maze by removing additional walls.
 

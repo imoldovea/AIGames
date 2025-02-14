@@ -139,7 +139,7 @@ def main():
         lp.add_function(solve_all_mazes)
         solved_mazes = solve_all_mazes(mazes, BacktrackingMazeSolver)
         solved_mazes = solve_all_mazes(mazes, BFSMazeSolver)
-        lp.get_stats()
+        print(lp.get_stats())
 
         lp.disable()
 

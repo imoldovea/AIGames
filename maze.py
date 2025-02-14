@@ -1,7 +1,6 @@
 import numpy as np
 import json
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import logging
 
 
@@ -23,6 +22,8 @@ class Maze:
         self.rows, self.cols = self.grid.shape
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
+        self.animate = False
+
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(handler)
@@ -94,9 +95,42 @@ class Maze:
             self.current_position = position
             self.path.append(position)
             self.logger.debug("Moved to position %s", position)
+
+            if self.animate:
+                self.plot_maze()
+
             return True
         self.logger.warning("Invalid move attempted to position %s", position)
         return False
+
+    def get_animate(self):
+        """
+        Getter for the 'animate' attribute.
+
+        Returns:
+            bool: The value of the 'animate' attribute.
+        """
+        return self.animate
+
+    def set_animate(self, value):
+        """
+        Setter for the 'animate' attribute.
+
+        Args:
+            value (bool): The new value for 'animate'.
+
+        Raises:
+            ValueError: If the value is not a boolean.
+        """
+        if not isinstance(value, bool):
+            raise ValueError("The 'animate' attribute must be a boolean.")
+        self.animate = value
+
+    def get_position(self):
+        """
+        Returns the current navigation position in the maze.
+        """
+        return self.current_position
 
     def get_neighbors(self, position=None):
         """
@@ -158,7 +192,7 @@ class Maze:
         })
         return data
 
-    def get_maze_as_png(self, show_path=True, show_solution=True) -> np.ndarray:
+    def get_maze_as_png(self, show_path=True, show_solution=True, show_position=True) -> np.ndarray:
         """
         Returns the current maze configuration as an RGB NumPy image.
 
@@ -197,6 +231,9 @@ class Maze:
             for (r, c) in self._solution:
                 if 0 <= r < self.rows and 0 <= c < self.cols:
                     image_data[r, c] = [255, 0, 0]
+
+        if show_position:
+            image_data[self.current_position] = [255, 0, 0]
 
         # Mark the start (green) and exit (blue, if defined)
         start_r, start_c = self.start_position
@@ -244,14 +281,14 @@ class Maze:
 
         return text_maze
 
-    def plot_maze(self, show_path=True, show_solution=True):
+    def plot_maze(self, show_path=True, show_solution=True, show_position=True):
         """
         Plots the current maze configuration on the screen.
 
         Parameters:
           - show_path: if True, the path taken is overlaid on the maze.
         """
-        imgage_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution)
+        imgage_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution, show_position=show_position)
         plt.imshow(imgage_data)
         plt.title("Maze Visualization")
         plt.axis("off")

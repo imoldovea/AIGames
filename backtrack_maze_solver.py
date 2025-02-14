@@ -1,13 +1,21 @@
+from numpy.f2py.auxfuncs import throw_error
+
 from maze_solver import MazeSolver
 from maze import Maze
 import numpy as np
 import logging
-import cProfile
 
 logging.basicConfig(level=logging.INFO)
 
-
 class BacktrackingMazeSolver(MazeSolver):
+    def __init__(self, maze):
+        """
+        Initializes the BacktrackingMazeSolver with a Maze object.
+        Args:
+            maze (Maze): The maze to solve.
+        """
+        self.maze = maze
+
     def solve(self):
         """
         Attempts to solve the maze using recursive backtracking.
@@ -33,6 +41,9 @@ class BacktrackingMazeSolver(MazeSolver):
         visited.add(current)
         path.append(current)
 
+        # Animate the current position
+        self.maze.move(current)
+
         # Check if we've reached the exit
         if current == self.maze.exit:
             return path.copy()
@@ -46,6 +57,10 @@ class BacktrackingMazeSolver(MazeSolver):
 
         # Backtrack if no path found from the current position
         path.pop()
+
+        # Animate the current position
+        self.maze.move(current)
+
         return None
 
 
@@ -66,6 +81,7 @@ def test_backtracking_solver():
 
             # Create a Maze object from the maze matrix
             maze_obj = Maze(maze_matrix)
+            maze_obj.set_animate(True)
 
             # Instantiate the backtracking maze solver
             solver = BacktrackingMazeSolver(maze_obj)
@@ -79,9 +95,14 @@ def test_backtracking_solver():
 
             # Visualize the solved maze (with the solution path highlighted)
             maze_obj.set_solution(solution)
-            maze_obj.plot_maze(show_path=True, show_solution=False)
+            maze_obj.plot_maze(show_path=True, show_solution=False,show_position=False)
+
+            break
+
     except Exception as e:
         logging.error(f"An error occurred: {e}")
+        throw_error(e)
+
 
 
 if __name__ == '__main__':
