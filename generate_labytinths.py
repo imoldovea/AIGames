@@ -3,10 +3,7 @@ import os
 import random
 import json
 import matplotlib.pyplot as plt
-import pickle
-from PIL import Image
-
-
+import logging
 
 
 def find_start(maze, width, height):
@@ -151,7 +148,8 @@ def save_mazes_as_json(folder, filename, mazes):
     mazes_list = [maze.tolist() for maze in mazes]
     with open(file_path, 'w') as file:
         json.dump({"mazes": mazes_list}, file, indent=4)
-    print(f"Mazes saved to {file_path}")
+    logging.debug(f"Mazes saved to {file_path}")
+
 
 import pickle
 
@@ -170,7 +168,7 @@ def save_mazes_as_pickle(folder, filename, mazes):
 
     with open(file_path, 'wb') as file:
         pickle.dump(mazes, file)
-    print(f"Mazes saved to {file_path}")
+    logging.debug(f"Mazes saved to {file_path}")
 
 
 def save_mazes_as_numpy(folder, filename, mazes):
@@ -186,9 +184,10 @@ def save_mazes_as_numpy(folder, filename, mazes):
         os.makedirs(folder, exist_ok=True)
         file_path = os.path.join(folder, filename)
         np.save(file_path, mazes)
-        print(f"Mazes saved to {file_path}")
+        logging.debug(f"Mazes saved to {file_path}")
     except (OSError, IOError) as e:
-        print(f"Error saving mazes: {e}")
+        logging.error(f"Error saving mazes: {e}")
+
 
 def save_mazes(folder, filename, mazes):
     save_mazes_as_numpy(folder, filename, mazes)
@@ -234,7 +233,7 @@ def main():
 
     mazes = []
     for i in range(NUM_MAZES):
-        print(f"Generating maze {i + 1}...")
+        logging.debug(f"Generating maze {i + 1}...")
         maze = generate_maze(WIDTH, HEIGHT)
         mazes.append(maze)
         # display_maze(maze)
@@ -244,4 +243,5 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     main()
