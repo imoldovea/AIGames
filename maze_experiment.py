@@ -12,10 +12,9 @@ from line_profiler import LineProfiler
 import cProfile
 import pstats
 import io
+import cv2
+from multiprocessing import Process
 
-from matplotlib import animation
-from matplotlib.animation import FFMpegWriter
-import matplotlib.pyplot as plt
 
 OUTPUT_MOVIE_FILE = "output/maze_animation.mp4"
 logging.basicConfig(level=logging.WARN)
@@ -82,7 +81,7 @@ def save_mazes_as_pdf(solved_mazes, output_filename="maze_solutions.pdf"):
     # Generate the title and subtitle
     title = "Maze Solution"
     date = f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    
+
     try:
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
@@ -147,78 +146,105 @@ def display_all_mazes(solved_mazes):
         except Exception as e:
             logging.warning(f"Could not display maze {i + 1}: {e}")
 
+def encode_video(frame_list, filename, fps_val, w, h):
+    """
+    Encodes the frames into a video file using OpenCV.
+    """
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(filename, fourcc, fps_val, (w, h))
+
+    for frame in frame_list:
+        out.write(frame)
+
+    out.release()
+    logging.info(f"Video saved as: {filename}")
 
 def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
     """
-    Displays all the mazes and their solutions in a single video.
-
-    Args:
-        solved_mazes (list): List of tuples with the maze and its solution.
+    Generates and saves a video of all mazes and their solutions using OpenCV,
+    with a title screen before each maze and non-overlapping text.
     """
-    writer = FFMpegWriter(fps=10, metadata=dict(artist='Me'), bitrate=1800)
-    fig, ax = plt.subplots()
+    fps = 10
+    width, height = 800, 600   # Desired resolution for the final video
+    title_frames_count = 10    # Number of frames to show the title screen
 
-    all_frames = []
+    frames = []
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     maze_count = 1
 
-    # Build a combined list of frames for all mazes.
     for maze, solution in solved_mazes:
         try:
-            images = maze.get_raw_movie()
+            images = maze.get_raw_movie()   # Maze frames as NumPy arrays
             algorithm = maze.get_algorithm()
         except Exception as e:
             logging.warning(f"Could not process maze #{maze_count}: {e}")
             maze_count += 1
             continue
 
-        # Add title frames (30 frames per maze)
-        for _ in range(30):
-            all_frames.append({
-                "type": "title",
-                "maze_num": maze_count,
-                "algorithm": algorithm,
-                "date": now_str
-            })
+        # ---------------------------------------------------------------------
+        # 1. CREATE TITLE SCREEN (black background) BEFORE EACH MAZE
+        # ---------------------------------------------------------------------
+        for _ in range(title_frames_count):
+            # Create a white background for the title
+            title_frame = np.ones((height, width, 3), dtype=np.uint8) * 255
 
-        # Add the maze image frames
+            # Add text for the title screen
+            cv2.putText(title_frame, f"Maze Solver", (50, 100),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3)
+            cv2.putText(title_frame, f"Maze #{maze_count}", (50, 160),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
+            cv2.putText(title_frame, f"Algorithm: {algorithm}", (50, 220),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
+            cv2.putText(title_frame, f"Generated on: {now_str}", (50, 280),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
+
+            frames.append(title_frame)
+
+        # ---------------------------------------------------------------------
+        # 2. ADD MAZE FRAMES WITH A TOP MARGIN FOR TEXT
+        # ---------------------------------------------------------------------
+        margin_height = 60  # pixels reserved at the top for text
+
         for img in images:
-            all_frames.append({
-                "type": "maze",
-                "img": img,
-                "maze_num": maze_count,
-                "algorithm": algorithm
-            })
+            # Ensure the frame is in color (3 channels)
+            if img.ndim == 2:  # Grayscale
+                img_color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            else:
+                img_color = img
+
+            # Resize to (width, height - margin_height), because we’ll add margin
+            resized_h = height - margin_height
+            resized_img = cv2.resize(
+                img_color, (width, resized_h),
+                interpolation=cv2.INTER_NEAREST  # Crisp edges for maze
+            )
+
+            # Create a new frame with a white margin at the top
+            frame_with_margin = np.ones((height, width, 3), dtype=np.uint8) * 255
+            # Place the maze image below the top margin
+            frame_with_margin[margin_height:margin_height+resized_h, 0:width] = resized_img
+
+            # Draw black rectangle in the top margin for text
+            cv2.rectangle(frame_with_margin, (0, 0), (width, margin_height), (0, 0, 0), -1)
+
+            # Put text in the margin
+            cv2.putText(frame_with_margin, f"Maze #{maze_count}", (10, 35),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+            cv2.putText(frame_with_margin, f"Algorithm: {algorithm}", (250, 35),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+            frames.append(frame_with_margin)
 
         maze_count += 1
 
-    # Update function that draws each frame based on its type.
-    def update(frame_idx):
-        ax.clear()
-        frame = all_frames[frame_idx]
-        if frame["type"] == "title":
-            # Title display
-            ax.text(0.5, 0.8, "Maze Solver", fontsize=24, fontweight='bold',
-                    ha='center', transform=ax.transAxes)
-            ax.text(0.5, 0.65, f"Maze #{frame['maze_num']}", fontsize=16, fontweight='bold',
-                    ha='center', transform=ax.transAxes)
-            ax.text(0.5, 0.55, f"Algorithm: {frame['algorithm']}", fontsize=12,
-                    ha='center', transform=ax.transAxes)
-            ax.text(0.5, 0.45, f"Generated on: {frame['date']}", fontsize=10,
-                    ha='center', transform=ax.transAxes)
-        elif frame["type"] == "maze":
-            ax.imshow(frame["img"], cmap="gray", interpolation="none")
-            # Add labels for Maze number and Algorithm in the upper left corner
-            ax.text(0, 1, f"Maze #{frame['maze_num']}", fontsize=12, color='red',
-                    ha='left', va='top', transform=fig.transFigure)
+    # -------------------------------------------------------------------------
+    # 3. Encode the final list of frames into a video (in parallel)
+    # -------------------------------------------------------------------------
+    p = Process(target=encode_video, args=(frames, output_filename, fps, width, height))
+    p.start()
+    p.join()
 
-            ax.text(0, 0.95, f"Algorithm: {frame['algorithm']}", fontsize=12, color='red',
-                    ha='left', va='top', transform=fig.transFigure)
-        ax.axis("off")
-    ani = animation.FuncAnimation(fig, update, frames=len(all_frames), repeat=False)
-    ani.save(output_filename, writer=writer)
-    plt.close(fig)
-
+    logging.info("Video encoding completed.")
 
 def main():
     """
@@ -229,7 +255,8 @@ def main():
     output_mp4 = "output/solved_mazes.mp4"
     try:
         # Step 1: Load mazes
-        mazes = load_mazes(input_file)
+        mazes = load_mazes(input_file)[:5]
+
         s = io.StringIO()
         pr = cProfile.Profile()
 
@@ -252,7 +279,13 @@ def main():
         solved_mazes = solved_mazes_backtrack + solved_mazes_bfs
         save_mazes_as_pdf(solved_mazes, output_pdf)
         display_all_mazes(solved_mazes)
+
+        lp = LineProfiler()
+        lp.add_function(save_movie)
+        lp.enable()
         save_movie(solved_mazes, output_mp4)
+        lp.disable()
+        lp.print_stats()
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")
