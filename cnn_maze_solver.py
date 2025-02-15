@@ -6,6 +6,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense
 from tensorflow.keras.models import Model
 import logging
+import traceback
 
 logging.basicConfig(level=logging.INFO)
 
@@ -98,24 +99,35 @@ class CNNMazeSolver(MazeSolver):
 
     def sort_path(self, path):
         """
-        Sorts the path coordinates from start to exit.
+            Sorts the path coordinates from start to exit.
 
-        Args:
-            path (list): Unsorted list of (row, col) tuples.
+            Args:
+                path (list): Unsorted list of (row, col) tuples.
 
-        Returns:
-            list: Sorted list of (row, col) tuples.
-        """
-        start = self.maze.start_position
+            Returns:
+                list: Sorted list of (row, col) tuples.
+            """
+        start = self.maze.start_position()
         exit = self.maze.exit
-        # Simple nearest-neighbor sorting; can be replaced with a more sophisticated algorithm
-        sorted_path = [start]
+
+        sorted_path = []
+
+        if start not in path:
+            logging.warning(f"Start position {start} not in the predicted path. Adding it.")
+            sorted_path.append(start)
+        else:
+            sorted_path.append(start)
+
         remaining = set(path)
-        remaining.remove(start)
+        if start in remaining:
+            remaining.remove(start)
 
         current = start
         while remaining:
-            next_step = min(remaining, key=lambda x: abs(x[0] - current[0]) + abs(x[1] - current[1]))
+            next_step = min(
+                remaining,
+                key=lambda x: abs(x[0] - current[0]) + abs(x[1] - current[1])
+            )
             sorted_path.append(next_step)
             remaining.remove(next_step)
             current = next_step
@@ -196,8 +208,8 @@ def test_cnn_solver():
             maze_obj.set_solution(solution)
             maze_obj.plot_maze(show_path=False, show_solution=False)
     except Exception as e:
-        logging.error(f"An error occurred: {e}")
-        throw_error(e)
+        logging.error(f"An error occurred: {e}\n{traceback.format_exc()}")
+
 
 if __name__ == '__main__':
     test_cnn_solver()

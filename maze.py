@@ -44,6 +44,7 @@ class Maze:
             self.logger.error("Starting marker %d not found in maze matrix.", start_marker)
             raise ValueError(f"Starting marker {start_marker} not found in maze matrix.")
         self.start_position = tuple(start_positions[0])
+        self.current_position = self.start_position
         self.logger.debug("Starting position located at %s", self.start_position)
         self.current_position = self.start_position
 
