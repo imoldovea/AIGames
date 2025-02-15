@@ -165,8 +165,8 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
     with a title screen before each maze and non-overlapping text.
     """
     fps = 10
-    width, height = 800, 600   # Desired resolution for the final video
-    title_frames_count = 10    # Number of frames to show the title screen
+    width, height = 800, 600  # Desired resolution for the final video
+    title_frames_count = 10  # Number of frames to show the title screen
 
     frames = []
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -174,18 +174,15 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
 
     for maze, solution in solved_mazes:
         try:
-            images = maze.get_raw_movie()   # Maze frames as NumPy arrays
+            images = maze.get_raw_movie()  # Maze frames as NumPy arrays
             algorithm = maze.get_algorithm()
         except Exception as e:
             logging.warning(f"Could not process maze #{maze_count}: {e}")
             maze_count += 1
             continue
 
-        # ---------------------------------------------------------------------
-        # 1. CREATE TITLE SCREEN (black background) BEFORE EACH MAZE
-        # ---------------------------------------------------------------------
+        # 1. CREATE TITLE SCREEN (white background) BEFORE EACH MAZE
         for _ in range(title_frames_count):
-            # Create a white background for the title
             title_frame = np.ones((height, width, 3), dtype=np.uint8) * 255
 
             # Add text for the title screen
@@ -200,32 +197,28 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
 
             frames.append(title_frame)
 
-        # ---------------------------------------------------------------------
         # 2. ADD MAZE FRAMES WITH A TOP MARGIN FOR TEXT
-        # ---------------------------------------------------------------------
         margin_height = 60  # pixels reserved at the top for text
 
         for img in images:
-            # Ensure the frame is in color (3 channels)
-            if img.ndim == 2:  # Grayscale
-                img_color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-            else:
-                img_color = img
+            # Resize img to fit the frame height minus the margin
+            desired_height = height - margin_height
+            aspect_ratio = img.shape[1] / img.shape[0]
+            desired_width = int(desired_height * aspect_ratio)
+            resized_img = cv2.resize(img, (desired_width, desired_height), interpolation=cv2.INTER_NEAREST)
 
-            # Resize to (width, height - margin_height), because we’ll add margin
-            resized_h = height - margin_height
-            resized_img = cv2.resize(
-                img_color, (width, resized_h),
-                interpolation=cv2.INTER_NEAREST  # Crisp edges for maze
-            )
+            # Create a blank frame with gray background
+            frame_with_margin = np.ones((height, width, 3), dtype=np.uint8) * 128
 
-            # Create a new frame with a white margin at the top
-            frame_with_margin = np.ones((height, width, 3), dtype=np.uint8) * 255
-            # Place the maze image below the top margin
-            frame_with_margin[margin_height:margin_height+resized_h, 0:width] = resized_img
+            # Compute horizontal placement
+            start_x = (width - resized_img.shape[1]) // 2
+            end_x = start_x + resized_img.shape[1]
 
-            # Draw black rectangle in the top margin for text
-            cv2.rectangle(frame_with_margin, (0, 0), (width, margin_height), (0, 0, 0), -1)
+            # Assign the resized image to the frame
+            frame_with_margin[margin_height:height, start_x:end_x] = resized_img
+
+            # Draw white rectangle in the top margin for text
+            cv2.rectangle(frame_with_margin, (0, 0), (width, margin_height), (255, 255, 255), -1)
 
             # Put text in the margin
             cv2.putText(frame_with_margin, f"Maze #{maze_count}", (10, 35),
@@ -237,9 +230,7 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
 
         maze_count += 1
 
-    # -------------------------------------------------------------------------
-    # 3. Encode the final list of frames into a video (in parallel)
-    # -------------------------------------------------------------------------
+    # Encode the final list of frames into a video (in parallel)
     p = Process(target=encode_video, args=(frames, output_filename, fps, width, height))
     p.start()
     p.join()
@@ -255,7 +246,7 @@ def main():
     output_mp4 = "output/solved_mazes.mp4"
     try:
         # Step 1: Load mazes
-        mazes = load_mazes(input_file)[:5]
+        mazes = load_mazes(input_file)[:1]
 
         s = io.StringIO()
         pr = cProfile.Profile()
