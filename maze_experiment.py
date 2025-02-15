@@ -7,14 +7,18 @@ from fpdf import FPDF
 import tempfile
 from PIL import Image
 import logging
+from datetime import datetime
 from line_profiler import LineProfiler
+import cProfile
+import pstats
+import io
 
 from matplotlib import animation
 from matplotlib.animation import FFMpegWriter
 import matplotlib.pyplot as plt
 
 OUTPUT_MOVIE_FILE = "output/maze_animation.mp4"
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARN)
 
 # Define a custom PDF class (optional, for adding a header)
 class PDF(FPDF):
@@ -75,6 +79,10 @@ def save_mazes_as_pdf(solved_mazes, output_filename="maze_solutions.pdf"):
           mazes (list of str): The list of maze representations.
           filename (str): The filename for the output PDF.
       """
+    # Generate the title and subtitle
+    title = "Maze Solution"
+    date = f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    
     try:
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
@@ -82,6 +90,16 @@ def save_mazes_as_pdf(solved_mazes, output_filename="maze_solutions.pdf"):
 
         # Set a base font for the document
         pdf.set_font("Arial", size=12)
+
+        # Add a cover page with title, algorithm, and date
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 24)
+        pdf.cell(0, 15, title, ln=True, align='C')
+        pdf.ln(10)
+
+        pdf.set_font("Arial", size=12)
+        pdf.cell(0, 10, date, ln=True, align='C')
+        pdf.ln(20)
 
         # Iterate over each maze in the list
         for index, (maze_obj, solution) in enumerate(solved_mazes, start=1):
@@ -96,6 +114,10 @@ def save_mazes_as_pdf(solved_mazes, output_filename="maze_solutions.pdf"):
 
                 pdf.add_page()
                 # Optionally add a title for each maze
+                pdf.set_font("Arial", "B", 16)
+                algorithm = maze_obj.get_algorithm()
+                pdf.cell(0, 5, f"Algorithm: {algorithm}", ln=True, align='C')
+                pdf.ln(5)
                 pdf.cell(0, 10, f"Maze {index}", ln=True, align='C')
                 pdf.ln(5)
                 # Use multi_cell to allow for multi-line maze text
@@ -126,29 +148,111 @@ def display_all_mazes(solved_mazes):
             logging.warning(f"Could not display maze {i + 1}: {e}")
 
 
+def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
+    """
+    Displays all the mazes and their solutions in a single video.
+
+    Args:
+        solved_mazes (list): List of tuples with the maze and its solution.
+    """
+    writer = FFMpegWriter(fps=10, metadata=dict(artist='Me'), bitrate=1800)
+    fig, ax = plt.subplots()
+
+    all_frames = []
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    maze_count = 1
+
+    # Build a combined list of frames for all mazes.
+    for maze, solution in solved_mazes:
+        try:
+            images = maze.get_raw_movie()
+            algorithm = maze.get_algorithm()
+        except Exception as e:
+            logging.warning(f"Could not process maze #{maze_count}: {e}")
+            maze_count += 1
+            continue
+
+        # Add title frames (30 frames per maze)
+        for _ in range(30):
+            all_frames.append({
+                "type": "title",
+                "maze_num": maze_count,
+                "algorithm": algorithm,
+                "date": now_str
+            })
+
+        # Add the maze image frames
+        for img in images:
+            all_frames.append({
+                "type": "maze",
+                "img": img,
+                "maze_num": maze_count,
+                "algorithm": algorithm
+            })
+
+        maze_count += 1
+
+    # Update function that draws each frame based on its type.
+    def update(frame_idx):
+        ax.clear()
+        frame = all_frames[frame_idx]
+        if frame["type"] == "title":
+            # Title display
+            ax.text(0.5, 0.8, "Maze Solver", fontsize=24, fontweight='bold',
+                    ha='center', transform=ax.transAxes)
+            ax.text(0.5, 0.65, f"Maze #{frame['maze_num']}", fontsize=16, fontweight='bold',
+                    ha='center', transform=ax.transAxes)
+            ax.text(0.5, 0.55, f"Algorithm: {frame['algorithm']}", fontsize=12,
+                    ha='center', transform=ax.transAxes)
+            ax.text(0.5, 0.45, f"Generated on: {frame['date']}", fontsize=10,
+                    ha='center', transform=ax.transAxes)
+        elif frame["type"] == "maze":
+            ax.imshow(frame["img"], cmap="gray", interpolation="none")
+            # Add labels for Maze number and Algorithm in the upper left corner
+            ax.text(0, 1, f"Maze #{frame['maze_num']}", fontsize=12, color='red',
+                    ha='left', va='top', transform=fig.transFigure)
+
+            ax.text(0, 0.95, f"Algorithm: {frame['algorithm']}", fontsize=12, color='red',
+                    ha='left', va='top', transform=fig.transFigure)
+        ax.axis("off")
+    ani = animation.FuncAnimation(fig, update, frames=len(all_frames), repeat=False)
+    ani.save(output_filename, writer=writer)
+    plt.close(fig)
+
+
 def main():
     """
     Main function to load, solve, and save all mazes into a PDF.
     """
     input_file = "input/mazes.npy"
-    output_file = "output/solved_mazes.pdf"
-
+    output_pdf = "output/solved_mazes.pdf"
+    output_mp4 = "output/solved_mazes.mp4"
     try:
         # Step 1: Load mazes
         mazes = load_mazes(input_file)
-        logging.debug(f"Loaded {len(mazes)} mazes from {input_file}.")
+        s = io.StringIO()
+        pr = cProfile.Profile()
 
-        # Step 2: Solve mazes
-        lp = LineProfiler()
-        lp.add_function(solve_all_mazes)
-        solved_mazes = solve_all_mazes(mazes, BacktrackingMazeSolver)
-        solved_mazes = solve_all_mazes(mazes, BFSMazeSolver)
-        print(lp.get_stats())
-        lp.disable()
+        # Step 2: Solve
+        pr.enable()
+        solved_mazes_backtrack = solve_all_mazes(mazes, BacktrackingMazeSolver)
+        pr.disable()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        ps.print_stats(10)  # Show top 10 functions by cumulative time
+        logging.info(f"Backtracking execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+
+        pr.enable()
+        solved_mazes_bfs = solve_all_mazes(mazes, BFSMazeSolver)
+        pr.disable()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        ps.print_stats(10)  # Show top 10 functions by cumulative time
+        logging.info(f"BFS execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
 
         # Step 3: Save mazes to PDF
-        save_mazes_as_pdf(solved_mazes, output_file)
+        solved_mazes = solved_mazes_backtrack + solved_mazes_bfs
+        save_mazes_as_pdf(solved_mazes, output_pdf)
         display_all_mazes(solved_mazes)
+        save_movie(solved_mazes, output_mp4)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")

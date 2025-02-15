@@ -30,6 +30,8 @@ class Maze:
         self.visited_cells = []
         self.animate = False
         self.save_movie = False
+        self.raw_movie = []
+        self.algorithm = None
 
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
@@ -114,14 +116,16 @@ class Maze:
             if self.animate:
                 self.plot_maze()
 
+            if self.save_movie:
+                self.raw_movie.append(self.get_maze_as_png(show_path=True, show_solution=False, show_position=False))
+
             return True
         self.logger.warning("Invalid move attempted to position %s", position)
         return False
 
-    def get_animate(self)->bool:
+    def get_animate(self) -> bool:
         """
         Getter for the 'animate' attribute.
-    
         Returns:
             bool: The value of the 'animate' attribute.
         """
@@ -130,7 +134,6 @@ class Maze:
     def get_save_movie(self)->bool:
         """
         Getter for the 'save_movie' attribute.
-    
         Returns:
             bool: The value of the 'save_movie' attribute.
         """
@@ -149,6 +152,16 @@ class Maze:
         if not isinstance(value, bool):
             raise ValueError("The 'animate' attribute must be a boolean.")
         self.animate = value
+
+
+    def get_raw_movie(self):
+        """
+        Getter for the 'raw_movie' attribute.
+        Returns:
+            list: The value of the 'raw_movie' attribute.
+        """
+        return self.raw_movie
+
 
     def set_save_movie(self, value):
         """
@@ -169,6 +182,28 @@ class Maze:
         Returns the current navigation position in the maze.
         """
         return self.current_position
+
+    def get_algorithm(self):
+        """
+        Getter for the 'algorithm' attribute.
+        Returns:
+            str: The name of the algorithm in use or None if not set.
+        """
+        return self.algorithm
+
+    def set_algorithm(self, algorithm):
+        """
+        Setter for the 'algorithm' attribute.
+    
+        Args:
+            algorithm (str): The name of the algorithm to set.
+    
+        Raises:
+            ValueError: If the algorithm name is not a string.
+        """
+        if not isinstance(algorithm, str):
+            raise ValueError("Algorithm must be a string.")
+        self.algorithm = algorithm
 
     def get_neighbors(self, position=None):
         """
@@ -210,6 +245,8 @@ class Maze:
         The path includes all visited positions, starting from the starting position.
         """
         return self.path
+
+    
 
     def get_maze_as_json(self) -> json:
         """

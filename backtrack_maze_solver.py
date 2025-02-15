@@ -15,6 +15,7 @@ class BacktrackingMazeSolver(MazeSolver):
             maze (Maze): The maze to solve.
         """
         self.maze = maze
+        maze.set_algorithm(self.__class__.__name__)
 
     def solve(self):
         """

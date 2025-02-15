@@ -9,6 +9,15 @@ logging.basicConfig(level=logging.INFO)
 
 
 class BFSMazeSolver(MazeSolver):
+    def __init__(self, maze):
+        """
+        Initializes the BFSMazeSolver with a Maze object.
+        Args:
+            maze (Maze): The maze to solve.
+        """
+        self.maze = maze
+        maze.set_algorithm(self.__class__.__name__)
+
     def solve(self):
         """
         Solves the maze using the Breadth-First Search (BFS) algorithm.
