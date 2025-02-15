@@ -165,6 +165,7 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
     with a title screen before each maze and non-overlapping text.
     """
     fps = 10
+    fourcc = cv2.VideoWriter_fourcc(*'H', '2', '6', '4')  # Custom FourCC for H.264 NVENC
     width, height = 800, 600  # Desired resolution for the final video
     title_frames_count = 10  # Number of frames to show the title screen
 
@@ -263,7 +264,6 @@ def main():
         solved_mazes_bfs = solve_all_mazes(mazes, BFSMazeSolver)
         pr.disable()
         ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        ps.print_stats(10)  # Show top 10 functions by cumulative time
         logging.info(f"BFS execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
 
         # Step 3: Save mazes to PDF
@@ -271,12 +271,10 @@ def main():
         save_mazes_as_pdf(solved_mazes, output_pdf)
         display_all_mazes(solved_mazes)
 
-        lp = LineProfiler()
-        lp.add_function(save_movie)
-        lp.enable()
+        pr.enable()
         save_movie(solved_mazes, output_mp4)
-        lp.disable()
-        lp.print_stats()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        logging.info(f"BFS execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")

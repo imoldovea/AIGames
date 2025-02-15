@@ -44,6 +44,8 @@ class MazeSolver(ABC):
         """
         if self.maze.exit is None:
             raise ValueError("Exit is not defined for the maze.")
+        if self.maze.get_position() == self.maze.exit:
+            return 0.0
         current_r, current_c = self.maze.current_position
         exit_r, exit_c = self.maze.exit
         manhattan_distance = abs(current_r - exit_r) + abs(current_c - exit_c)

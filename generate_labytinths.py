@@ -5,6 +5,10 @@ import json
 import matplotlib.pyplot as plt
 import logging
 
+from backtrack_maze_solver import BacktrackingMazeSolver
+from bfs_maze_solver import BFSMazeSolver
+from maze import Maze
+
 PATH = 0
 WALL = 1
 def find_start(maze, width, height):
@@ -88,6 +92,7 @@ def generate_maze(width, height):
     # find exit
     maze = find_exit(maze, width, height);
 
+    maze = add_loops(maze)
     return maze
 
 
@@ -223,9 +228,6 @@ def save_mazes(folder, filename, mazes):
         filename.replace(".npy", ".json"),
         mazes,
     )
-    save_mazes_as_pickle(
-        folder,
-        filename.replace(".npy", ".pkl"),mazes)
 
 
 def display_maze(maze):
@@ -251,24 +253,21 @@ def plot_maze(maze):
     plt.axis('off')  # Hides axes for better visualization
     plt.show()
 
-
 def main():
-    NUM_MAZES = 10
-    WIDTH, HEIGHT = 21, 21  # Ensure odd dimensions
+    NUM_MAZES = 1000
+    WIDTH, HEIGHT = 11, 11  # Ensure odd dimensions
     OUTPUT_FOLDER = 'input'
-    MAZES_FILENAME = 'mazes.npy'
+    MAZES_FILENAME = 'training_mazes.npy'
 
     mazes = []
     for i in range(NUM_MAZES):
         logging.debug(f"Generating maze {i + 1}...")
         maze = generate_maze(WIDTH, HEIGHT)
-        maze = add_loops(maze)
         mazes.append(maze)
-        # display_maze(maze)
-        plot_maze(maze)
+        #display_maze(maze)
+        #plot_maze(maze)
 
     save_mazes(OUTPUT_FOLDER, MAZES_FILENAME, np.array(mazes))
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

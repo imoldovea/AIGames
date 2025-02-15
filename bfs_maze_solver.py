@@ -1,8 +1,8 @@
 from numpy.f2py.auxfuncs import throw_error
-
 from maze_solver import MazeSolver
 from maze import Maze
 from collections import deque
+import numpy as np
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -74,7 +74,6 @@ def test_bfs_solver():
     solves the maze using the BFSMazeSolver, and displays the solution.
     """
     try:
-        import numpy as np
         # Load mazes from a NumPy file
         maze_array = np.load("input/mazes.npy", allow_pickle=True)
 

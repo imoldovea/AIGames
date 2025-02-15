@@ -95,7 +95,7 @@ def test_backtracking_solver():
 
             # Visualize the solved maze (with the solution path highlighted)
             maze_obj.set_solution(solution)
-            aze_obj.plot_maze(show_path=False, show_solution=True)
+            maze_obj.plot_maze(show_path=False, show_solution=True)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")
