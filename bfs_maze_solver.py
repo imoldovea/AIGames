@@ -5,6 +5,11 @@ from collections import deque
 import traceback
 import logging
 import pickle
+from utils import (
+    save_movie,
+    display_all_mazes,
+    save_mazes_as_pdf,
+    load_mazes)
 
 logging.basicConfig(level=logging.INFO)
 
