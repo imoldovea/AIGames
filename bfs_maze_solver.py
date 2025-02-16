@@ -96,7 +96,7 @@ def test_bfs_solver():
             maze_obj.set_solution(solution)
             maze_obj.plot_maze(show_path=False, show_solution=True)
     except Exception as e:
-        logging.error(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}\n{traceback.format_exc()}")
         throw_error(e)
 
 

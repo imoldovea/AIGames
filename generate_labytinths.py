@@ -254,10 +254,10 @@ def plot_maze(maze):
     plt.show()
 
 def main():
-    NUM_MAZES = 1000
+    NUM_MAZES = 10
     WIDTH, HEIGHT = 11, 11  # Ensure odd dimensions
     OUTPUT_FOLDER = 'input'
-    MAZES_FILENAME = 'training_mazes.npy'
+    MAZES_FILENAME = 'mazes.npy'
 
     mazes = []
     for i in range(NUM_MAZES):

@@ -54,6 +54,7 @@ class Maze:
 
         # Initialize the path with the starting position
         self.path = [self.start_position]
+        #self.move(self.start_position)
 
         # Exit can be defined later using set_exit()
         self.set_exit()
