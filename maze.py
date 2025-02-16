@@ -11,8 +11,9 @@ from h5py.h5o import visit
 class Maze:
     WALL = 1
     CORRIDOR = 0
+    START = 3
 
-    def __init__(self, grid, start_marker=3):
+    def __init__(self, grid):
         """
         Initializes the maze from a provided NumPy matrix.
 
@@ -41,7 +42,7 @@ class Maze:
         self.logger.debug("Maze initialized with dimensions (%d, %d)", self.rows, self.cols)
 
         # Locate the starting position using the provided start_marker
-        start_positions = np.argwhere(self.grid == start_marker)
+        start_positions = np.argwhere(self.grid == self.START)
         if start_positions.size == 0:
             self.logger.error("Starting marker %d not found in maze matrix.", start_marker)
             raise ValueError(f"Starting marker {start_marker} not found in maze matrix.")
