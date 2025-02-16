@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import random
-import json
+import pickle
 import matplotlib.pyplot as plt
 import logging
 
@@ -11,12 +11,14 @@ from maze import Maze
 
 PATH = 0
 WALL = 1
+START = 3
+
 def find_start(maze, width, height):
     # Set the starting point randomly so it is always on a valid path (0)
     path_cells = [(y, x) for y in range(height) for x in range(width) if maze[y, x] == 0]
     if path_cells:
         start_y, start_x = random.choice(path_cells)
-        maze[start_y, start_x] = 3  # Use `3` to mark the starting position
+        maze[start_y, start_x] = START  # Use `3` to mark the starting position
 
     return maze
 
@@ -164,70 +166,10 @@ def add_loops(maze, loop_probability=0.02):
     return maze
 
 
-def save_mazes_as_json(folder, filename, mazes):
-    """
-    Save mazes as a JSON file, representing mazes as 2D lists.
-
-    Args:
-        folder (str): Directory to save the file in.
-        filename (str): Name of the JSON file.
-        mazes (numpy.ndarray): A 3D array where each slice represents a maze.
-    """
-    os.makedirs(folder, exist_ok=True)
-    file_path = os.path.join(folder, filename)
-
-    # Convert the mazes array to a Python list for JSON serialization
-    mazes_list = [maze.tolist() for maze in mazes]
-    with open(file_path, 'w') as file:
-        json.dump({"mazes": mazes_list}, file, indent=4)
-    logging.debug(f"Mazes saved to {file_path}")
-
-
-import pickle
-
-
-def save_mazes_as_pickle(folder, filename, mazes):
-    """
-    Save mazes to a binary file using Python's pickle module.
-
-    Args:
-        folder (str): Directory to save the file in.
-        filename (str): Name of the file to save.
-        mazes (numpy.ndarray): A 3D array where each slice represents a maze.
-    """
-    os.makedirs(folder, exist_ok=True)
-    file_path = os.path.join(folder, filename)
-
-    with open(file_path, 'wb') as file:
-        pickle.dump(mazes, file)
-    logging.debug(f"Mazes saved to {file_path}")
-
-
-def save_mazes_as_numpy(folder, filename, mazes):
-    """
-    Save multiple mazes to a file in NumPy format.
-
-    Args:
-        folder (str): Directory to save the file in.
-        filename (str): Name of the file to save.
-        mazes (numpy.ndarray): A 3D array where each slice represents a maze.
-    """
-    try:
-        os.makedirs(folder, exist_ok=True)
-        file_path = os.path.join(folder, filename)
-        np.save(file_path, mazes)
-        logging.debug(f"Mazes saved to {file_path}")
-    except (OSError, IOError) as e:
-        logging.error(f"Error saving mazes: {e}")
-
-
 def save_mazes(folder, filename, mazes):
-    save_mazes_as_numpy(folder, filename, mazes)
-    save_mazes_as_json(
-        folder,
-        filename.replace(".npy", ".json"),
-        mazes,
-    )
+    with open(folder +'/' + filename, 'wb') as f:
+        pickle.dump(mazes, f)
+    logging.info(f"Saved {len(mazes)} mazes to {folder}/{filename}")
 
 
 def display_maze(maze):
@@ -255,19 +197,19 @@ def plot_maze(maze):
 
 def main():
     NUM_MAZES = 10
-    WIDTH, HEIGHT = 11, 11  # Ensure odd dimensions
     OUTPUT_FOLDER = 'input'
-    MAZES_FILENAME = 'mazes.npy'
+    MAZES_FILENAME = 'mazes.pkl'
 
     mazes = []
     for i in range(NUM_MAZES):
         logging.debug(f"Generating maze {i + 1}...")
-        maze = generate_maze(WIDTH, HEIGHT)
+        width, height = random.choice(range(7, 26, 2)), random.choice(range(7, 26, 2))
+        maze = generate_maze(width, height)
         mazes.append(maze)
         #display_maze(maze)
         #plot_maze(maze)
 
-    save_mazes(OUTPUT_FOLDER, MAZES_FILENAME, np.array(mazes))
+    save_mazes(OUTPUT_FOLDER, MAZES_FILENAME, mazes)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

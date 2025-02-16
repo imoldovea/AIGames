@@ -2,8 +2,9 @@ from numpy.f2py.auxfuncs import throw_error
 from maze_solver import MazeSolver
 from maze import Maze
 from collections import deque
-import numpy as np
+import traceback
 import logging
+import pickle
 
 logging.basicConfig(level=logging.INFO)
 
@@ -74,16 +75,23 @@ def test_bfs_solver():
     solves the maze using the BFSMazeSolver, and displays the solution.
     """
     try:
-        # Load mazes from a NumPy file
-        maze_array = np.load("input/mazes.npy", allow_pickle=True)
+        # Load mazes
+        with open('input/mazes.pkl', 'rb') as f:
+            mazes = pickle.load(f)
+        logging.info(f"Loaded {len(mazes)} mazes.")
 
         # Iterate through each maze in the array
-        for i, maze_matrix in enumerate(maze_array):
-            logging.debug(f"Solving maze {i + 1} with BFS...")
-            maze_obj = Maze(maze_matrix)
-            maze_obj.set_animate(True)
-            maze_obj.set_save_movie(True)
-            solver = BFSMazeSolver(maze_obj)
+        for i, maze_matrix in enumerate(mazes):
+            maze = Maze(maze_matrix)
+
+            logging.debug(f"Solving maze {i + 1}...")
+
+            # Create a Maze object from the maze matrix
+            maze.set_animate(False)
+            maze.set_save_movie(False)
+
+            # Instantiate the BFS maze solver
+            solver = BFSMazeSolver(maze)
             solution = solver.solve()
 
             if solution:
@@ -93,10 +101,10 @@ def test_bfs_solver():
                 logging.debug(f"No solution found for maze {i + 1}.")
 
             # Visualize the solved maze (with the solution path highlighted)
-            maze_obj.set_solution(solution)
-            maze_obj.plot_maze(show_path=False, show_solution=True)
+            maze.set_solution(solution)
+            maze.plot_maze(show_path=False, show_solution=True)
     except Exception as e:
-        logging.error(f"An error occurred: {e}\n{traceback.format_exc()}")
+        logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
         throw_error(e)
 
 

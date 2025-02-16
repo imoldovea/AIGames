@@ -2,8 +2,10 @@ from numpy.f2py.auxfuncs import throw_error
 
 from maze_solver import MazeSolver
 from maze import Maze
-import numpy as np
+import pickle
 import logging
+import traceback
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -72,19 +74,23 @@ def test_backtracking_solver():
     """
     try:
         # Load the numpy file containing an array of mazes
-        maze_array = np.load("input/mazes.npy", allow_pickle=True)
+        with open('input/mazes.pkl', 'rb') as f:
+            mazes = pickle.load(f)
+        logging.info(f"Loaded {len(mazes)} mazes.")
+
 
         # Iterate through each maze in the array
-        for i, maze_matrix in enumerate(maze_array):
+        for i, maze_matrix in enumerate(mazes):
+            maze = Maze(maze_matrix)
+
             logging.debug(f"Solving maze {i + 1}...")
 
             # Create a Maze object from the maze matrix
-            maze_obj = Maze(maze_matrix)
-            maze_obj.set_animate(True)
-            maze_obj.set_save_movie(True)
+            maze.set_animate(False)
+            maze.set_save_movie(False)
 
             # Instantiate the backtracking maze solver
-            solver = BacktrackingMazeSolver(maze_obj)
+            solver = BacktrackingMazeSolver(maze)
             solution = solver.solve()
 
             if solution:
@@ -94,11 +100,11 @@ def test_backtracking_solver():
                 logging.debug(f"No solution found for maze {i + 1}.")
 
             # Visualize the solved maze (with the solution path highlighted)
-            maze_obj.set_solution(solution)
-            maze_obj.plot_maze(show_path=False, show_solution=True)
+            maze.set_solution(solution)
+            maze.plot_maze(show_path=False, show_solution=True)
 
     except Exception as e:
-        logging.error(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
         throw_error(e)
 
 

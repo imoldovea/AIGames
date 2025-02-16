@@ -2,10 +2,12 @@ import torch
 import torch.nn as nn
 from maze_solver import MazeSolver
 from bfs_maze_solver import BFSMazeSolver
+from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 import numpy as np
 import torch.optim as optim
 import logging
+import pickle
 
 logging.basicConfig(level=logging.INFO)
 
@@ -146,17 +148,19 @@ class RNNMazeSolver(MazeSolver):
 # Test method for the RNN-based Maze Solver
 # -----------------------------
 def test_maze_solver_rnn():
+    # Load mazes
+    with open('input/mazes.pkl', 'rb') as f:
+        mazes = pickle.load(f)
+    logging.info(f"Loaded {len(mazes)} mazes.")
 
-    # Load mazes from a NumPy file
-    maze_array = np.load("input/mazes.npy", allow_pickle=True)
-    maze_obj = None
     # Iterate through each maze in the array
-    for i, maze_matrix in enumerate(maze_array[:1]):
+    for i, maze_matrix in enumerate(mazes):
+        maze = Maze(maze_matrix)
+        maze.set_animate(False)
+        maze.set_save_movie(False)
         logging.debug(f"Solving maze {i + 1} with BFS...")
-        maze_obj = Maze(maze_matrix)
-        maze_obj.set_animate(True)
-        maze_obj.set_save_movie(False)
-        solver = BFSMazeSolver(maze_obj)
+
+        solver = BacktrackingMazeSolver(maze)
         solution = solver.solve()
 
         if solution:
@@ -164,9 +168,9 @@ def test_maze_solver_rnn():
             logging.debug(solution)
         else:
             logging.debug(f"No solution found for maze {i + 1}.")
-        maze_obj.set_solution(solution)
+        maze.set_solution(solution)
 
-    training_path = maze_obj.get_solution()
+    training_path = maze.get_solution()
     training_data = []
     for i in range(len(training_path) - 1):
         current = training_path[i]
@@ -183,18 +187,18 @@ def test_maze_solver_rnn():
         training_data.append((current, action))
 
     # Initialize the RNN maze solver and train the model.
-    solver_rnn = RNNMazeSolver(maze_obj)
+    solver_rnn = RNNMazeSolver(maze)
     print("Training the RNN model...")
     solver_rnn.train_model(training_data, epochs=500)
 
     # Reset maze state.
-    maze_obj.current_position = maze_obj.start_position
-    maze_obj.path = [maze_obj.start_position]
+    maze.current_position = maze.start_position
+    maze.path = [maze.start_position]
 
     print("Solving the maze with RNN exploration...")
     solution = solver_rnn.solve(max_steps=20)
     print("Solution path:", solution)
-    maze_obj.plot_maze(show_path=False, show_solution=True)
+    maze.plot_maze(show_path=False, show_solution=True)
 
 
 if __name__ == '__main__':

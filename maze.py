@@ -2,6 +2,8 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 import logging
+import pickle
+import traceback
 
 from h5py.h5o import visit
 
@@ -185,6 +187,12 @@ class Maze:
         """
         return self.current_position
 
+    def get_shape(self):
+        """
+        Returns the dimensions of the maze grid as a tuple (rows, cols).
+        """
+        return self.rows, self.cols
+
     def get_algorithm(self):
         """
         Getter for the 'algorithm' attribute.
@@ -248,8 +256,6 @@ class Maze:
         """
         return self.path
 
-    
-
     def get_maze_as_json(self) -> json:
         """
         Get the current maze configuration to a JSON file.
@@ -268,6 +274,23 @@ class Maze:
             "exit": self.exit
         })
         return data
+
+    def create_padded_image(self, image_data, width=25, height=25):
+        # Define the desired padding color (e.g., white)
+        padding_color = (255, 255, 255)  # Change as needed
+
+        # Initialize the resized_image with the padding color
+        resized_image = np.full((25, 25, 3), padding_color, dtype=np.uint8)
+
+        # Calculate starting indices to center the image_data
+        start_row = (width - self.rows) // 2
+        start_col = (height - self.cols) // 2
+
+        # Place the image_data into the resized_image
+        resized_image[start_row:start_row + self.rows, start_col:start_col + self.cols] = image_data
+
+        return resized_image
+
 
     def get_maze_as_png(self, show_path=True, show_solution=True, show_position=False) -> np.ndarray:
         """
@@ -321,8 +344,8 @@ class Maze:
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         image_data[r, c] = [128, 128, 128]
 
-
-        return image_data
+        resized_image = self.create_padded_image(image_data,25,25)
+        return resized_image
 
     def get_maze_as_text(self) -> str:
         """
@@ -363,6 +386,7 @@ class Maze:
         plt.title("Maze Visualization")
         plt.axis("off")
         plt.show()
+        
 
 
 def test_maze():
@@ -371,20 +395,15 @@ def test_maze():
     creates a Maze object using the first maze in the array, and displays it.
     """
     try:
-        # Load the numpy file containing an array of mazes
-        maze_array = np.load("input/mazes.npy", allow_pickle=True)
-
-        # Check if maze_array is a multi-dimensional array of mazes
-        if maze_array.ndim == 3:
-            maze_matrix = maze_array[0]
-        else:
-            # Otherwise, assume it's a single maze or a list-like of mazes
-            maze_matrix = maze_array[0] if isinstance(maze_array, (list, np.ndarray)) else maze_array
+        # Load mazes
+        with open('input/mazes.pkl', 'rb') as f:
+            mazes = pickle.load(f)
+        logging.info(f"Loaded {len(mazes)} mazes.")
 
         # Iterate through all the maze matrices and print each one
-        for idx, maze_matrix in enumerate(maze_array):
+        for idx, mazes in enumerate(mazes):
             # Create a Maze object from the first maze matrix
-            maze_obj = Maze(maze_matrix)
+            maze_obj = Maze(mazes)
             print(f"Maze {idx}:\n{maze_obj.get_maze_as_text()}")
 
             # Optionally, set an exit if you know where it should be (e.g., bottom right corner)
@@ -396,7 +415,7 @@ def test_maze():
             #maze_obj.save_maze_as_png("output/test_maze.png", show_path=True)
 
     except Exception as e:
-        logging.error("An error occurred: %s", e)
+        logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 
 
 if __name__ == '__main__':
