@@ -401,9 +401,9 @@ def test_maze():
         logging.info(f"Loaded {len(mazes)} mazes.")
 
         # Iterate through all the maze matrices and print each one
-        for idx, mazes in enumerate(mazes):
+        for idx, maze in enumerate(mazes):
             # Create a Maze object from the first maze matrix
-            maze_obj = Maze(mazes)
+            maze_obj = Maze(maze)
             print(f"Maze {idx}:\n{maze_obj.get_maze_as_text()}")
 
             # Optionally, set an exit if you know where it should be (e.g., bottom right corner)

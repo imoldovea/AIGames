@@ -158,8 +158,12 @@ def test_maze_solver_rnn():
         mazes = pickle.load(f)
     logging.info(f"Loaded {len(mazes)} mazes.")
 
+    with open('input/training_mazes.pkl', 'rb') as f:
+        training_mazes = pickle.load(f)
+    logging.info(f"Loaded {len(mazes)} training mazes.")
+
     # Iterate through each maze in the array
-    for i, maze_matrix in enumerate(mazes):
+    for i, maze_matrix in enumerate(training_mazes):
         maze = Maze(maze_matrix)
         maze.set_animate(False)
         maze.set_save_movie(False)
@@ -174,6 +178,7 @@ def test_maze_solver_rnn():
         else:
             logging.debug(f"No solution found for maze {i + 1}.")
         maze.set_solution(solution)
+        training_mazes.append(maze)
 
     training_path = maze.get_solution()
     training_data = []
