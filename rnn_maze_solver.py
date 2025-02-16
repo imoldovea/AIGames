@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn
 from maze_solver import MazeSolver
+from bfs_maze_solver import BFSMazeSolver
 from maze import Maze
 import numpy as np
 import torch.optim as optim
+import logging
 
+logging.basicConfig(level=logging.INFO)
 
 # -----------------------------
 # PyTorch RNN Model for Maze Solving
@@ -24,9 +27,9 @@ class MazeRNNModel(nn.Module):
 
 
 # -----------------------------
-# MazeSolverRNN Implementation using Maze exploration methods
+# RNNMazeSolver Implementation using Maze exploration methods
 # -----------------------------
-class MazeSolverRNN(MazeSolver):
+class RNNMazeSolver(MazeSolver):
     def __init__(self, maze: Maze, model: MazeRNNModel = None):
         super().__init__(maze)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -143,25 +146,27 @@ class MazeSolverRNN(MazeSolver):
 # Test method for the RNN-based Maze Solver
 # -----------------------------
 def test_maze_solver_rnn():
-    # Define a simple 5x5 maze.
-    # Legend:
-    #   1: Wall, 0: Corridor, 3: Start marker.
-    grid = np.array([
-        [1, 1, 0, 1, 1],
-        [1, 0, 0, 0, 1],
-        [3, 0, 1, 0, 0],
-        [1, 0, 0, 0, 1],
-        [1, 1, 1, 1, 1]
-    ])
-    maze_obj = Maze(grid, start_marker=3)
-    print("Maze as text:\n", maze_obj.get_maze_as_text())
 
-    # For demonstration, we have a known solution path for training:
-    # (2,0) -> (2,1): right (action 3)
-    # (2,1) -> (1,1): up (action 0)
-    # (1,1) -> (1,2): right (action 3)
-    # (1,2) -> (0,2): up (action 0)
-    training_path = [(2, 0), (2, 1), (1, 1), (1, 2), (0, 2)]
+    # Load mazes from a NumPy file
+    maze_array = np.load("input/mazes.npy", allow_pickle=True)
+    maze_obj = None
+    # Iterate through each maze in the array
+    for i, maze_matrix in enumerate(maze_array[:1]):
+        logging.debug(f"Solving maze {i + 1} with BFS...")
+        maze_obj = Maze(maze_matrix)
+        maze_obj.set_animate(True)
+        maze_obj.set_save_movie(False)
+        solver = BFSMazeSolver(maze_obj)
+        solution = solver.solve()
+
+        if solution:
+            logging.debug(f"Maze {i + 1} solution found:")
+            logging.debug(solution)
+        else:
+            logging.debug(f"No solution found for maze {i + 1}.")
+        maze_obj.set_solution(solution)
+
+    training_path = maze_obj.get_solution()
     training_data = []
     for i in range(len(training_path) - 1):
         current = training_path[i]
@@ -178,7 +183,7 @@ def test_maze_solver_rnn():
         training_data.append((current, action))
 
     # Initialize the RNN maze solver and train the model.
-    solver_rnn = MazeSolverRNN(maze_obj)
+    solver_rnn = RNNMazeSolver(maze_obj)
     print("Training the RNN model...")
     solver_rnn.train_model(training_data, epochs=500)
 
@@ -189,7 +194,7 @@ def test_maze_solver_rnn():
     print("Solving the maze with RNN exploration...")
     solution = solver_rnn.solve(max_steps=20)
     print("Solution path:", solution)
-    maze_obj.plot_maze(show_path=True, show_solution=True)
+    maze_obj.plot_maze(show_path=False, show_solution=True)
 
 
 if __name__ == '__main__':
