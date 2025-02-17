@@ -5,10 +5,8 @@ import pickle
 import matplotlib.pyplot as plt
 import logging
 
-from backtrack_maze_solver import BacktrackingMazeSolver
-from bfs_maze_solver import BFSMazeSolver
-from maze import Maze
 
+IMG_SIZE = 26
 PATH = 0
 WALL = 1
 START = 3
@@ -203,7 +201,7 @@ def main():
     mazes = []
     for i in range(NUM_MAZES):
         logging.debug(f"Generating maze {i + 1}...")
-        width, height = random.choice(range(7, 26, 2)), random.choice(range(7, 26, 2))
+        width, height = random.choice(range(7, IMG_SIZE, 2)), random.choice(range(7, IMG_SIZE, 2))
         maze = generate_maze(width, height)
         mazes.append(maze)
         #display_maze(maze)

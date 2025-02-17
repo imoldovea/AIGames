@@ -4,27 +4,31 @@ import matplotlib.pyplot as plt
 import logging
 import pickle
 import traceback
-
-from h5py.h5o import visit
-
+from utils import (
+    save_movie,
+    display_all_mazes,
+    save_mazes_as_pdf,
+    load_mazes)
 
 class Maze:
     WALL = 1
     CORRIDOR = 0
     START = 3
+    IMG_SIZE = 26
 
-    def __init__(self, grid):
+    def __init__(self, grid: np.ndarray) -> None:
+
         """
-        Initializes the maze from a provided NumPy matrix.
+            Initializes the maze from a provided NumPy matrix.
 
-        Parameters:
-          - grid: a NumPy array where walls are marked as 1, corridors as 0,
-                  and the starting position is marked with start_marker (default 3).
-          - start_marker: the marker used to denote the starting position in the maze.
+            Parameters:
+              - grid: a NumPy array where walls are marked as 1, corridors as 0,
+                      and the starting position is marked with start_marker (default 3).
+              - start_marker: the marker used to denote the starting position in the maze.
 
-        The constructor finds the starting marker, records its coordinates, replaces it with 0,
-        and initializes the path with the starting position.
-        """
+            The constructor finds the starting marker, records its coordinates, replaces it with 0,
+            and initializes the path with the starting position.
+            """
         self._solution = []  # To hold the maze solution as a list of coordinates
         self.grid = np.array(grid, copy=True)
         self.rows, self.cols = self.grid.shape
@@ -44,8 +48,8 @@ class Maze:
         # Locate the starting position using the provided start_marker
         start_positions = np.argwhere(self.grid == self.START)
         if start_positions.size == 0:
-            self.logger.error("Starting marker %d not found in maze matrix.", start_marker)
-            raise ValueError(f"Starting marker {start_marker} not found in maze matrix.")
+            self.logger.error("Starting marker %d not found in maze matrix.")
+            raise ValueError(f"Starting marker not found in maze matrix.")
         self.start_position = tuple(start_positions[0])
         self.current_position = self.start_position
         self.logger.debug("Starting position located at %s", self.start_position)
@@ -98,14 +102,14 @@ class Maze:
         """
         return self.is_within_bounds(position) and not self.is_wall(position)
 
+    def move(self, position: tuple[int, int], backtrack: bool = False) -> bool:
 
-    def move(self, position, backtrack=False):
         """
-        Moves to a new position if the move is valid.
+            Moves to a new position if the move is valid.
 
-        Updates the current position and records the move in the path.
-        Returns True if the move was successful, False otherwise.
-        """
+            Updates the current position and records the move in the path.
+            Returns True if the move was successful, False otherwise.
+            """
         if self.is_valid_move(position):
             self.current_position = position
             self.path.append(position)
@@ -345,17 +349,18 @@ class Maze:
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         image_data[r, c] = [128, 128, 128]
 
-        resized_image = self.create_padded_image(image_data,25,25)
+        resized_image = self.create_padded_image(image_data,self.IMG_SIZE,self.IMG_SIZE)
         return resized_image
 
     def get_maze_as_text(self) -> str:
+
         """
-        Return the maze as an ASCII string, showing the maze as a matrix with:
-        "1" - Walls
-        "0" - Path
-        "X" - Starting point
-        "O" - Exit point
-        """
+            Return the maze as an ASCII string, showing the maze as a matrix with:
+            "1" - Walls
+            "0" - Path
+            "X" - Starting point
+            "O" - Exit point
+            """
         # Initialize a list for ASCII rows
         ascii_maze = []
 
@@ -390,16 +395,18 @@ class Maze:
         
 
 
-def test_maze():
+def run_maze():
     """
     Test function that loads an array of mazes from 'input/mazes.npy',
     creates a Maze object using the first maze in the array, and displays it.
     """
     try:
         # Load mazes
-        with open('input/mazes.pkl', 'rb') as f:
-            mazes = pickle.load(f)
-        logging.info(f"Loaded {len(mazes)} mazes.")
+        load_path = "input/mazes.pkl"
+        mazes = load_mazes(load_path)
+        # with open('input/mazes.pkl', 'rb') as f:
+        #     mazes = pickle.load(f)
+        # logging.info(f"Loaded {len(mazes)} mazes.")
 
         # Iterate through all the maze matrices and print each one
         for idx, maze in enumerate(mazes):
@@ -420,4 +427,4 @@ def test_maze():
 
 
 if __name__ == '__main__':
-    test_maze()
+    run_maze()

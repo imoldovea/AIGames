@@ -108,6 +108,7 @@ def test_bfs_solver():
             # Visualize the solved maze (with the solution path highlighted)
             maze.set_solution(solution)
             maze.plot_maze(show_path=False, show_solution=True)
+        logging.info("All mazes solved.")
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
         throw_error(e)

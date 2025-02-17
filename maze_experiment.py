@@ -58,8 +58,8 @@ def main():
     """
     Main function to load, solve, and save all mazes into a PDF.
     """
-    input_mazes = "input/mazes.npy"
-    training_mazes = "input/training_mazes.npy"
+    input_mazes = "input/mazes.pkl"
+    training_mazes = "input/training_mazes.pkl"
     output_pdf = "output/solved_mazes.pdf"
     output_mp4 = "output/solved_mazes.mp4"
     try:

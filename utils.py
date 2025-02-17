@@ -80,7 +80,7 @@ def save_mazes_as_pdf(solved_mazes, output_filename="maze_solutions.pdf"):
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 
 
-def display_all_mazes(solved_mazes):
+def display_all_mazes(solved_mazes: list) -> None:
     """
     Displays all the mazes and their solutions.
 
@@ -192,7 +192,7 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 
 
-def load_mazes(file_path):
+def load_mazes(file_path = "input/mazes.pkl"):
     """
     Loads mazes from a numpy file.
 
@@ -203,7 +203,7 @@ def load_mazes(file_path):
         list: A list of maze matrices.
     """
     try:
-        with open('input/mazes.pkl', 'rb') as f:
+        with open(file_path, 'rb') as f:
             mazes = pickle.load(f)
         logging.info(f"Loaded {len(mazes)} mazes.")
         return mazes
