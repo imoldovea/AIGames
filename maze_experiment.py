@@ -1,20 +1,11 @@
-import os
-import numpy as np
 from backtrack_maze_solver import BacktrackingMazeSolver
 from bfs_maze_solver import BFSMazeSolver
 from maze import Maze
-from fpdf import FPDF
-import tempfile
-from PIL import Image
 import logging
-from datetime import datetime
-from line_profiler import LineProfiler
 import cProfile
 import pstats
 import io
-import cv2
-from multiprocessing import Process
-import pickle
+
 import traceback
 from utils import (
     save_movie,

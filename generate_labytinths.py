@@ -7,6 +7,7 @@ import logging
 
 
 IMG_SIZE = 26
+MIN_SIZE = 5
 PATH = 0
 WALL = 1
 START = 3
@@ -64,7 +65,8 @@ def generate_maze(width: int, height: int) -> np.ndarray:
     maze = add_loops(maze)
     return maze
 
-def find_start(maze, width, height):
+
+def find_start(maze: np.ndarray, width: int, height: int) -> np.ndarray:
     # Set the starting point randomly so it is always on a valid path (0)
     path_cells = [(y, x) for y in range(height) for x in range(width) if maze[y, x] == 0]
     if path_cells:
@@ -96,7 +98,8 @@ def find_exit(maze, width, height):
 
     return maze
 
-def ensure_all_paths_connected(maze):
+
+def ensure_all_paths_connected(maze: np.ndarray) -> None:
     """
     Ensure all passable cells (0s) in the maze are part of the same connected component.
     This function modifies the maze in-place to guarantee connectivity.
@@ -201,7 +204,7 @@ def main():
     mazes = []
     for i in range(NUM_MAZES):
         logging.debug(f"Generating maze {i + 1}...")
-        width, height = random.choice(range(7, IMG_SIZE, 2)), random.choice(range(7, IMG_SIZE, 2))
+        width, height = random.choice(range(MIN_SIZE, IMG_SIZE, 2)), random.choice(range(MIN_SIZE, IMG_SIZE, 2))
         maze = generate_maze(width, height)
         mazes.append(maze)
         display_maze(maze)

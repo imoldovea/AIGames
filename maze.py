@@ -1,14 +1,10 @@
 import numpy as np
 import json
-import matplotlib.pyplot as plt
 import logging
-import pickle
 import traceback
-from utils import (
-    save_movie,
-    display_all_mazes,
-    save_mazes_as_pdf,
-    load_mazes)
+from utils import (load_mazes)
+import matplotlib.pyplot as plt
+
 
 class Maze:
     WALL = 1
@@ -48,7 +44,7 @@ class Maze:
         # Locate the starting position using the provided start_marker
         start_positions = np.argwhere(self.grid == self.START)
         if start_positions.size == 0:
-            self.logger.error("Starting marker %d not found in maze matrix.")
+            self.logger.error("Starting marker %d not found in maze matrix.", self.START)
             raise ValueError(f"Starting marker not found in maze matrix.")
         self.start_position = tuple(start_positions[0])
         self.current_position = self.start_position
@@ -260,6 +256,11 @@ class Maze:
             bool: True if the maze configuration is valid, False otherwise.
         """
 
+
+        # Validate minimum size of 5 for both width (cols) and height (rows)
+        if self.rows < 5 or self.cols < 5:
+            raise ValueError("Maze dimensions must be at least 5x5.")
+
         # Validate the start position
         if not self.is_within_bounds(self.start_position):
             self.logger.error("The start position is not within the bounds of the maze.")
@@ -291,13 +292,14 @@ class Maze:
         return True
 
     def test_solution(self) -> bool:
+
         """
-        Validates if the provided solution navigates through valid positions, starts at 
-        the start position, ends at the exit, and avoids walls.
-        
-        Returns:
-            bool: True if the solution is valid, False otherwise.
-        """
+            Validates if the provided solution navigates through valid positions, starts at
+            the start position, ends at the exit, and avoids walls.
+
+            Returns:
+                bool: True if the solution is valid, False otherwise.
+            """
         if not self._solution or self._solution[0] != self.start_position:
             self.logger.error("Solution does not start at the start position.")
             return False
@@ -461,12 +463,10 @@ class Maze:
           - show_path: if True, the path taken is overlaid on the maze.
         """
         imgage_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution, show_position=show_position)
-        plt.imshow(imgage_data)
+        plt.imshow(imgage_data, interpolation='none')
         plt.title("Maze Visualization")
         plt.axis("off")
         plt.show()
-        
-
 
 def run_maze():
     """

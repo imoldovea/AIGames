@@ -18,7 +18,7 @@ class PDF(FPDF):
         self.ln(10)
 
 
-def save_mazes_as_pdf(solved_mazes, output_filename="maze_solutions.pdf"):
+def save_mazes_as_pdf(solved_mazes: list[str], output_filename: str = "maze_solutions.pdf") -> None:
     """
       Save a collection of maze strings to a PDF file.
 

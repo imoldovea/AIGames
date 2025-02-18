@@ -16,7 +16,8 @@ from utils import (
 logging.basicConfig(level=logging.INFO)
 
 PATCH_SIZE = 3
-HIDEN_SIZE = 32
+HIDDEN_SIZE = 32
+PATCH_SIZE = 3  # Assuming PATCH_SIZE is 3
 
 # -----------------------------
 # PyTorch RNN Model for Maze Solving
@@ -42,38 +43,34 @@ class RNNMazeSolver(MazeSolver):
     def __init__(self, maze: Maze, model: MazeRNNModel = None):
         super().__init__(maze)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.hidden_size = HIDEN_SIZE
+        self.hidden_size = HIDDEN_SIZE
         self.model = model if model is not None else MazeRNNModel(hidden_size=self.hidden_size)
         self.model.to(self.device)
         self.model.train()
 
-    def get_local_patch(self, position, patch_size=PATCH_SIZE):
-        """Extract a local patch around the given position (with padding) for non-rectangular mazes."""
-        pad = patch_size // 2
+    def get_local_patch(self, position):
+        grid = self.maze.grid
+        half_patch = PATCH_SIZE // 2
+        x, y = position
 
-        # Convert non-rectangular maze into a fully rectangular NumPy array
-        max_cols = max(len(row) for row in self.maze.grid)
+        # Pad the grid to handle edges
+        padded_grid = np.pad(grid, pad_width=half_patch, mode='constant', constant_values=0)
 
-        # Ensure the maze is a rectangular NumPy array with padding applied to short rows
-        rect_maze = np.full((len(self.maze.grid), max_cols), 1)  # Default to walls (1)
-        for i, row in enumerate(self.maze.grid):
-            rect_maze[i, :len(row)] = row  # Copy existing values
+        # Adjust coordinates because of padding
+        x_padded, y_padded = x + half_patch, y + half_patch
 
-        # Apply outer padding to account for patch extraction near edges
-        padded_grid = np.pad(
-            rect_maze,
-            pad_width=((pad, pad), (pad, pad)),
-            mode='constant',
-            constant_values=1  # Wall padding
+        # Extract the patch
+        patch = padded_grid[x_padded - half_patch: x_padded + half_patch + 1,
+                y_padded - half_patch: y_padded + half_patch + 1]
+
+        # Assert the shape of the patch
+        assert patch.shape == (PATCH_SIZE, PATCH_SIZE), (
+            f"Extracted patch has incorrect shape: {patch.shape}, expected ({PATCH_SIZE}, {PATCH_SIZE})"
         )
 
-        pr, pc = position[0] + pad, position[1] + pad
-        patch = padded_grid[pr - pad: pr + pad + 1, pc - pad: pc + pad + 1]
-
-        # Validate the patch size
-        if patch.shape != (patch_size, patch_size):
+        if patch.shape != (PATCH_SIZE, PATCH_SIZE):
             raise ValueError(
-                f"Extracted patch has incorrect shape: {patch.shape}, expected ({patch_size}, {patch_size})"
+                f"Extracted patch has incorrect shape: {patch.shape}, expected ({PATCH_SIZE}, {PATCH_SIZE})"
             )
 
         return patch
@@ -91,9 +88,9 @@ class RNNMazeSolver(MazeSolver):
         else:
             raise ValueError("Invalid action.")
 
-    def train_model(self, training_data, epochs=500):
+    def train_model(self, training_data, epochs: int = 500) -> None:
         """
-        Train the RNN model with training_data, where each entry is a tuple (position, target_action).
+            Train the RNN model with training_data, where each entry is a tuple (position, target_action).
         """
         optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         loss_fn = nn.CrossEntropyLoss()
@@ -104,8 +101,14 @@ class RNNMazeSolver(MazeSolver):
             hx = torch.zeros(1, self.hidden_size).to(self.device)
             cx = torch.zeros(1, self.hidden_size).to(self.device)
             for (position, target_action) in training_data:
+                # Unpack the position into x and y
+                x, y = position
+
                 # Step 2: Extract the local patch around the current position.
-                patch = self.get_local_patch(position, PATCH_SIZE)
+                rows, cols = self.maze.grid.shape
+                assert 0 <= x < rows and 0 <= y < cols, f"Position {position} is out of the maze grid bounds."
+
+                patch = self.get_local_patch(position)
                 patch_flat = torch.tensor(patch.flatten(), dtype=torch.float32).unsqueeze(0).to(self.device)
 
                 # Step 3: Perform a forward pass through the model to compute logits.
@@ -165,7 +168,7 @@ class RNNMazeSolver(MazeSolver):
                 break
 
             # Step 4.2: Extract the current local patch.
-            patch = self.get_local_patch(current_position, patch_size=3)
+            patch = self.get_local_patch(current_position)
             patch_flat = torch.tensor(patch.flatten(), dtype=torch.float32).unsqueeze(0).to(self.device)
 
             # Step 4.3: Perform a forward pass through the model to get logits.

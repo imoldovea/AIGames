@@ -25,13 +25,14 @@ class BacktrackingMazeSolver(MazeSolver):
         maze.set_algorithm(self.__class__.__name__)
 
     def solve(self):
-        """
-        Attempts to solve the maze using recursive backtracking.
 
-        Returns:
-            A list of (row, col) coordinates representing the path from the start to the exit,
-            or None if no solution is found.
         """
+            Attempts to solve the maze using recursive backtracking.
+
+            Returns:
+                A list of (row, col) coordinates representing the path from the start to the exit,
+                or None if no solution is found.
+            """
         if self.maze.exit is None:
             raise ValueError("Maze exit is not set.")
         visited = set()
@@ -71,7 +72,7 @@ class BacktrackingMazeSolver(MazeSolver):
         return None
 
 # Example test function
-def backtracking_solver():
+def backtracking_solver() -> None:
     """
     Test function that loads an array of mazes from 'input/mazes.npy',
     creates a Maze object using the first maze in the array, sets an exit,
