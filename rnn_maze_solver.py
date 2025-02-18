@@ -15,11 +15,14 @@ from utils import (
 
 logging.basicConfig(level=logging.INFO)
 
+PATCH_SIZE = 3
+HIDEN_SIZE = 32
+
 # -----------------------------
 # PyTorch RNN Model for Maze Solving
 # -----------------------------
 class MazeRNNModel(nn.Module):
-    def __init__(self, input_size=9, hidden_size=32, num_actions=4):
+    def __init__(self, input_size=PATCH_SIZE*3, hidden_size=32, num_actions=4):
         super(MazeRNNModel, self).__init__()
         self.hidden_size = hidden_size
         # A simple LSTMCell for processing the flattened local patch.
@@ -39,17 +42,40 @@ class RNNMazeSolver(MazeSolver):
     def __init__(self, maze: Maze, model: MazeRNNModel = None):
         super().__init__(maze)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.hidden_size = 32
+        self.hidden_size = HIDEN_SIZE
         self.model = model if model is not None else MazeRNNModel(hidden_size=self.hidden_size)
         self.model.to(self.device)
         self.model.train()
 
-    def get_local_patch(self, position, patch_size=3):
-        """Extract a local patch around the given position (with padding)."""
+    def get_local_patch(self, position, patch_size=PATCH_SIZE):
+        """Extract a local patch around the given position (with padding) for non-rectangular mazes."""
         pad = patch_size // 2
-        padded_grid = np.pad(self.maze.grid, pad, constant_values=1)  # pad with walls
+
+        # Convert non-rectangular maze into a fully rectangular NumPy array
+        max_cols = max(len(row) for row in self.maze.grid)
+
+        # Ensure the maze is a rectangular NumPy array with padding applied to short rows
+        rect_maze = np.full((len(self.maze.grid), max_cols), 1)  # Default to walls (1)
+        for i, row in enumerate(self.maze.grid):
+            rect_maze[i, :len(row)] = row  # Copy existing values
+
+        # Apply outer padding to account for patch extraction near edges
+        padded_grid = np.pad(
+            rect_maze,
+            pad_width=((pad, pad), (pad, pad)),
+            mode='constant',
+            constant_values=1  # Wall padding
+        )
+
         pr, pc = position[0] + pad, position[1] + pad
         patch = padded_grid[pr - pad: pr + pad + 1, pc - pad: pc + pad + 1]
+
+        # Validate the patch size
+        if patch.shape != (patch_size, patch_size):
+            raise ValueError(
+                f"Extracted patch has incorrect shape: {patch.shape}, expected ({patch_size}, {patch_size})"
+            )
+
         return patch
 
     def action_to_offset(self, action):
@@ -79,7 +105,7 @@ class RNNMazeSolver(MazeSolver):
             cx = torch.zeros(1, self.hidden_size).to(self.device)
             for (position, target_action) in training_data:
                 # Step 2: Extract the local patch around the current position.
-                patch = self.get_local_patch(position, patch_size=3)
+                patch = self.get_local_patch(position, PATCH_SIZE)
                 patch_flat = torch.tensor(patch.flatten(), dtype=torch.float32).unsqueeze(0).to(self.device)
 
                 # Step 3: Perform a forward pass through the model to compute logits.
@@ -135,7 +161,7 @@ class RNNMazeSolver(MazeSolver):
         for step in range(max_steps):
             # Step 4.1: Check if the exit has been reached.
             if self.maze.at_exit():
-                print("Exit reached!")
+                logging.debug("Exit reached!")
                 break
 
             # Step 4.2: Extract the current local patch.
@@ -178,7 +204,7 @@ class RNNMazeSolver(MazeSolver):
                     solution_path.append(current_position)
                 else:
                     # Step 4.8: If no valid moves remain, stop exploration.
-                    print(f"No valid moves from position {current_position}. Exploration halted.")
+                    logging.error(f"No valid moves from position {current_position}. Exploration halted.")
                     break
 
         # Step 5: If the exit is reached, record the solution path.
@@ -194,27 +220,25 @@ class RNNMazeSolver(MazeSolver):
 # -----------------------------
 def maze_solver_rnn():
     """
-    Tests the combined process of solving a maze using BFS, generating training data,
-    training an RNN model, and subsequently solving the maze with the trained RNN model.
+    This function demonstrates the process of solving mazes using both a traditional
+    backtracking approach and a Recurrent Neural Network (RNN) based solver. It initially
+    loads mazes for training, solves them using backtracking methods, and then uses the
+    solutions to generate training data for the RNN model. After training the RNN, it applies
+    the trained neural network to solve additional mazes and save the results into specified
+    output formats like PDF or display them visually.
 
-    This function demonstrates the steps involved in processing a batch of mazes,
-    finding solutions for them using a backtracking solver, synthesizing training data
-    from the BFS-based solutions, and training a recurrent neural network (RNN) model.
-    The function concludes by using the trained RNN model to solve a maze via exploration
-    with fixed maximum steps.
-
-    :raises FileNotFoundError: If the specified maze files are not found in the path.
-    :raises ValueError: If loading or solving a maze fails due to invalid input.
-    :raises RuntimeError: If the RNN training fails to converge or an improper model is initialized.
+    :return: None
     """
     # Load mazes
     mazes=load_mazes("input/mazes.pkl")
     logging.info(f"Loaded {len(mazes)} mazes.")
 
     training_mazes = load_mazes("input/training_mazes.pkl")
-    logging.info(f"Loaded {len(mazes)} training mazes.")
+    logging.info(f"Loaded {len(training_mazes)} training mazes.")
 
     solved_mazes = []
+    all_training_data = []  # Initialize an empty list to collect data from all mazes
+
     # Iterate through each maze in the array
     for idx, maze in enumerate(training_mazes):
         training_maze = Maze(maze)
@@ -234,7 +258,6 @@ def maze_solver_rnn():
         solved_mazes.append(training_maze)
 
         training_path = training_maze.get_solution()
-        training_data = []
         for i in range(len(training_path) - 1):
             current = training_path[i]
             next_pos = training_path[i + 1]
@@ -247,26 +270,29 @@ def maze_solver_rnn():
                 action = 2  # left
             elif delta == (0, 1):
                 action = 3  # right
-            training_data.append((current, action))
+            all_training_data.append((current, action))
 
-        # Initialize the RNN maze solver and train the model.
-        solver_rnn = RNNMazeSolver(training_maze)
-        logging.info("Training the RNN model...")
-        solver_rnn.train_model(training_data, epochs=500)
-        break
+    # Initialize the RNN maze solver and train the model.
+    solver_rnn = RNNMazeSolver(training_maze)
+
+    solver_rnn.train_model(all_training_data, epochs=500)
 
     #Solve mazes
     solved_mazes = []
     for i, maze_data in enumerate(mazes):
         logging.info(f"Solving the maze {i} with RNN exploration...")
         maze = Maze(maze_data)
-        solution = solver_rnn.solve(max_steps=25)
+        maze.set_animate(False)
+        maze.set_save_movie(False)
+
+        # Initialize RNNMazeSolver for each maze
+        solver = RNNMazeSolver(maze=maze)
+        solution = solver.solve(max_steps=25)
         maze.set_solution(solution)
         solved_mazes.append(maze)
 
-
-    save_mazes_as_pdf(solved_mazes, "rnn_maze_solver_output.pdf")
-    display_all_mazes(solved_mazes)
+    save_mazes_as_pdf(solved_mazes, "output/rnn_maze_solver_output.pdf")
+    display_all_mazes(solved_mazes,)
     # save_movie(solved_mazes, "rnn_maze_solver_output.mp4")
 
 

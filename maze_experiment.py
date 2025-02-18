@@ -85,6 +85,16 @@ def main():
 
         # Step 3: Save mazes to PDF
         solved_mazes = solved_mazes_backtrack + solved_mazes_bfs
+        broken_mazes = []
+        for maze in solved_mazes:
+            if not maze.test_solution():
+                logging.warning(f"Maze {maze.maze_id} has no solution.")
+                solved_mazes.remove(maze)
+                broken_mazes.append(maze)
+        if broken_mazes:
+            logging.error(f"The following mazes have no solution: {broken_mazes}")
+        else:
+            logging.info("All mazes solved successfully.")
         display_all_mazes(solved_mazes)
         save_mazes_as_pdf(solved_mazes, output_pdf)
 

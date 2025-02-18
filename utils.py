@@ -67,6 +67,8 @@ def save_mazes_as_pdf(solved_mazes, output_filename="maze_solutions.pdf"):
                 pdf.ln(5)
                 pdf.cell(0, 10, f"Maze {index}", ln=True, align='C')
                 pdf.ln(5)
+                pdf.cell(0, 15, f"Correct Solution: {maze_obj.test_solution()}", ln=True, align='C')
+                pdf.ln(5)
                 # Use multi_cell to allow for multi-line maze text
                 pdf.image(temp_image_path, x=10, y=30, w=pdf.w - 20)
                 os.remove(temp_image_path)
@@ -90,7 +92,7 @@ def display_all_mazes(solved_mazes: list) -> None:
     for i, maze in enumerate(solved_mazes):
         try:
             logging.debug(f"Displaying maze {i + 1}...")
-            maze.plot_maze(show_path=False, show_solution=True)
+            maze.plot_maze(show_path=False, show_solution=True,show_position=False)
         except Exception as e:
             logging.warning(f"Could not display maze {i + 1}: {e}")
 
@@ -146,6 +148,8 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
                             cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
                 cv2.putText(title_frame, f"Generated on: {now_str}", (50, 280),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
+                cv2.putText(title_frame, f"Solution: {maze.test_solution()}", (60, 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
 
                 frames.append(title_frame)
 
@@ -177,7 +181,8 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
                 cv2.putText(frame_with_margin, f"Algorithm: {algorithm}", (250, 35),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
-
+                cv2.putText(frame_with_margin, f"Solution: {maze.test_solution()}", (350, 100),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
                 frames.append(frame_with_margin)
 
             maze_count += 1

@@ -71,7 +71,7 @@ class BacktrackingMazeSolver(MazeSolver):
         return None
 
 # Example test function
-def test_backtracking_solver():
+def backtracking_solver():
     """
     Test function that loads an array of mazes from 'input/mazes.npy',
     creates a Maze object using the first maze in the array, sets an exit,
@@ -106,7 +106,7 @@ def test_backtracking_solver():
 
             # Visualize the solved maze (with the solution path highlighted)
             maze.set_solution(solution)
-            maze.plot_maze(show_path=False, show_solution=True)
+            maze.plot_maze(show_path=False, show_solution=True,show_position=False)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
@@ -115,4 +115,4 @@ def test_backtracking_solver():
 
 
 if __name__ == '__main__':
-    test_backtracking_solver()
+    backtracking_solver()

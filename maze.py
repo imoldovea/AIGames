@@ -65,6 +65,7 @@ class Maze:
 
         # Exit can be defined later using set_exit()
         self.set_exit()
+        self.self_test()
 
     def set_exit(self):
         """
@@ -79,37 +80,6 @@ class Maze:
                     return
         self.logger.error("No valid exit found on the maze border.")
         raise ValueError("No valid exit found on the maze border.")
-
-    def self_test(self) -> bool:
-        """
-        Validates the maze configuration:
-            - There is one and only one starting position.
-            - There is one and only one exit.
-            - The exit is on the perimeter of the maze and is accessible.
-        
-        Returns:
-            bool: True if the maze configuration is valid, False otherwise.
-        """
-        # Validate a single starting position
-        start_positions = np.argwhere(self.grid == self.START)
-        if len(start_positions) != 1:
-            self.logger.error("Maze must have exactly one starting position.")
-            return False
-
-        # Validate a single exit position
-        exit_positions = [
-            (r, c)
-            for r in range(self.rows)
-            for c in range(self.cols)
-            if self.grid[r, c] == self.CORRIDOR and (r == 0 or c == 0 or r == self.rows - 1 or c == self.cols - 1)
-        ]
-        if len(exit_positions) != 1:
-            self.logger.error("Maze must have exactly one exit on the perimeter.")
-            return False
-
-        # Explicit log for successful validation
-        self.logger.info("Maze self-test passed successfully.")
-        return True
 
     def is_within_bounds(self, position):
         r, c = position
@@ -278,6 +248,47 @@ class Maze:
         #     logging.error("Solution is invalid. No solution set.")
         else:
             self._solution = solution
+
+    def self_test(self) -> bool:
+        """
+        Validates the maze configuration:
+            - There is one and only one starting position.
+            - There is one and only one exit.
+            - The exit is on the perimeter of the maze and is accessible.
+
+        Returns:
+            bool: True if the maze configuration is valid, False otherwise.
+        """
+
+        # Validate the start position
+        if not self.is_within_bounds(self.start_position):
+            self.logger.error("The start position is not within the bounds of the maze.")
+            return False
+
+        # Validate a single exit position
+        exit_positions = [
+            (r, c)
+            for r in range(self.rows)
+            for c in range(self.cols)
+            if self.grid[r, c] == self.CORRIDOR and (r == 0 or c == 0 or r == self.rows - 1 or c == self.cols - 1)
+        ]
+        if len(exit_positions) != 1:
+            self.logger.error("Maze must have exactly one exit on the perimeter.")
+            return False
+
+        # Validate that the exit is connected to a border
+        if self.exit is None or not self.is_within_bounds(self.exit):
+            self.logger.error("Exit is not within the bounds of the maze.")
+            return False
+
+        r, c = self.exit
+        if r != 0 and r != self.rows - 1 and c != 0 and c != self.cols - 1:
+            self.logger.error("Exit is not connected to the maze border.")
+            return False
+
+        # Explicit log for successful validation
+        self.logger.debug("Maze self-test passed successfully.")
+        return True
 
     def test_solution(self) -> bool:
         """
