@@ -47,8 +47,7 @@ class MazeRNNModel(nn.Module):
 # RNNMazeSolver Implementation using Maze exploration methods
 # -----------------------------
 class RNNMazeSolver(MazeSolver):
-    def __init__(self, maze: Maze, model: MazeRNNModel = None):
-        super().__init__(maze)
+    def __init__(self, maze=None, model=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.hidden_size = HIDDEN_SIZE
         self.model = model if model is not None else MazeRNNModel(hidden_size=self.hidden_size)
@@ -290,10 +289,7 @@ def maze_solver_rnn() -> None:
         solved_mazes.append(training_maze)
 
         training_path = training_maze.get_solution()
-        if training_path:
-            for i in range(len(training_path) - 1):
-        # Process path
-        else:
+        if not training_path:
             logging.warning(f"Skipping maze {idx + 1} due to no solution.")
 
         for i in range(len(training_path) - 1):
@@ -315,7 +311,7 @@ def maze_solver_rnn() -> None:
                 return
 
     # Initialize the RNN maze solver and train the model.
-    solver_rnn = RNNMazeSolver()
+    solver_rnn = RNNMazeSolver(maze=None)
 
     solver_rnn.train_model(all_training_data, epochs=500, early_stopping=True)
 
