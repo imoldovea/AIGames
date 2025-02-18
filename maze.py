@@ -80,6 +80,37 @@ class Maze:
         self.logger.error("No valid exit found on the maze border.")
         raise ValueError("No valid exit found on the maze border.")
 
+    def self_test(self) -> bool:
+        """
+        Validates the maze configuration:
+            - There is one and only one starting position.
+            - There is one and only one exit.
+            - The exit is on the perimeter of the maze and is accessible.
+        
+        Returns:
+            bool: True if the maze configuration is valid, False otherwise.
+        """
+        # Validate a single starting position
+        start_positions = np.argwhere(self.grid == self.START)
+        if len(start_positions) != 1:
+            self.logger.error("Maze must have exactly one starting position.")
+            return False
+
+        # Validate a single exit position
+        exit_positions = [
+            (r, c)
+            for r in range(self.rows)
+            for c in range(self.cols)
+            if self.grid[r, c] == self.CORRIDOR and (r == 0 or c == 0 or r == self.rows - 1 or c == self.cols - 1)
+        ]
+        if len(exit_positions) != 1:
+            self.logger.error("Maze must have exactly one exit on the perimeter.")
+            return False
+
+        # Explicit log for successful validation
+        self.logger.info("Maze self-test passed successfully.")
+        return True
+
     def is_within_bounds(self, position):
         r, c = position
         return 0 <= r < self.rows and 0 <= c < self.cols
@@ -243,7 +274,38 @@ class Maze:
         """
         if not isinstance(solution, list):
             raise ValueError("Solution must be a list of coordinates.")
-        self._solution = solution
+        # if not self.test_solution():
+        #     logging.error("Solution is invalid. No solution set.")
+        else:
+            self._solution = solution
+
+    def test_solution(self) -> bool:
+        """
+        Validates if the provided solution navigates through valid positions, starts at 
+        the start position, ends at the exit, and avoids walls.
+        
+        Returns:
+            bool: True if the solution is valid, False otherwise.
+        """
+        if not self._solution or self._solution[0] != self.start_position:
+            self.logger.error("Solution does not start at the start position.")
+            return False
+        if self.exit is None or self._solution[-1] != self.exit:
+            self.logger.error("Solution does not end at the exit position.")
+            return False
+
+        # Validate that the path is contiguous and avoids walls.
+        for i in range(1, len(self._solution)):
+            current, next_pos = self._solution[i - 1], self._solution[i]
+            if next_pos not in self.get_neighbors(current):
+                self.logger.error("Solution contains invalid moves between %s and %s.", current, next_pos)
+                return False
+            if self.is_wall(next_pos):
+                self.logger.error("Solution tries to move through a wall at %s.", next_pos)
+                return False
+
+        self.logger.debug("Solution is valid.")
+        return True
 
     def at_exit(self):
         """
@@ -297,7 +359,7 @@ class Maze:
         return resized_image
 
 
-    def get_maze_as_png(self, show_path=True, show_solution=True, show_position=False) -> np.ndarray:
+    def get_maze_as_png(self, show_path=False, show_solution=True, show_position=False) -> np.ndarray:
         """
         Returns the current maze configuration as an RGB NumPy image.
 
