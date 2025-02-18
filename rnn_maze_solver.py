@@ -8,10 +8,17 @@ from maze import Maze
 import numpy as np
 import logging
 from utils import (
-    save_movie,
     display_all_mazes,
     save_mazes_as_pdf,
     load_mazes)
+from enum import Enum
+
+
+class Action(Enum):
+    UP = 0
+    DOWN = 1
+    LEFT = 2
+    RIGHT = 3
 
 logging.basicConfig(level=logging.INFO)
 
@@ -88,12 +95,16 @@ class RNNMazeSolver(MazeSolver):
         else:
             raise ValueError("Invalid action.")
 
-    def train_model(self, training_data, epochs: int = 500) -> None:
+    def train_model(self, training_data, epochs: int = 500, early_stopping: bool = False, patience: int = 10) -> None:
         """
             Train the RNN model with training_data, where each entry is a tuple (position, target_action).
+            Implements early stopping if enabled.
         """
         optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         loss_fn = nn.CrossEntropyLoss()
+        best_loss = float('inf')
+        patience_counter = 0  # Counter for early stopping
+
         self.model.train()
         for epoch in range(epochs):
             total_loss = 0.0
@@ -136,9 +147,23 @@ class RNNMazeSolver(MazeSolver):
                 # Step 10: Accumulate the total loss for monitoring.
                 total_loss += loss.item()
 
-            # Step 11: Print the average loss every 100 epochs for monitoring progress.
+            # Compute average loss for the epoch
+            avg_loss = total_loss / len(training_data)
+
+            # Step 11: Check for early stopping if enabled
+            if early_stopping:
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    patience_counter = 0  # Reset counter when improvement is observed
+                else:
+                    patience_counter += 1
+                    if patience_counter >= patience:
+                        logging.info(f"Early stopping triggered at epoch {epoch}. Best Loss = {best_loss:.4f}")
+                        break
+
+            # Print the average loss every 100 epochs for monitoring progress.
             if epoch % 100 == 0:
-                logging.info(f"Epoch {epoch}: Avg Loss = {total_loss / len(training_data):.4f}")
+                logging.info(f"Epoch {epoch}: Avg Loss = {avg_loss:.4f}")
 
         # Step 12: Switch the model to evaluation mode after training is complete.
         self.model.eval()
@@ -221,7 +246,7 @@ class RNNMazeSolver(MazeSolver):
 # -----------------------------
 # Test method for the RNN-based Maze Solver
 # -----------------------------
-def maze_solver_rnn():
+def maze_solver_rnn() -> None:
     """
     This function demonstrates the process of solving mazes using both a traditional
     backtracking approach and a Recurrent Neural Network (RNN) based solver. It initially
@@ -250,7 +275,11 @@ def maze_solver_rnn():
         logging.debug(f"Solving maze {idx + 1} with BFS...")
 
         solver = BacktrackingMazeSolver(training_maze)
-        solution = solver.solve()
+        try:
+            solution = solver.solve()
+        except Exception as e:
+            logging.error(f"Error solving maze {idx + 1}: {e}")
+            continue
 
         if solution:
             logging.debug(f"Maze {idx + 1} solution found:")
@@ -261,24 +290,35 @@ def maze_solver_rnn():
         solved_mazes.append(training_maze)
 
         training_path = training_maze.get_solution()
+        if training_path:
+            for i in range(len(training_path) - 1):
+        # Process path
+        else:
+            logging.warning(f"Skipping maze {idx + 1} due to no solution.")
+
         for i in range(len(training_path) - 1):
             current = training_path[i]
             next_pos = training_path[i + 1]
             delta = (next_pos[0] - current[0], next_pos[1] - current[1])
             if delta == (-1, 0):
-                action = 0  # up
+                action = action = Action.UP.value  # up
             elif delta == (1, 0):
-                action = 1  # down
+                action = action = Action.DOWN.value  # down
             elif delta == (0, -1):
-                action = 2  # left
+                action = action = Action.LEFT.value  # left
             elif delta == (0, 1):
-                action = 3  # right
+                action = action = Action.RIGHT.value  # right
+
             all_training_data.append((current, action))
+            if not all_training_data:
+                logging.error("No training data collected. Aborting RNN training.")
+                return
 
     # Initialize the RNN maze solver and train the model.
-    solver_rnn = RNNMazeSolver(training_maze)
+    solver_rnn = RNNMazeSolver()
 
-    solver_rnn.train_model(all_training_data, epochs=500)
+    solver_rnn.train_model(all_training_data, epochs=500, early_stopping=True)
+
 
     #Solve mazes
     solved_mazes = []
