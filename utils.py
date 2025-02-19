@@ -62,7 +62,7 @@ def save_mazes_as_pdf(solved_mazes: list[str], output_filename: str = "maze_solu
                 pdf.add_page()
                 # Optionally add a title for each maze
                 pdf.set_font("Arial", "B", 16)
-                algorithm = maze_obj.get_algorithm()
+                algorithm = maze_obj.algorithm
                 pdf.cell(0, 5, f"Algorithm: {algorithm}", ln=True, align='C')
                 pdf.ln(5)
                 pdf.cell(0, 10, f"Maze {index}", ln=True, align='C')
@@ -129,7 +129,7 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
         for maze in solved_mazes:
             try:
                 images = maze.get_raw_movie()  # Maze frames as NumPy arrays
-                algorithm = maze.get_algorithm()
+                algorithm = maze.algorithm
             except Exception as e:
                 logging.warning(f"Could not process maze #{maze_count}: {e}")
                 maze_count += 1

@@ -129,22 +129,6 @@ class Maze:
         self.logger.warning("Invalid move attempted to position %s", position)
         return False
 
-    def get_animate(self) -> bool:
-        """
-        Getter for the 'animate' attribute.
-        Returns:
-            bool: The value of the 'animate' attribute.
-        """
-        return self.animate
-
-    def get_save_movie(self)->bool:
-        """
-        Getter for the 'save_movie' attribute.
-        Returns:
-            bool: The value of the 'save_movie' attribute.
-        """
-        return self.save_movie
-
     def set_animate(self, value):
         """
         Setter for the 'animate' attribute.
@@ -182,26 +166,6 @@ class Maze:
         if not isinstance(value, bool):
             raise ValueError("The 'save_movie' attribute must be a boolean.")
         self.save_movie = value
-
-    def get_position(self):
-        """
-        Returns the current navigation position in the maze.
-        """
-        return self.current_position
-
-    def get_shape(self):
-        """
-        Returns the dimensions of the maze grid as a tuple (rows, cols).
-        """
-        return self.rows, self.cols
-
-    def get_algorithm(self):
-        """
-        Getter for the 'algorithm' attribute.
-        Returns:
-            str: The name of the algorithm in use or None if not set.
-        """
-        return self.algorithm
 
     def set_algorithm(self, algorithm):
         """
@@ -255,8 +219,6 @@ class Maze:
         Returns:
             bool: True if the maze configuration is valid, False otherwise.
         """
-
-
         # Validate minimum size of 5 for both width (cols) and height (rows)
         if self.rows < 5 or self.cols < 5:
             raise ValueError("Maze dimensions must be at least 5x5.")
@@ -300,9 +262,19 @@ class Maze:
             Returns:
                 bool: True if the solution is valid, False otherwise.
             """
+        if self._solution is None:
+            self.logger.error("No solution provided.")
+            return False
+
+        # Check if the solution length is greater than 1
+        if self._solution and len(self._solution) <= 1:
+            self.logger.error("Solution length is less than 2.")
+            return False
+
         if not self._solution or self._solution[0] != self.start_position:
             self.logger.error("Solution does not start at the start position.")
             return False
+
         if self.exit is None or self._solution[-1] != self.exit:
             self.logger.error("Solution does not end at the exit position.")
             return False
