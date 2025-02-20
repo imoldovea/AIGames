@@ -60,6 +60,52 @@ class RRN2MazeSolver(MazeSolver):
         path = []
         return path
 
+    def load_training_mazes(file_path="input/training_mazes.pkl"):
+        """
+        Loads and processes training mazes from a file, validates them, and computes solutions.
+    
+        Args:
+            file_path (str): Path to the file containing the training mazes. Default is "input/training_mazes.pkl".
+    
+        Returns:
+            list: A list of Maze objects with computed solutions.
+    
+        Raises:
+            FileNotFoundError: If the specified file does not exist.
+            ValueError: If any maze in the file is not valid or fails the self-test.
+        """
+        try:
+            # Fetch training data
+            training_mazes = utils.load_mazes(file_path)
+        except FileNotFoundError as e:
+            logging.error(f"File not found: {file_path}")
+            raise FileNotFoundError(f"Could not find the specified file: {file_path}") from e
+        except Exception as e:
+            logging.error(f"An unexpected error occurred while loading mazes: {str(e)}")
+            raise RuntimeError("Failed to load training mazes.") from e
+
+        solved_training_models = []
+        for i, training_data in enumerate(training_mazes):
+            try:
+                training_maze = Maze(training_data)
+                if training_maze.self_test():
+                    # Compute solution
+                    solver = BacktrackingMazeSolver(training_maze)
+                    solution = solver.solve()
+                    training_maze.set_solution(solution)
+                    solved_training_models.append(training_maze)
+                else:
+                    logging.warning(f"Maze {i + 1} is not valid.")
+                    raise ValueError(f"Maze {i + 1} failed the self-test.")
+            except ValueError as e:
+                logging.error(f"Validation error for maze {i + 1}: {str(e)}")
+                raise
+            except Exception as e:
+                logging.error(f"An unexpected error occurred with maze {i + 1}: {str(e)}")
+                raise RuntimeError(f"Failed to process maze {i + 1}.") from e
+    
+        return solved_training_models
+
 def main():
     """
     Main entry point for training and utilizing a maze-solving neural network model.
@@ -77,20 +123,7 @@ def main():
     logging.info(f'Using device: {device}')
 
     # Fetch training data
-    training_mazes = utils.load_mazes(file_path="input/training_mazes.pkl")
-    solved_training_models = []
-    for i, training_data in enumerate(training_mazes):
-        training_maze = Maze(training_data)
-        if training_maze.self_test():
-            # compute solution
-            solver = BacktrackingMazeSolver(training_maze)
-            solution = solver.solve()
-            training_maze.set_solution(solution)
-            solved_training_models.append(training_maze)
-        else:
-            logging.warning(f"Maze {i + 1} is not valid.")
-            raise ValueError(f"Maze {i + 1} is not valid.")
-
+    training_mazes = load_training_mazes("input/training_mazes.pkl")
     #torch.save(model.state_dict(), 'output/maze_rnn_model.pth')
     logging.info("Model trained and saved successfully.")
 
