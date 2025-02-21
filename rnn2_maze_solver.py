@@ -16,13 +16,14 @@ from backtrack_maze_solver import BacktrackingMazeSolver
 # -------------------------------
 # Hyperparameters and Configurations
 # -------------------------------
-
-# Define constants
-
 EPOCHS = 20  # Number of training epochs
 
+# Maze encoding constants
+PATH = 0
+WALL = 1
+START = 3
 
-# Action mapping
+# Action mapping for local context
 ACTION_MAPPING = {
     (0, -1): 2,  # Left
     (0, 1): 3,   # Right
@@ -43,218 +44,176 @@ class MazeRNN2Model(nn.Module):
         self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
-    def predict(self, maze):
+    def predict(self, maze: torch.Tensor) -> torch.Tensor:
+        # Placeholder for prediction logic
         return Empty
 
-class RRN2MazeSolver(MazeSolver):
+class RNN2MazeTrainer:
+    def __init__(self, training_file_path="input/training_mazes.pkl"):
+        """
+        Initializes the trainer with a file path for training mazes.
+        Loads and processes the training mazes upon instantiation.
+        """
+        self.training_file_path = training_file_path
+        self.training_mazes = self._load_and_process_training_mazes()
+
+    def _load_and_process_training_mazes(self):
+        """
+        Loads training mazes from the specified file and processes each maze.
+        Returns:
+            list: A list of Maze objects with computed solutions.
+        """
+        training_mazes = self._load_mazes_safe(self.training_file_path)
+        solved_training_mazes = []
+        for i, maze_data in enumerate(training_mazes):
+            try:
+                solved_training_mazes.append(self._process_maze(maze_data, i))
+            except Exception as e:
+                logging.error(f"Failed to process maze {i + 1}: {str(e)}")
+                raise RuntimeError(f"Processing maze {i + 1} failed.") from e
+        return solved_training_mazes
+
+    def _load_mazes_safe(self, file_path):
+        try:
+            return utils.load_mazes(file_path)
+        except FileNotFoundError as e:
+            logging.error(f"File not found: {file_path}")
+            raise FileNotFoundError(f"Could not find the specified file: {file_path}") from e
+        except Exception as e:
+            logging.error(f"Error loading mazes: {str(e)}")
+            raise RuntimeError("Maze loading failed.") from e
+
+    def _process_maze(self, data, index):
+        maze = Maze(data)
+        if not maze.self_test():
+            logging.warning(f"Maze {index + 1} failed validation.")
+            raise ValueError(f"Maze {index + 1} failed self-test.")
+        solver = BacktrackingMazeSolver(maze)
+        maze.set_solution(solver.solve())
+        return maze
+
+    def create_dataset(self):
+        """
+        Constructs a dataset for training a model to navigate mazes.
+
+        The dataset is a list of tuples where each tuple consists of local context
+        information about the current position in a maze and the corresponding
+        action required to move to the next position in the solution path.
+
+        The function iterates through each training maze and calculates the solution
+        path from the start to the exit. For each transition along the solution path,
+        the function determines the local context of the current position and the
+        required action to move to the next position. These are stored as a tuple in
+        the resulting dataset.
+
+        Each action is mapped to an integer based on a predefined direction-to-target
+        mapping. The local context is determined by analyzing the maze structure around
+        the current position.
+
+        :param self:  
+            Reference to the object instance containing training mazes and helper
+            methods such as `_compute_local_context`.
+
+        :return:  
+            A list of tuples, where each tuple contains the local context of a position
+            in the maze and the target action as an integer.
+        :rtype: list[tuple[any, int]]
+
+        :raises KeyError:  
+            If a move delta calculated between consecutive positions in the solution
+            is invalid (not present in the direction-to-target mapping).
+        """
+        dataset = []
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
+        direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
+
+        for maze in self.training_mazes:
+            # Retrieve the solution path for the current maze (list of coordinates from start to exit)
+            solution = maze.get_solution()
+            for i in range(len(solution) - 1):
+                # Get the current position and the next position in the solution path
+                current_pos = solution[i]
+                next_pos = solution[i + 1]
+                # Compute the local context around the current position
+                local_context = self._compute_local_context(maze, current_pos, directions)
+                # Calculate the delta between the current position and the next position
+                move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
+                # Raise an error if the move is not valid (not in the predefined direction mapping)
+                if move_delta not in direction_to_target:
+                    raise KeyError(f"Invalid move delta: {move_delta}")
+                # Map the move delta to the corresponding target action
+                target_action = direction_to_target[move_delta]
+                # Append the local context and target action as a training sample
+                dataset.append((local_context, target_action))
+        return dataset
+
+    def _compute_local_context(self, maze, position, directions):
+        """
+        Computes the local context of a given position in a maze by checking the states 
+        of its neighbors in the specified directions. The method evaluates each 
+        neighbor's cell state, considering whether the position is within the bounds 
+        of the maze grid.
+
+        :param maze: The maze object containing the grid and logic to determine 
+                     whether a position is within bounds.
+        :type maze: Maze
+        :param position: The current position in the maze given as a tuple (row, column).
+        :type position: tuple[int, int]
+        :param directions: A list of directions to evaluate, where each direction is 
+                           represented as a tuple (delta_row, delta_column).
+        :type directions: list[tuple[int, int]]
+        :return: A list of cell states representing the local context around the 
+                 specified position.
+        :rtype: list[Any]
+        """
+        r, c = position
+        local_context = []  # Initialize a list to store the state of neighboring cells
+        for dr, dc in directions:
+            # Calculate the neighbor's position relative to the current position
+            neighbor = (r + dr, c + dc)
+            # Determine the state of the neighbor cell:
+            # If the neighbor is out of bounds, treat it as a wall
+            cell_state = maze.grid[neighbor] if maze.is_within_bounds(neighbor) else WALL
+            # Append the cell state to the local context
+            local_context.append(cell_state)
+        # Return the list of cell states representing the local context
+        return local_context
+
+
+# -------------------------------
+# Maze Solver (Inference) Class
+# -------------------------------
+class RNN2MazeSolver(MazeSolver):
     def __init__(self, maze):
         """
-        Initializes the RRN2MazeSolver with a Maze object.
+        Initializes the RNN2MazeSolver with a Maze object.
         Args:
             maze (Maze): The maze to solve.
         """
         self.maze = maze
         maze.set_algorithm(self.__class__.__name__)
+        # Placeholder: Load your trained model here (not implemented yet)
 
     def solve(self):
+        # Placeholder: Implement the logic to solve the maze using the trained model.
         path = []
         return path
 
-    def load_training_mazes(file_path="input/training_mazes.pkl"):
-        """
-        Loads and processes training mazes from a file, validates them, and computes solutions.
-    
-        Args:
-            file_path (str): Path to the file containing the training mazes. Default is "input/training_mazes.pkl".
-    
-        Returns:
-            list: A list of Maze objects with computed solutions.
-    
-        Raises:
-            FileNotFoundError: If the specified file does not exist.
-            ValueError: If any maze in the file is not valid or fails the self-test.
-        """
-        try:
-            # Fetch training data
-            training_mazes = utils.load_mazes(file_path)
-        except FileNotFoundError as e:
-            logging.error(f"File not found: {file_path}")
-            raise FileNotFoundError(f"Could not find the specified file: {file_path}") from e
-        except Exception as e:
-            logging.error(f"An unexpected error occurred while loading mazes: {str(e)}")
-            raise RuntimeError("Failed to load training mazes.") from e
-
-        solved_training_models = []
-        for i, training_data in enumerate(training_mazes):
-            try:
-                training_maze = Maze(training_data)
-                if training_maze.self_test():
-                    # Compute solution
-                    solver = BacktrackingMazeSolver(training_maze)
-                    solution = solver.solve()
-                    training_maze.set_solution(solution)
-                    solved_training_models.append(training_maze)
-                else:
-                    logging.warning(f"Maze {i + 1} is not valid.")
-                    raise ValueError(f"Maze {i + 1} failed the self-test.")
-            except ValueError as e:
-                logging.error(f"Validation error for maze {i + 1}: {str(e)}")
-                raise
-            except Exception as e:
-                logging.error(f"An unexpected error occurred with maze {i + 1}: {str(e)}")
-                raise RuntimeError(f"Failed to process maze {i + 1}.") from e
-    
-        return solved_training_models
-
-
-def create_local_context_dataset(training_mazes):
-    """
-    Creates a dataset for one-move-at-a-time training using local context.
-
-    Each training sample is a tuple (local_context, target_action), where:
-      - local_context: A list of 4 values representing the state of the maze cells
-                       in the order [up, down, left, right] relative to the current position.
-                       (0 for corridor, 1 for wall; out-of-bound cells are treated as walls.)
-      - target_action: An integer (0: up, 1: down, 2: left, 3: right) representing the
-                       move from the current position to the next position in the solution.
-
-    Args:
-        training_mazes (list): A list of Maze objects with a valid solution path.
-
-    Returns:
-        list: A list of (local_context, target_action) training samples.
-    """
-    dataset = []
-    # Define the order of directions and the corresponding target mapping
-    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
-    direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
-
-    for maze in training_mazes:
-        solution = maze.get_solution()  # List of coordinates from start to exit
-        # Iterate over each step in the solution path except the last one.
-        for i in range(len(solution) - 1):
-            current_pos = solution[i]
-            next_pos = solution[i + 1]
-
-            # Build the local context vector
-            local_context = []
-            r, c = current_pos
-            for dr, dc in directions:
-                neighbor = (r + dr, c + dc)
-                # If neighbor is within bounds, use the cell's state; otherwise, treat as wall.
-                if maze.is_within_bounds(neighbor):
-                    cell_state = maze.grid[neighbor]
-                else:
-                    cell_state = 1  # out-of-bound => wall
-                local_context.append(cell_state)
-
-            # Compute the difference to determine the move taken.
-            move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
-            target_action = direction_to_target.get(move_delta)
-            if target_action is None:
-                # This should not happen if the solution path is valid.
-                raise ValueError(f"Unexpected move {move_delta} from {current_pos} to {next_pos}")
-
-            # Append the (input, target) pair to the dataset.
-            dataset.append((local_context, target_action))
-
-    return dataset
-
-
-# Example usage:
-# training_mazes is a list of Maze objects with solutions already set.
-local_context_dataset = create_local_context_dataset(training_mazes)
-print(f"Created {len(local_context_dataset)} training samples.")
-
-
-def create_local_context_dataset(training_mazes):
-    """
-    Creates a dataset for one-move-at-a-time training using local context.
-
-    Each training sample is a tuple (local_context, target_action), where:
-      - local_context: A list of 4 values representing the state of the maze cells
-                       in the order [up, down, left, right] relative to the current position.
-                       (0 for corridor, 1 for wall; out-of-bound cells are treated as walls.)
-      - target_action: An integer (0: up, 1: down, 2: left, 3: right) representing the
-                       move from the current position to the next position in the solution.
-
-    Args:
-        training_mazes (list): A list of Maze objects with a valid solution path.
-
-    Returns:
-        list: A list of (local_context, target_action) training samples.
-    """
-    dataset = []
-    # Define the order of directions and the corresponding target mapping
-    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
-    direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
-
-    for maze in training_mazes:
-        solution = maze.get_solution()  # List of coordinates from start to exit
-        # Iterate over each step in the solution path except the last one.
-        for i in range(len(solution) - 1):
-            current_pos = solution[i]
-            next_pos = solution[i + 1]
-
-            # Build the local context vector
-            local_context = []
-            r, c = current_pos
-            for dr, dc in directions:
-                neighbor = (r + dr, c + dc)
-                # If neighbor is within bounds, use the cell's state; otherwise, treat as wall.
-                if maze.is_within_bounds(neighbor):
-                    cell_state = maze.grid[neighbor]
-                else:
-                    cell_state = 1  # out-of-bound => wall
-                local_context.append(cell_state)
-
-            # Compute the difference to determine the move taken.
-            move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
-            target_action = direction_to_target.get(move_delta)
-            if target_action is None:
-                # This should not happen if the solution path is valid.
-                raise ValueError(f"Unexpected move {move_delta} from {current_pos} to {next_pos}")
-
-            # Append the (input, target) pair to the dataset.
-            dataset.append((local_context, target_action))
-
-    return dataset
-
-
-# Example usage:
-# training_mazes is a list of Maze objects with solutions already set.
-local_context_dataset = create_local_context_dataset(training_mazes)
-print(f"Created {len(local_context_dataset)} training samples.")
-
-
 def main():
-    """
-    Main entry point for training and utilizing a maze-solving neural network model.
+    TRAINING_MAZES_FILE = "input/training_mazes.pkl"
+    TEST_MAZES_FILE = "input/mazes.pkl"
 
-    This script configures the device to be used for computation, loads the training data,
-    creates a dataset and dataloader, initializes and trains the maze-solving neural
-    network model, and saves the trained model for subsequent inference. An example usage
-    of solving a maze with the trained model is also illustrated.
+    # Instantiate the trainer with the file path for training mazes.
+    trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE)
+    dataset = trainer.create_dataset()
+    logging.info(f"Created {len(dataset)} training samples.")
 
-    :raises FileNotFoundError: If the specified file for loading mazes does not exist.
-    :raises RuntimeError: If a GPU is expected but not available.
-    """
-    # Device configuration
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Using device: {device}')
-
-    # Fetch training data
-    training_mazes = load_training_mazes("input/training_mazes.pkl")
-    #torch.save(model.state_dict(), 'output/maze_rnn_model.pth')
-    logging.info("Model trained and saved successfully.")
-
-    # Example of solving a new maze
-    mazes = load_mazes("input/mazes.pkl")
+    # Example of solving new mazes using the solver class.
+    mazes = load_mazes(TEST_MAZES_FILE)
     for i, maze_data in enumerate(mazes):
-        # Initialize and configure your test_maze as needed
         maze = Maze(maze_data)
         if maze.self_test():
-            maze.plot_maze(show_path=True, show_solution=False, show_position=False)  # Assuming this method visualizes the maze and solution
+            maze.plot_maze(show_path=True, show_solution=False, show_position=False)
         else:
             logging.warning("Test maze failed self-test.")
 

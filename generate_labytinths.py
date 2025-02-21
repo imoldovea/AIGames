@@ -197,9 +197,9 @@ def plot_maze(maze):
     plt.show()
 
 def main():
-    NUM_MAZES = 10
+    NUM_MAZES = 1000
     OUTPUT_FOLDER = 'input'
-    MAZES_FILENAME = 'mazes.pkl'
+    MAZES_FILENAME = 'training_mazes.pkl'
 
     mazes = []
     for i in range(NUM_MAZES):
@@ -207,8 +207,8 @@ def main():
         width, height = random.choice(range(MIN_SIZE, IMG_SIZE, 2)), random.choice(range(MIN_SIZE, IMG_SIZE, 2))
         maze = generate_maze(width, height)
         mazes.append(maze)
-        display_maze(maze)
-        plot_maze(maze)
+        # display_maze(maze)
+        # plot_maze(maze)
 
     save_mazes(OUTPUT_FOLDER, MAZES_FILENAME, mazes)
 
