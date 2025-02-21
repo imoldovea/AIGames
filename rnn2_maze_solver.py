@@ -1,9 +1,7 @@
 # rnn2_maze_solver.py
 import logging
 from maze_solver import MazeSolver
-import torch
-import torch.nn as nn
-import torch.optim as optim
+import numpy as np
 from torch.utils.data import DataLoader, Dataset
 import utils
 from maze import Maze  # Adjust the import path if necessary
@@ -31,10 +29,91 @@ OUTPUT = "output/"
 
 logging.getLogger().setLevel(logging.INFO)
 
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+
+class MazeBaseModel(nn.Module):
+    def __init__(self):
+        super(MazeBaseModel, self).__init__()
+
+    def forward(self, x):
+        """
+        This method should be overridden by subclasses.
+        """
+        raise NotImplementedError("Subclasses must implement the forward method.")
+
+    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001, device='cpu'):
+        """
+        Generic training loop using CrossEntropyLoss and Adam optimizer.
+    
+        Parameters:
+            dataloader (DataLoader): Dataloader for training data.
+            num_epochs (int): Number of epochs to train.
+            learning_rate (float): Learning rate for the optimizer.
+            device (str): Device to train on ('cpu' or 'cuda').
+    
+        Returns:
+            self: The trained model.
+        """
+        # Move the model to the specified device ('cpu' or 'cuda').
+        self.to(device)
+
+        # Define the optimizer as Adam and set the learning rate.
+        optimizer = optim.Adam(self.parameters(), lr=learning_rate)
+
+        # Define the loss function as cross-entropy loss.
+        criterion = nn.CrossEntropyLoss()
+
+        # Set the model to training mode.
+        self.train()
+
+        # Loop over the specified number of epochs.
+        for epoch in range(num_epochs):
+            running_loss = 0.0  # Accumulate loss for the current epoch
+
+            # Iterate through batches of inputs and targets from the dataloader.
+            for inputs, targets in dataloader:
+                # Add a sequence length dimension to inputs and move to the specified device.
+                inputs = inputs.unsqueeze(1).to(device).float()
+
+
+                # Move targets to the specified device.
+                targets = targets.to(device)
+
+                # Reset the gradients of model parameters.
+                optimizer.zero_grad()
+
+                # Perform a forward pass through the model to get the outputs.
+                outputs = self.forward(inputs)
+
+                # Compute the loss between the outputs and the targets.
+                loss = criterion(outputs, targets)
+
+                # Backpropagate the loss to compute gradients.
+                loss.backward()
+
+                # Update the model parameters using the optimizer.
+                optimizer.step()
+
+                # Accumulate the loss scaled by the batch size.
+                running_loss += loss.item() * inputs.size(0)
+
+            # Calculate the average loss for the current epoch.
+            epoch_loss = running_loss / len(dataloader.dataset)
+
+            # Print the epoch number and the corresponding loss.
+            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+
+        # Return the trained model.
+        return self
+
+
 # -------------------------------
-# RNN Model Definition (Vanilla RNN)
+# RNN Model Definition
 # -------------------------------
-class MazeRNN2Model(nn.Module):
+class MazeRNN2Model(MazeBaseModel):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super(MazeRNN2Model, self).__init__()
         self.hidden_size = hidden_size
@@ -43,25 +122,26 @@ class MazeRNN2Model(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        # x: (batch_size, seq_length, input_size)
-        # Initialize the hidden state (h0) with zeros
+        """
+        Forward pass for the vanilla RNN model.
+
+        x: Tensor of shape [batch_size, seq_length, input_size].
+        Returns:
+            Tensor of shape [batch_size, output_size].
+        """
+        # Initialize hidden state with zeros
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
-
-        # Pass the input sequence and hidden state through the RNN layer
-        # out contains the RNN outputs for all time steps
+        # Forward propagate RNN
         out, _ = self.rnn(x, h0)
-
-        # Use the output of the last time step for prediction by applying the fully connected layer
-        out = self.fc(out[:, -1, :])  # out[:, -1, :] extracts the last time step output
+        # Get the output from the last time step and pass it through the FC layer
+        out = self.fc(out[:, -1, :])
         return out
 
-    def predict(self, maze: torch.Tensor) -> torch.Tensor:
-        return self.forward(maze)
 
 # -------------------------------
 # GRU Model Definition
 # -------------------------------
-class MazeGRUModel(nn.Module):
+class MazeGRUModel(MazeBaseModel):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super(MazeGRUModel, self).__init__()
         self.hidden_size = hidden_size
@@ -70,25 +150,23 @@ class MazeGRUModel(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        # x: (batch_size, seq_length, input_size)
-        # Initialize the hidden state (h0) with zeros
+        """
+        Forward pass for the GRU model.
+
+        x: Tensor of shape [batch_size, seq_length, input_size].
+        Returns:
+            Tensor of shape [batch_size, output_size].
+        """
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
-
-        # Pass the input sequence (x) and hidden state (h0) through the GRU layer
-        # Output `out` contains the GRU outputs for all time steps
         out, _ = self.gru(x, h0)
-
-        # Use the output of the last time step for prediction by applying the fully connected layer
-        out = self.fc(out[:, -1, :])  # Extract the last time step's output
+        out = self.fc(out[:, -1, :])
         return out
 
-    def predict(self, maze: torch.Tensor) -> torch.Tensor:
-        return self.forward(maze)
 
 # -------------------------------
 # LSTM Model Definition
 # -------------------------------
-class MazeLSTMModel(nn.Module):
+class MazeLSTMModel(MazeBaseModel):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super(MazeLSTMModel, self).__init__()
         self.hidden_size = hidden_size
@@ -97,15 +175,18 @@ class MazeLSTMModel(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        # x: (batch_size, seq_length, input_size)
+        """
+        Forward pass for the LSTM model.
+
+        x: Tensor of shape [batch_size, seq_length, input_size].
+        Returns:
+            Tensor of shape [batch_size, output_size].
+        """
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
         c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
         out, _ = self.lstm(x, (h0, c0))
         out = self.fc(out[:, -1, :])
         return out
-
-    def predict(self, maze: torch.Tensor) -> torch.Tensor:
-        return self.forward(maze)
 
 # -------------------------------
 # Custom Dataset for Training Samples
@@ -114,8 +195,8 @@ class MazeTrainingDataset(Dataset):
     def __init__(self, data):
         """
         data: a list of tuples (local_context, target_action)
-        local_context: list of 4 values
-        target_action: integer (0-3)
+              local_context: list of 4 scalar values (e.g., [0, 0, 1, 1])
+              target_action: integer (0-3)
         """
         self.data = data
 
@@ -124,62 +205,10 @@ class MazeTrainingDataset(Dataset):
 
     def __getitem__(self, idx):
         local_context, target_action = self.data[idx]
-        # Convert local_context to tensor; unsqueeze later to add seq_length dimension
-        return torch.tensor(local_context, dtype=torch.float32), torch.tensor(target_action, dtype=torch.long)
+        # Convert list of scalars to a numpy array then to a tensor of shape [4]
+        local_context = torch.from_numpy(np.array(local_context)).float()
+        return local_context, torch.tensor(target_action, dtype=torch.long)
 
-# -------------------------------
-# Generic Training Function
-# -------------------------------
-def train_model(model, dataloader, num_epochs=EPOCHS, learning_rate=0.001, device='cpu'):
-    model.to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    model.train()
-    for epoch in range(num_epochs):
-        epoch_loss = 0.0
-        for inputs, targets in dataloader:
-            # inputs: shape [batch_size, 4] -> add seq_length dimension: [batch_size, 1, 4]
-            inputs = inputs.unsqueeze(1).to(device)  # seq_length is 1 here
-            targets = targets.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)  # outputs: [batch_size, output_size]
-            loss = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.item() * inputs.size(0)
-        avg_loss = epoch_loss / len(dataloader.dataset)
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
-    return model
-
-# -------------------------------
-# Training Methods for Each Model
-# -------------------------------
-def train_rnn_model(dataset, input_size=4, hidden_size=16, num_layers=1, output_size=4,
-                    num_epochs=EPOCHS, learning_rate=0.001, batch_size=32, device='cpu'):
-    model = MazeRNN2Model(input_size, hidden_size, num_layers, output_size)
-    train_ds = MazeTrainingDataset(dataset)
-    dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    print("Training RNN model...")
-    trained_model = train_model(model, dataloader, num_epochs, learning_rate, device)
-    return trained_model
-
-def train_gru_model(dataset, input_size=4, hidden_size=16, num_layers=1, output_size=4,
-                    num_epochs=EPOCHS, learning_rate=0.001, batch_size=32, device='cpu'):
-    model = MazeGRUModel(input_size, hidden_size, num_layers, output_size)
-    train_ds = MazeTrainingDataset(dataset)
-    dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    print("Training GRU model...")
-    trained_model = train_model(model, dataloader, num_epochs, learning_rate, device)
-    return trained_model
-
-def train_lstm_model(dataset, input_size=4, hidden_size=16, num_layers=1, output_size=4,
-                     num_epochs=EPOCHS, learning_rate=0.001, batch_size=32, device='cpu'):
-    model = MazeLSTMModel(input_size, hidden_size, num_layers, output_size)
-    train_ds = MazeTrainingDataset(dataset)
-    dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    print("Training LSTM model...")
-    trained_model = train_model(model, dataloader, num_epochs, learning_rate, device)
-    return trained_model
 
 # -------------------------------
 # Training Utilities (Imitation Learning Setup)
@@ -289,6 +318,9 @@ class RNN2MazeSolver(MazeSolver):
         path = []
         return path
 
+
+# Ensure other necessary imports are present
+
 def main():
     TRAINING_MAZES_FILE = "input/training_mazes.pkl"
     TEST_MAZES_FILE = "input/mazes.pkl"
@@ -297,16 +329,26 @@ def main():
     trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE)
     dataset = trainer.create_dataset()
     logging.info(f"Created {len(dataset)} training samples.")
+    train_ds = MazeTrainingDataset(dataset)
+    # Create a DataLoader from the dataset
+    dataloader = DataLoader(train_ds, batch_size=32, shuffle=True)
 
-    # Uncomment one of the following lines to train your desired model:
-    trained_rnn = train_rnn_model(dataset, device='cpu')
-    trained_gru = train_gru_model(dataset, device='cpu')
-    trained_lstm = train_lstm_model(dataset, device='cpu')
+    device = 'cpu'  # or 'cuda' if available
+
+    # Train RNN:
+    rnn_model = MazeRNN2Model(input_size=4, hidden_size=16, num_layers=1, output_size=4)
+    rnn_model.train_model(dataloader, num_epochs=20, learning_rate=0.001, device=device)
+    # Train GRU:
+    gru_model = MazeGRUModel(input_size=4, hidden_size=16, num_layers=1, output_size=4)
+    gru_model.train_model(dataloader, num_epochs=20, learning_rate=0.001, device=device)
+    # Train LSTM:
+    lstm_model = MazeLSTMModel(input_size=4, hidden_size=16, num_layers=1, output_size=4)
+    lstm_model.train_model(dataloader, num_epochs=20, learning_rate=0.001, device=device)
 
     # Optionally, save the trained models
-    torch.save(trained_rnn.state_dict(), f"{OUTPUT}rnn_model.pth")
-    torch.save(trained_gru.state_dict(), "{OUTPUT}gru_model.pth")
-    torch.save(trained_lstm.state_dict(), "{OUTPUT}lstm_model.pth")
+    torch.save(rnn_model.state_dict(), f"{OUTPUT}rnn_model.pth")
+    torch.save(gru_model.state_dict(), f"{OUTPUT}gru_model.pth")
+    torch.save(lstm_model.state_dict(), f"{OUTPUT}lstm_model.pth")
 
     # Example of solving new mazes using the solver class.
     mazes = load_mazes(TEST_MAZES_FILE)
@@ -316,6 +358,7 @@ def main():
             maze.plot_maze(show_path=True, show_solution=False, show_position=False)
         else:
             logging.warning("Test maze failed self-test.")
+
 
 if __name__ == "__main__":
     main()
