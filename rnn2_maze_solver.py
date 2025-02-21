@@ -1,13 +1,10 @@
 # rnn2_maze_solver.py
 import logging
 from maze_solver import MazeSolver
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from pyparsing import Empty
 from torch.utils.data import DataLoader, Dataset
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import utils
 from maze import Maze  # Adjust the import path if necessary
 from utils import load_mazes
@@ -30,11 +27,12 @@ ACTION_MAPPING = {
     (-1, 0): 0,  # Up
     (1, 0): 1    # Down
 }
+OUTPUT = "output/"
 
 logging.getLogger().setLevel(logging.INFO)
 
 # -------------------------------
-# RNN Model Definition
+# RNN Model Definition (Vanilla RNN)
 # -------------------------------
 class MazeRNN2Model(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
@@ -44,10 +42,148 @@ class MazeRNN2Model(nn.Module):
         self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
-    def predict(self, maze: torch.Tensor) -> torch.Tensor:
-        # Placeholder for prediction logic
-        return Empty
+    def forward(self, x):
+        # x: (batch_size, seq_length, input_size)
+        # Initialize the hidden state (h0) with zeros
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
 
+        # Pass the input sequence and hidden state through the RNN layer
+        # out contains the RNN outputs for all time steps
+        out, _ = self.rnn(x, h0)
+
+        # Use the output of the last time step for prediction by applying the fully connected layer
+        out = self.fc(out[:, -1, :])  # out[:, -1, :] extracts the last time step output
+        return out
+
+    def predict(self, maze: torch.Tensor) -> torch.Tensor:
+        return self.forward(maze)
+
+# -------------------------------
+# GRU Model Definition
+# -------------------------------
+class MazeGRUModel(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, output_size):
+        super(MazeGRUModel, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        # x: (batch_size, seq_length, input_size)
+        # Initialize the hidden state (h0) with zeros
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
+
+        # Pass the input sequence (x) and hidden state (h0) through the GRU layer
+        # Output `out` contains the GRU outputs for all time steps
+        out, _ = self.gru(x, h0)
+
+        # Use the output of the last time step for prediction by applying the fully connected layer
+        out = self.fc(out[:, -1, :])  # Extract the last time step's output
+        return out
+
+    def predict(self, maze: torch.Tensor) -> torch.Tensor:
+        return self.forward(maze)
+
+# -------------------------------
+# LSTM Model Definition
+# -------------------------------
+class MazeLSTMModel(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, output_size):
+        super(MazeLSTMModel, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        # x: (batch_size, seq_length, input_size)
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
+        out, _ = self.lstm(x, (h0, c0))
+        out = self.fc(out[:, -1, :])
+        return out
+
+    def predict(self, maze: torch.Tensor) -> torch.Tensor:
+        return self.forward(maze)
+
+# -------------------------------
+# Custom Dataset for Training Samples
+# -------------------------------
+class MazeTrainingDataset(Dataset):
+    def __init__(self, data):
+        """
+        data: a list of tuples (local_context, target_action)
+        local_context: list of 4 values
+        target_action: integer (0-3)
+        """
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        local_context, target_action = self.data[idx]
+        # Convert local_context to tensor; unsqueeze later to add seq_length dimension
+        return torch.tensor(local_context, dtype=torch.float32), torch.tensor(target_action, dtype=torch.long)
+
+# -------------------------------
+# Generic Training Function
+# -------------------------------
+def train_model(model, dataloader, num_epochs=EPOCHS, learning_rate=0.001, device='cpu'):
+    model.to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    model.train()
+    for epoch in range(num_epochs):
+        epoch_loss = 0.0
+        for inputs, targets in dataloader:
+            # inputs: shape [batch_size, 4] -> add seq_length dimension: [batch_size, 1, 4]
+            inputs = inputs.unsqueeze(1).to(device)  # seq_length is 1 here
+            targets = targets.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)  # outputs: [batch_size, output_size]
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item() * inputs.size(0)
+        avg_loss = epoch_loss / len(dataloader.dataset)
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
+    return model
+
+# -------------------------------
+# Training Methods for Each Model
+# -------------------------------
+def train_rnn_model(dataset, input_size=4, hidden_size=16, num_layers=1, output_size=4,
+                    num_epochs=EPOCHS, learning_rate=0.001, batch_size=32, device='cpu'):
+    model = MazeRNN2Model(input_size, hidden_size, num_layers, output_size)
+    train_ds = MazeTrainingDataset(dataset)
+    dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    print("Training RNN model...")
+    trained_model = train_model(model, dataloader, num_epochs, learning_rate, device)
+    return trained_model
+
+def train_gru_model(dataset, input_size=4, hidden_size=16, num_layers=1, output_size=4,
+                    num_epochs=EPOCHS, learning_rate=0.001, batch_size=32, device='cpu'):
+    model = MazeGRUModel(input_size, hidden_size, num_layers, output_size)
+    train_ds = MazeTrainingDataset(dataset)
+    dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    print("Training GRU model...")
+    trained_model = train_model(model, dataloader, num_epochs, learning_rate, device)
+    return trained_model
+
+def train_lstm_model(dataset, input_size=4, hidden_size=16, num_layers=1, output_size=4,
+                     num_epochs=EPOCHS, learning_rate=0.001, batch_size=32, device='cpu'):
+    model = MazeLSTMModel(input_size, hidden_size, num_layers, output_size)
+    train_ds = MazeTrainingDataset(dataset)
+    dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    print("Training LSTM model...")
+    trained_model = train_model(model, dataloader, num_epochs, learning_rate, device)
+    return trained_model
+
+# -------------------------------
+# Training Utilities (Imitation Learning Setup)
+# -------------------------------
 class RNN2MazeTrainer:
     def __init__(self, training_file_path="input/training_mazes.pkl"):
         """
@@ -95,90 +231,44 @@ class RNN2MazeTrainer:
     def create_dataset(self):
         """
         Constructs a dataset for training a model to navigate mazes.
-
-        The dataset is a list of tuples where each tuple consists of local context
-        information about the current position in a maze and the corresponding
-        action required to move to the next position in the solution path.
-
-        The function iterates through each training maze and calculates the solution
-        path from the start to the exit. For each transition along the solution path,
-        the function determines the local context of the current position and the
-        required action to move to the next position. These are stored as a tuple in
-        the resulting dataset.
-
-        Each action is mapped to an integer based on a predefined direction-to-target
-        mapping. The local context is determined by analyzing the maze structure around
-        the current position.
-
-        :param self:  
-            Reference to the object instance containing training mazes and helper
-            methods such as `_compute_local_context`.
-
-        :return:  
-            A list of tuples, where each tuple contains the local context of a position
-            in the maze and the target action as an integer.
-        :rtype: list[tuple[any, int]]
-
-        :raises KeyError:  
-            If a move delta calculated between consecutive positions in the solution
-            is invalid (not present in the direction-to-target mapping).
+        Each training sample is a tuple (local_context, target_action), where:
+          - local_context: A list of 4 values representing the state of the maze cells
+                           in the order [up, down, left, right] relative to the current position.
+                           (0 for corridor, 1 for wall; out-of-bound cells are treated as walls.)
+          - target_action: An integer (0: up, 1: down, 2: left, 3: right) representing the move
+                           from the current position to the next position in the solution.
+        Returns:
+            list: A list of (local_context, target_action) training samples.
         """
         dataset = []
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
         direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
 
         for maze in self.training_mazes:
-            # Retrieve the solution path for the current maze (list of coordinates from start to exit)
-            solution = maze.get_solution()
+            solution = maze.get_solution()  # List of coordinates from start to exit
             for i in range(len(solution) - 1):
-                # Get the current position and the next position in the solution path
                 current_pos = solution[i]
                 next_pos = solution[i + 1]
-                # Compute the local context around the current position
                 local_context = self._compute_local_context(maze, current_pos, directions)
-                # Calculate the delta between the current position and the next position
                 move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
-                # Raise an error if the move is not valid (not in the predefined direction mapping)
                 if move_delta not in direction_to_target:
                     raise KeyError(f"Invalid move delta: {move_delta}")
-                # Map the move delta to the corresponding target action
                 target_action = direction_to_target[move_delta]
-                # Append the local context and target action as a training sample
                 dataset.append((local_context, target_action))
         return dataset
 
     def _compute_local_context(self, maze, position, directions):
         """
-        Computes the local context of a given position in a maze by checking the states 
-        of its neighbors in the specified directions. The method evaluates each 
-        neighbor's cell state, considering whether the position is within the bounds 
-        of the maze grid.
-
-        :param maze: The maze object containing the grid and logic to determine 
-                     whether a position is within bounds.
-        :type maze: Maze
-        :param position: The current position in the maze given as a tuple (row, column).
-        :type position: tuple[int, int]
-        :param directions: A list of directions to evaluate, where each direction is 
-                           represented as a tuple (delta_row, delta_column).
-        :type directions: list[tuple[int, int]]
-        :return: A list of cell states representing the local context around the 
-                 specified position.
-        :rtype: list[Any]
+        Computes the local context around a given position in a maze.
+        Returns a list of cell states in the order defined by 'directions'.
         """
         r, c = position
-        local_context = []  # Initialize a list to store the state of neighboring cells
+        local_context = []
         for dr, dc in directions:
-            # Calculate the neighbor's position relative to the current position
             neighbor = (r + dr, c + dc)
-            # Determine the state of the neighbor cell:
-            # If the neighbor is out of bounds, treat it as a wall
             cell_state = maze.grid[neighbor] if maze.is_within_bounds(neighbor) else WALL
-            # Append the cell state to the local context
             local_context.append(cell_state)
-        # Return the list of cell states representing the local context
         return local_context
-
 
 # -------------------------------
 # Maze Solver (Inference) Class
@@ -207,6 +297,16 @@ def main():
     trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE)
     dataset = trainer.create_dataset()
     logging.info(f"Created {len(dataset)} training samples.")
+
+    # Uncomment one of the following lines to train your desired model:
+    trained_rnn = train_rnn_model(dataset, device='cpu')
+    trained_gru = train_gru_model(dataset, device='cpu')
+    trained_lstm = train_lstm_model(dataset, device='cpu')
+
+    # Optionally, save the trained models
+    torch.save(trained_rnn.state_dict(), f"{OUTPUT}rnn_model.pth")
+    torch.save(trained_gru.state_dict(), "{OUTPUT}gru_model.pth")
+    torch.save(trained_lstm.state_dict(), "{OUTPUT}lstm_model.pth")
 
     # Example of solving new mazes using the solver class.
     mazes = load_mazes(TEST_MAZES_FILE)
