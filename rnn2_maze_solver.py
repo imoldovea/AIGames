@@ -24,10 +24,10 @@ EPOCHS = 20  # Number of training epochs
 
 # Action mapping
 ACTION_MAPPING = {
-    'up': 0,
-    'down': 1,
-    'left': 2,
-    'right': 3
+    (0, -1): 2,  # Left
+    (0, 1): 3,   # Right
+    (-1, 0): 0,  # Up
+    (1, 0): 1    # Down
 }
 
 logging.getLogger().setLevel(logging.INFO)
@@ -105,6 +105,127 @@ class RRN2MazeSolver(MazeSolver):
                 raise RuntimeError(f"Failed to process maze {i + 1}.") from e
     
         return solved_training_models
+
+
+def create_local_context_dataset(training_mazes):
+    """
+    Creates a dataset for one-move-at-a-time training using local context.
+
+    Each training sample is a tuple (local_context, target_action), where:
+      - local_context: A list of 4 values representing the state of the maze cells
+                       in the order [up, down, left, right] relative to the current position.
+                       (0 for corridor, 1 for wall; out-of-bound cells are treated as walls.)
+      - target_action: An integer (0: up, 1: down, 2: left, 3: right) representing the
+                       move from the current position to the next position in the solution.
+
+    Args:
+        training_mazes (list): A list of Maze objects with a valid solution path.
+
+    Returns:
+        list: A list of (local_context, target_action) training samples.
+    """
+    dataset = []
+    # Define the order of directions and the corresponding target mapping
+    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
+    direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
+
+    for maze in training_mazes:
+        solution = maze.get_solution()  # List of coordinates from start to exit
+        # Iterate over each step in the solution path except the last one.
+        for i in range(len(solution) - 1):
+            current_pos = solution[i]
+            next_pos = solution[i + 1]
+
+            # Build the local context vector
+            local_context = []
+            r, c = current_pos
+            for dr, dc in directions:
+                neighbor = (r + dr, c + dc)
+                # If neighbor is within bounds, use the cell's state; otherwise, treat as wall.
+                if maze.is_within_bounds(neighbor):
+                    cell_state = maze.grid[neighbor]
+                else:
+                    cell_state = 1  # out-of-bound => wall
+                local_context.append(cell_state)
+
+            # Compute the difference to determine the move taken.
+            move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
+            target_action = direction_to_target.get(move_delta)
+            if target_action is None:
+                # This should not happen if the solution path is valid.
+                raise ValueError(f"Unexpected move {move_delta} from {current_pos} to {next_pos}")
+
+            # Append the (input, target) pair to the dataset.
+            dataset.append((local_context, target_action))
+
+    return dataset
+
+
+# Example usage:
+# training_mazes is a list of Maze objects with solutions already set.
+local_context_dataset = create_local_context_dataset(training_mazes)
+print(f"Created {len(local_context_dataset)} training samples.")
+
+
+def create_local_context_dataset(training_mazes):
+    """
+    Creates a dataset for one-move-at-a-time training using local context.
+
+    Each training sample is a tuple (local_context, target_action), where:
+      - local_context: A list of 4 values representing the state of the maze cells
+                       in the order [up, down, left, right] relative to the current position.
+                       (0 for corridor, 1 for wall; out-of-bound cells are treated as walls.)
+      - target_action: An integer (0: up, 1: down, 2: left, 3: right) representing the
+                       move from the current position to the next position in the solution.
+
+    Args:
+        training_mazes (list): A list of Maze objects with a valid solution path.
+
+    Returns:
+        list: A list of (local_context, target_action) training samples.
+    """
+    dataset = []
+    # Define the order of directions and the corresponding target mapping
+    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
+    direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
+
+    for maze in training_mazes:
+        solution = maze.get_solution()  # List of coordinates from start to exit
+        # Iterate over each step in the solution path except the last one.
+        for i in range(len(solution) - 1):
+            current_pos = solution[i]
+            next_pos = solution[i + 1]
+
+            # Build the local context vector
+            local_context = []
+            r, c = current_pos
+            for dr, dc in directions:
+                neighbor = (r + dr, c + dc)
+                # If neighbor is within bounds, use the cell's state; otherwise, treat as wall.
+                if maze.is_within_bounds(neighbor):
+                    cell_state = maze.grid[neighbor]
+                else:
+                    cell_state = 1  # out-of-bound => wall
+                local_context.append(cell_state)
+
+            # Compute the difference to determine the move taken.
+            move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
+            target_action = direction_to_target.get(move_delta)
+            if target_action is None:
+                # This should not happen if the solution path is valid.
+                raise ValueError(f"Unexpected move {move_delta} from {current_pos} to {next_pos}")
+
+            # Append the (input, target) pair to the dataset.
+            dataset.append((local_context, target_action))
+
+    return dataset
+
+
+# Example usage:
+# training_mazes is a list of Maze objects with solutions already set.
+local_context_dataset = create_local_context_dataset(training_mazes)
+print(f"Created {len(local_context_dataset)} training samples.")
+
 
 def main():
     """

@@ -249,6 +249,7 @@ class Maze:
             self.logger.error("Exit is not connected to the maze border.")
             return False
 
+
         # Explicit log for successful validation
         self.logger.debug("Maze self-test passed successfully.")
         return True
