@@ -8,12 +8,14 @@ from maze import Maze  # Adjust the import path if necessary
 from utils import load_mazes
 from backtrack_maze_solver import BacktrackingMazeSolver
 from configparser import ConfigParser
-import os
+import os, csv
+from torch.utils.tensorboard import SummaryWriter
+from chart_utility import save_latest_loss_chart
+from torch.optim import lr_scheduler
 
 # -------------------------------
 # Hyperparameters and Configurations
 # -------------------------------
-PARAMETERS_FILE = "config.properties"
 RETRAIN_MODEL = True
 
 # Maze encoding constants
@@ -28,11 +30,18 @@ ACTION_MAPPING = {
     (-1, 0): 0,  # Up
     (1, 0): 1    # Down
 }
+PARAMETERS_FILE = "config.properties"
 OUTPUT = "output/"
+INPUT = "input/"
+LOSS_FILE = f"{OUTPUT}loss_data.csv"
 # Define the path to save/load the models
-RNN_MODEL_PATH = "path/to/your/rnn_model.pth"
-GRU_MODEL_PATH = "path/to/your/gru_model.pth"
-LSTM_MODEL_PATH = "path/to/your/lstm_model.pth"
+RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
+GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
+LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
+TRAINING_PROGRESS_HTML = "training_progress.html"
+TRAINING_PROGRESS_PNG = "training_progress.png"
+LOSS_FILE = f"{OUTPUT}loss_data.csv"
+LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
 
 
 logging.getLogger().setLevel(logging.INFO)
@@ -52,16 +61,16 @@ class MazeBaseModel(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
 
-    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001, device='cpu'):
+    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001, device='cpu',writer=None):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.
-    
+
         Parameters:
             dataloader (DataLoader): Dataloader for training data.
             num_epochs (int): Number of epochs to train.
             learning_rate (float): Learning rate for the optimizer.
             device (str): Device to train on ('cpu' or 'cuda').
-    
+
         Returns:
             self: The trained model.
         """
@@ -77,6 +86,11 @@ class MazeBaseModel(nn.Module):
         # Set the model to training mode.
         self.train()
 
+        #Display of training rate
+        train_losses = []
+
+        summary_writer = SummaryWriter(log_dir=f"{OUTPUT}{self.__class__.__name__}_{TRAINING_PROGRESS_HTML}")
+
         # Loop over the specified number of epochs.
         for epoch in range(num_epochs):
             running_loss = 0.0  # Accumulate loss for the current epoch
@@ -85,7 +99,6 @@ class MazeBaseModel(nn.Module):
             for inputs, targets in dataloader:
                 # Add a sequence length dimension to inputs and move to the specified device.
                 inputs = inputs.unsqueeze(1).to(device).float()
-
 
                 # Move targets to the specified device.
                 targets = targets.to(device)
@@ -112,11 +125,27 @@ class MazeBaseModel(nn.Module):
             epoch_loss = running_loss / len(dataloader.dataset)
 
             # Print the epoch number and the corresponding loss.
-            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+            logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
 
-        # Return the trained model.
-        return self
+            #Visualise training rate
+            summary_writer.add_scalar('Loss/train', epoch_loss, epoch)
+            summary_writer.add_scalar(
+                'Accuracy/train',
+                100.0 * torch.sum(torch.argmax(outputs, dim=1) == targets) / len(targets),
+                epoch
+            )
+            # Append loss value to CSV file
+            with open(LOSS_FILE, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([self.model_name, epoch + 1, epoch_loss])
 
+            train_losses.append(epoch_loss)
+
+
+        summary_writer.close()
+        last_loss = train_losses[-1] if train_losses else None  # Save the last loss value
+
+        return last_loss
 
 # -------------------------------
 # RNN Model Definition
@@ -128,6 +157,7 @@ class MazeRNN2Model(MazeBaseModel):
         self.num_layers = num_layers
         self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
+        self.model_name = "RNN"
 
     def forward(self, x):
         """
@@ -156,6 +186,7 @@ class MazeGRUModel(MazeBaseModel):
         self.num_layers = num_layers
         self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
+        self.model_name = "GRU"
 
     def forward(self, x):
         """
@@ -181,6 +212,7 @@ class MazeLSTMModel(MazeBaseModel):
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
+        self.model_name = "LSTM"
 
     def forward(self, x):
         """
@@ -330,8 +362,13 @@ class RNN2MazeSolver(MazeSolver):
 # Ensure other necessary imports are present
 
 def main():
-    TRAINING_MAZES_FILE = "input/training_mazes.pkl"
-    TEST_MAZES_FILE = "input/mazes.pkl"
+    TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
+    TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
+
+    #CSV file for storing traning progress.
+    with open(LOSS_FILE, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["model","epoch", "loss"])  # Write header
 
     # Instantiate the trainer with the file path for training mazes.
     trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE)
@@ -346,7 +383,6 @@ def main():
     config.read("config.properties")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device: {device}')
-    #device = config.get("DEFAULT", "device")
 
     #RNN model:
     if not RETRAIN_MODEL and os.path.exists(RNN_MODEL_PATH):
@@ -360,26 +396,20 @@ def main():
             num_layers=config.getint("RNN", "num_layers"),
             output_size=config.getint("RNN", "output_size"),
         )
-        rnn_model.train_model(
+        loss = rnn_model.train_model(
             dataloader,
             num_epochs=config.getint("RNN", "num_epochs"),
             learning_rate=config.getfloat("RNN", "learning_rate"),
             device=device,
+            writer=writer
         )
-        logging.info("Done training RNN model")
+        logging.info(f"Done training RNN model. Loss {loss:.4f}")
         torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
         logging.info("Saved RNN model")
 
     # Initialize GRU Model
     if not RETRAIN_MODEL and os.path.exists(GRU_MODEL_PATH):
-        gru_model = MazeGRUModel(
-            input_size=config.getint("GRU", "input_size"),
-            hidden_size=config.getint("GRU", "hidden_size"),
-            num_layers=config.getint("GRU", "num_layers"),
-            output_size=config.getint("GRU", "output_size"),
-        )
-        gru_model.load_state_dict(torch.load(GRU_MODEL_PATH))
-        gru_model.to(device)
+        gru_model = torch.load(f"{OUTPUT}gru_model.pth")
         print("GRU model loaded from file.")
     else:
         logging.info("Training GRU model")
@@ -389,26 +419,20 @@ def main():
             num_layers=config.getint("GRU", "num_layers"),
             output_size=config.getint("GRU", "output_size"),
         )
-        gru_model.train_model(
+        loss = gru_model.train_model(
             dataloader,
             num_epochs=config.getint("GRU", "num_epochs"),
             learning_rate=config.getfloat("GRU", "learning_rate"),
             device=device,
+            writer=writer
         )
         torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
-        print("GRU model trained and saved to file.")
+        logging.info(f"Done training GRU model. Loss {loss:.4f}")
 
     # Initialize LSTM Model
     if not RETRAIN_MODEL and os.path.exists(LSTM_MODEL_PATH):
-        lstm_model = MazeLSTMModel(
-            input_size=config.getint("LSTM", "input_size"),
-            hidden_size=config.getint("LSTM", "hidden_size"),
-            num_layers=config.getint("LSTM", "num_layers"),
-            output_size=config.getint("LSTM", "output_size"),
-        )
-        lstm_model.load_state_dict(torch.load(LSTM_MODEL_PATH))
-        lstm_model.to(device)
-        print("LSTM model loaded from file.")
+        lstm_model = torch.load(f"{OUTPUT}lstm_model.pth")
+        logging.info("LSTM model loaded from file.")
     else:
         logging.info("Training LSTM model")
         lstm_model = MazeLSTMModel(
@@ -417,14 +441,21 @@ def main():
             num_layers=config.getint("LSTM", "num_layers"),
             output_size=config.getint("LSTM", "output_size"),
         )
-        lstm_model.train_model(
+        loss = lstm_model.train_model(
             dataloader,
             num_epochs=config.getint("LSTM", "num_epochs"),
             learning_rate=config.getfloat("LSTM", "learning_rate"),
             device=device,
+            writer=writer
         )
         torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
-        print("LSTM model trained and saved to file.")
+        logging.info(f"Done training LSTM model. Loss {loss:.4f}")
+
+    # After training ends, save the latest loss chart
+    save_latest_loss_chart(
+        loss_file_path=LOSS_FILE,
+        loss_chart=LOSS_PLOT_FILE
+    )
 
     # Example of solving new mazes using the solver class.
     mazes = load_mazes(TEST_MAZES_FILE)
