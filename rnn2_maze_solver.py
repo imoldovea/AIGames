@@ -344,7 +344,9 @@ def main():
     # Read configurations
     config = ConfigParser()
     config.read("config.properties")
-    device = config.get("DEFAULT", "device")
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logging.info(f'Using device: {device}')
+    #device = config.get("DEFAULT", "device")
 
     #RNN model:
     if not RETRAIN_MODEL and os.path.exists(RNN_MODEL_PATH):
