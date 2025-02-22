@@ -370,18 +370,19 @@ class Maze:
         image_data[corridors] = [255, 255, 255]  # White for corridors
         image_data[walls] = [0, 0, 0]  # Black for walls
 
-        # Optionally overlay the solution in red
+        # Optionally overlay the solution in red or green depending on validity
         if show_solution:
+            solution_color = [0, 255, 0] if self.test_solution() else [255, 0, 0]  # Green if valid, Red if not
             for (r, c) in self._solution:
                 if 0 <= r < self.rows and 0 <= c < self.cols:
-                    image_data[r, c] = [255, 0, 0]
+                    image_data[r, c] = solution_color
 
         if show_position:
-            image_data[self.current_position] = [255, 0, 0]
+            image_data[self.current_position] = [255, 192, 203] #Pink
 
         # Mark the start (green) and exit (blue, if defined)
         start_r, start_c = self.start_position
-        image_data[start_r, start_c] = [0, 255, 0]  # Start in green
+        image_data[start_r, start_c] = [255, 255, 0]  # Start in yellow
         if self.exit is not None:
             exit_r, exit_c = self.exit
             image_data[exit_r, exit_c] = [0, 255, 255]  # Start of gradient (green to cyan).
@@ -397,7 +398,17 @@ class Maze:
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         image_data[r, c] = [128, 128, 128]
 
-        resized_image = self.create_padded_image(image_data,self.IMG_SIZE,self.IMG_SIZE)
+        # Add a block in the top-left corner based on solution status
+        block_size = min(self.rows, self.cols) // 10  # Define block size relative to the maze size
+        status_color = [128, 128, 128]  # Default to gray (no solution set)
+
+        if self._solution:
+            status_color = [0, 255, 0] if self.test_solution() else [255, 0, 0]  # Green if valid, red if invalid
+
+        # Overlay the status block on the maze image
+        image_data[:block_size, :block_size] = status_color
+
+        resized_image = self.create_padded_image(image_data, self.IMG_SIZE, self.IMG_SIZE)
         return resized_image
 
     def get_maze_as_text(self) -> str:

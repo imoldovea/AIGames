@@ -19,7 +19,7 @@ from torch.optim import lr_scheduler
 # -------------------------------
 # Hyperparameters and Configurations
 # -------------------------------
-RETRAIN_MODEL = True
+RETRAIN_MODEL = False
 
 # Maze encoding constants
 PATH = 0
@@ -358,20 +358,89 @@ class RNN2MazeTrainer:
 # Maze Solver (Inference) Class
 # -------------------------------
 class RNN2MazeSolver(MazeSolver):
-    def __init__(self, maze):
+    def __init__(self, maze, model_type="RNN", device="cpu"):
         """
-        Initializes the RNN2MazeSolver with a Maze object.
+        Initializes the RNN2MazeSolver with a Maze object and loads the specified model.
+
         Args:
             maze (Maze): The maze to solve.
+            model_type (str): Model type ("RNN", "GRU", "LSTM").
+            device (str): Device for computation ("cpu" or "cuda").
         """
         self.maze = maze
+        self.model_type = model_type
+        self.device = torch.device(device)
         maze.set_algorithm(self.__class__.__name__)
-        # Placeholder: Load your trained model here (not implemented yet)
+
+        # Load model based on type
+        if model_type == "RNN":
+            self.model = MazeRNN2Model(4, 14, 1, 4)  # Update parameters if dynamic loading is required
+            self.model.load_state_dict(torch.load(RNN_MODEL_PATH, map_location=device))
+        elif model_type == "GRU":
+            self.model = MazeGRUModel(4, 14, 1, 4)
+            self.model.load_state_dict(torch.load(GRU_MODEL_PATH, map_location=device))
+        elif model_type == "LSTM":
+            self.model = MazeLSTMModel(4, 14, 1, 4)
+            self.model.load_state_dict(torch.load(LSTM_MODEL_PATH, map_location=device))
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
+
+        self.model.to(self.device)
+        self.model.eval()
 
     def solve(self):
-        # Placeholder: Implement the logic to solve the maze using the trained model.
-        path = []
+        """
+        Solve the maze using the loaded model.
+
+        Returns:
+            list: A list of coordinates representing the path from start to exit.
+        """
+        current_pos = self.maze.get_start()
+        path = [current_pos]
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
+
+        while not self.maze.is_exit(current_pos):
+            # Compute local context
+            local_context = self._compute_local_context(current_pos, directions)
+            input_tensor = torch.tensor([local_context], device=self.device).float()
+
+            # Predict the action
+            with torch.no_grad():
+                action_probs = self.model(input_tensor)
+                action = torch.argmax(action_probs, dim=1).item()
+
+            # Update position based on action
+            move_delta = directions[action]
+            next_pos = (current_pos[0] + move_delta[0], current_pos[1] + move_delta[1])
+
+            # Validate move
+            if not self.maze.is_within_bounds(next_pos) or self.maze.grid[next_pos] == WALL:
+                logging.error(f"Predicted invalid move to {next_pos} from {current_pos}.")
+                break
+
+            path.append(next_pos)
+            current_pos = next_pos
+
         return path
+
+    def _compute_local_context(self, position, directions):
+        """
+        Computes the local context around a given position in the maze.
+        
+        Args:
+            position (tuple): Current position in the maze (row, col).
+            directions (list): List of direction deltas.
+
+        Returns:
+            list: Local context (0 for path, 1 for wall).
+        """
+        r, c = position
+        context = []
+        for dr, dc in directions:
+            neighbor = (r + dr, c + dc)
+            cell_state = self.maze.grid[neighbor] if self.maze.is_within_bounds(neighbor) else WALL
+            context.append(cell_state)
+        return context
 
 
 # Ensure other necessary imports are present
@@ -485,13 +554,30 @@ def main():
 
 # Example of solving new mazes using the solver class.
     mazes = load_mazes(TEST_MAZES_FILE)
+
+
+    successful_solutions = 0
+
+    # Solve the maze using the RNN2MazeSolver
     for i, maze_data in enumerate(mazes):
         maze = Maze(maze_data)
-        if maze.self_test():
-            maze.plot_maze(show_path=True, show_solution=False, show_position=False)
-        else:
-            logging.warning("Test maze failed self-test.")
+        maze.set_algorithm("RNN")
+        solver = RNN2MazeSolver(maze, model_type="RNN", device=device)
+        solution_path = solver.solve()
+        logging.info(f"Solved Maze {i + 1}: {solution_path}")
 
+        # Validate and visualize the solution
+        if maze.self_test():
+            maze.set_solution(solution_path)
+            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
+            successful_solutions += 1
+        else:
+            maze.plot_maze(show_path=FalTruese, show_solution=False, show_position=False)
+            logging.warning(f"Maze {i + 1} failed self-test.")
+
+    total_mazes = len(mazes)
+    error_rate = (total_mazes - successful_solutions) / total_mazes * 100
+    logging.info(f"Total mazes: {total_mazes}, Successful solutions: {successful_solutions}, Error rate: {error_rate:.2f}%")
 
 if __name__ == "__main__":
     main()
