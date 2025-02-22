@@ -1,5 +1,8 @@
 # rnn2_maze_solver.py
 import logging
+
+from numpy.f2py.auxfuncs import throw_error
+
 from maze_solver import MazeSolver
 import numpy as np
 from torch.utils.data import DataLoader, Dataset
@@ -8,7 +11,7 @@ from maze import Maze  # Adjust the import path if necessary
 from utils import load_mazes
 from backtrack_maze_solver import BacktrackingMazeSolver
 from configparser import ConfigParser
-import os, csv
+import os, csv, subprocess
 from torch.utils.tensorboard import SummaryWriter
 from chart_utility import save_latest_loss_chart
 from torch.optim import lr_scheduler
@@ -365,10 +368,17 @@ def main():
     TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
     TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
 
-    #CSV file for storing traning progress.
-    with open(LOSS_FILE, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["model","epoch", "loss"])  # Write header
+    # Start the dashboard.py script as a separate process.
+    dashboard_process = subprocess.Popen(["python", "dashboard.py"])
+
+    try:
+        # CSV file for storing training progress.
+        with open(LOSS_FILE, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["model", "epoch", "loss"])  # Write header
+    except Exception as e:
+        throw_error(e)
+        logging.error(f"Training mazes file not found: {e}")
 
     # Instantiate the trainer with the file path for training mazes.
     trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE)
@@ -451,13 +461,17 @@ def main():
         torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
         logging.info(f"Done training LSTM model. Loss {loss:.4f}")
 
-    # After training ends, save the latest loss chart
-    save_latest_loss_chart(
-        loss_file_path=LOSS_FILE,
-        loss_chart=LOSS_PLOT_FILE
-    )
+        # After training ends, save the latest loss chart
+        save_latest_loss_chart(
+            loss_file_path=LOSS_FILE,
+            loss_chart=LOSS_PLOT_FILE
+        )
 
-    # Example of solving new mazes using the solver class.
+    # Ensure the dashboard process is terminated after training.
+    dashboard_process.terminate()
+
+
+# Example of solving new mazes using the solver class.
     mazes = load_mazes(TEST_MAZES_FILE)
     for i, maze_data in enumerate(mazes):
         maze = Maze(maze_data)
