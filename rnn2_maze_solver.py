@@ -36,7 +36,6 @@ ACTION_MAPPING = {
 PARAMETERS_FILE = "config.properties"
 OUTPUT = "output/"
 INPUT = "input/"
-LOSS_FILE = f"{OUTPUT}loss_data.csv"
 # Define the path to save/load the models
 RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
 GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
@@ -82,6 +81,12 @@ class MazeBaseModel(nn.Module):
 
         # Define the optimizer as Adam and set the learning rate.
         optimizer = optim.Adam(self.parameters(), lr=learning_rate)
+
+        # Define a learning rate scheduler (Reduce LR when loss plateaus)
+        #Step Decay (Reduce LR every 10 epochs)
+        #scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+        #Reduce LR if No Improvement
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 
         # Define the loss function as cross-entropy loss.
         criterion = nn.CrossEntropyLoss()
@@ -130,6 +135,9 @@ class MazeBaseModel(nn.Module):
             # Print the epoch number and the corresponding loss.
             logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
 
+            # Update learning rate
+            scheduler.step(epoch_loss)
+
             #Visualise training rate
             summary_writer.add_scalar('Loss/train', epoch_loss, epoch)
             summary_writer.add_scalar(
@@ -137,6 +145,10 @@ class MazeBaseModel(nn.Module):
                 100.0 * torch.sum(torch.argmax(outputs, dim=1) == targets) / len(targets),
                 epoch
             )
+            #logging.info(
+                f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
+            summary_writer.add_scalar('LearningRate/train', scheduler.get_last_lr()[0], epoch)
+
             # Append loss value to CSV file
             with open(LOSS_FILE, "a", newline="") as f:
                 writer = csv.writer(f)
