@@ -146,7 +146,7 @@ class MazeBaseModel(nn.Module):
                 epoch
             )
             #logging.info(
-                f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
+            #    f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
             summary_writer.add_scalar('LearningRate/train', scheduler.get_last_lr()[0], epoch)
 
             # Append loss value to CSV file
