@@ -7,11 +7,14 @@ import utils
 from maze import Maze  # Adjust the import path if necessary
 from utils import load_mazes
 from backtrack_maze_solver import BacktrackingMazeSolver
+from configparser import ConfigParser
+import os
 
 # -------------------------------
 # Hyperparameters and Configurations
 # -------------------------------
-EPOCHS = 20  # Number of training epochs
+PARAMETERS_FILE = "config.properties"
+RETRAIN_MODEL = True
 
 # Maze encoding constants
 PATH = 0
@@ -26,6 +29,11 @@ ACTION_MAPPING = {
     (1, 0): 1    # Down
 }
 OUTPUT = "output/"
+# Define the path to save/load the models
+RNN_MODEL_PATH = "path/to/your/rnn_model.pth"
+GRU_MODEL_PATH = "path/to/your/gru_model.pth"
+LSTM_MODEL_PATH = "path/to/your/lstm_model.pth"
+
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -333,22 +341,88 @@ def main():
     # Create a DataLoader from the dataset
     dataloader = DataLoader(train_ds, batch_size=32, shuffle=True)
 
-    device = 'cpu'  # or 'cuda' if available
+    # Read configurations
+    config = ConfigParser()
+    config.read("config.properties")
+    device = config.get("DEFAULT", "device")
 
-    # Train RNN:
-    rnn_model = MazeRNN2Model(input_size=4, hidden_size=16, num_layers=1, output_size=4)
-    rnn_model.train_model(dataloader, num_epochs=20, learning_rate=0.001, device=device)
-    # Train GRU:
-    gru_model = MazeGRUModel(input_size=4, hidden_size=16, num_layers=1, output_size=4)
-    gru_model.train_model(dataloader, num_epochs=20, learning_rate=0.001, device=device)
-    # Train LSTM:
-    lstm_model = MazeLSTMModel(input_size=4, hidden_size=16, num_layers=1, output_size=4)
-    lstm_model.train_model(dataloader, num_epochs=20, learning_rate=0.001, device=device)
+    #RNN model:
+    if not RETRAIN_MODEL and os.path.exists(RNN_MODEL_PATH):
+        rnn_model = torch.load(f"{OUTPUT}rnn_model.pth")
+        logging.info("Loaded RNN model")
+    else:
+        logging.info("Training RNN model")
+        rnn_model = MazeRNN2Model(
+            input_size=config.getint("RNN", "input_size"),
+            hidden_size=config.getint("RNN", "hidden_size"),
+            num_layers=config.getint("RNN", "num_layers"),
+            output_size=config.getint("RNN", "output_size"),
+        )
+        rnn_model.train_model(
+            dataloader,
+            num_epochs=config.getint("RNN", "num_epochs"),
+            learning_rate=config.getfloat("RNN", "learning_rate"),
+            device=device,
+        )
+        logging.info("Done training RNN model")
+        torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
+        logging.info("Saved RNN model")
 
-    # Optionally, save the trained models
-    torch.save(rnn_model.state_dict(), f"{OUTPUT}rnn_model.pth")
-    torch.save(gru_model.state_dict(), f"{OUTPUT}gru_model.pth")
-    torch.save(lstm_model.state_dict(), f"{OUTPUT}lstm_model.pth")
+    # Initialize GRU Model
+    if not RETRAIN_MODEL and os.path.exists(GRU_MODEL_PATH):
+        gru_model = MazeGRUModel(
+            input_size=config.getint("GRU", "input_size"),
+            hidden_size=config.getint("GRU", "hidden_size"),
+            num_layers=config.getint("GRU", "num_layers"),
+            output_size=config.getint("GRU", "output_size"),
+        )
+        gru_model.load_state_dict(torch.load(GRU_MODEL_PATH))
+        gru_model.to(device)
+        print("GRU model loaded from file.")
+    else:
+        logging.info("Training GRU model")
+        gru_model = MazeGRUModel(
+            input_size=config.getint("GRU", "input_size"),
+            hidden_size=config.getint("GRU", "hidden_size"),
+            num_layers=config.getint("GRU", "num_layers"),
+            output_size=config.getint("GRU", "output_size"),
+        )
+        gru_model.train_model(
+            dataloader,
+            num_epochs=config.getint("GRU", "num_epochs"),
+            learning_rate=config.getfloat("GRU", "learning_rate"),
+            device=device,
+        )
+        torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
+        print("GRU model trained and saved to file.")
+
+    # Initialize LSTM Model
+    if not RETRAIN_MODEL and os.path.exists(LSTM_MODEL_PATH):
+        lstm_model = MazeLSTMModel(
+            input_size=config.getint("LSTM", "input_size"),
+            hidden_size=config.getint("LSTM", "hidden_size"),
+            num_layers=config.getint("LSTM", "num_layers"),
+            output_size=config.getint("LSTM", "output_size"),
+        )
+        lstm_model.load_state_dict(torch.load(LSTM_MODEL_PATH))
+        lstm_model.to(device)
+        print("LSTM model loaded from file.")
+    else:
+        logging.info("Training LSTM model")
+        lstm_model = MazeLSTMModel(
+            input_size=config.getint("LSTM", "input_size"),
+            hidden_size=config.getint("LSTM", "hidden_size"),
+            num_layers=config.getint("LSTM", "num_layers"),
+            output_size=config.getint("LSTM", "output_size"),
+        )
+        lstm_model.train_model(
+            dataloader,
+            num_epochs=config.getint("LSTM", "num_epochs"),
+            learning_rate=config.getfloat("LSTM", "learning_rate"),
+            device=device,
+        )
+        torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
+        print("LSTM model trained and saved to file.")
 
     # Example of solving new mazes using the solver class.
     mazes = load_mazes(TEST_MAZES_FILE)
