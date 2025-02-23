@@ -5,7 +5,8 @@ import traceback
 from utils import (load_mazes)
 import matplotlib.pyplot as plt
 
-
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 class Maze:
     WALL = 1
     CORRIDOR = 0
@@ -277,7 +278,7 @@ class Maze:
             return False
 
         if self.exit is None or self._solution[-1] != self.exit:
-            self.logger.error("Solution does not end at the exit position.")
+            self.logger.debug("Solution does not end at the exit position.")
             return False
 
         # Validate that the path is contiguous and avoids walls.
@@ -448,7 +449,7 @@ class Maze:
         """
         imgage_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution, show_position=show_position)
         plt.imshow(imgage_data, interpolation='none')
-        plt.title("Maze Visualization")
+        plt.title(f"{self.algorithm} Maze Visualization")
         plt.axis("off")
         plt.show()
 

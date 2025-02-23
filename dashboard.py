@@ -3,13 +3,12 @@ from dash import dcc, html
 from dash.dependencies import Input, Output
 import pandas as pd
 import plotly.graph_objs as go
-
+import numpy as np  # Import NumPy for NaN handling
 
 # File where training script logs loss values
 OUTPUT = "output/"
 INPUT = "input/"
 LOSS_FILE = f"{OUTPUT}loss_data.csv"
-OUTPUT_CHART= f"{OUTPUT}loss_chart.png"
 
 # Initialize Dash app
 app = dash.Dash(__name__)
@@ -41,9 +40,14 @@ def update_graph(n_intervals):
 
         fig = go.Figure()
 
-        # Add a trace for each model
+        # Add a trace for each model with breaks
         for model in models:
-            model_df = df[df['model'] == model]
+            model_df = df[df['model'] == model].copy()
+
+            # Ensure gaps between independent runs
+            model_df["epoch_diff"] = model_df["epoch"].diff()
+            model_df.loc[model_df["epoch_diff"] > 1, "loss"] = np.nan  # Introduce NaN for breaks
+
             fig.add_trace(go.Scatter(
                 x=model_df["epoch"],
                 y=model_df["loss"],
@@ -61,12 +65,10 @@ def update_graph(n_intervals):
         return fig
 
     except Exception as e:
-        # Optionally, you can log the error for debugging
         print(f"Error reading the loss data: {e}")
         return go.Figure()
 
 
 # Run the Dash app
 if __name__ == "__main__":
-    app.run_server(debug=True)
-
+    app.run_server(debug=False)

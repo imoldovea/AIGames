@@ -40,6 +40,9 @@ LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
 LOSS_FILE = f"{OUTPUT}loss_data.csv"
 LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
 
+TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
+TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
+MAX_STEPS = 40
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -158,7 +161,7 @@ class RNN2MazeSolver(MazeSolver):
         self.model.to(self.device)
         self.model.eval()
 
-    def solve(self):
+    def solve(self, max_steps = 50):
         """
         Solve the maze using the loaded model.
 
@@ -169,10 +172,10 @@ class RNN2MazeSolver(MazeSolver):
         path = [current_pos]
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
 
-        while self.maze.exit != current_pos:
+        while self.maze.exit != current_pos and len(path) < max_steps:
             # Compute local context
             local_context = self._compute_local_context(current_pos, directions)
-            input_tensor = torch.tensor([local_context], device=self.device).float()
+            input_tensor = torch.tensor([local_context], device=self.device).float().unsqueeze(1)
 
             # Predict the action
             with torch.no_grad():
@@ -187,9 +190,9 @@ class RNN2MazeSolver(MazeSolver):
             if not self.maze.is_within_bounds(next_pos) or self.maze.grid[next_pos] == WALL:
                 logging.error(f"Predicted invalid move to {next_pos} from {current_pos}.")
                 break
-
             path.append(next_pos)
             current_pos = next_pos
+            self.maze.move(current_pos)
 
         return path
 
@@ -212,13 +215,73 @@ class RNN2MazeSolver(MazeSolver):
             context.append(cell_state)
         return context
 
+def rnn2_solver(device = "cpu"):
+    # Solve the maze using the RNN
+    mazes = load_mazes(TEST_MAZES_FILE)
+    successful_solutions = 0
+    for i, maze_data in enumerate(mazes):
+        maze = Maze(maze_data)
+        solver = RNN2MazeSolver(maze, model_type="RNN", device=device)
+        maze.set_algorithm("RNN")
+        solution_path = solver.solve(max_steps=MAX_STEPS)
+        maze.set_solution(solution_path)
+        # Validate and visualize the solution
+        if len(solution_path)<MAX_STEPS and maze.test_solution():
+            logging.info(f"Solved Maze {i + 1}: {solution_path}")
+            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
+            successful_solutions += 1
+        else:
+            maze.plot_maze(show_path=True, show_solution=False, show_position=False)
+            logging.debug(f"Maze {i + 1} failed self-test.")
+    total_mazes = len(mazes)
+    error_rate = (total_mazes - successful_solutions) / total_mazes * 100
+    logging.info(f"RNN Total mazes: {total_mazes}, Successful solutions: {successful_solutions}, Error rate: {error_rate:.2f}%")
 
-# Ensure other necessary imports are present
+    # Solve the maze using the GRU
+    mazes = load_mazes(TEST_MAZES_FILE)
+    successful_solutions = 0
+    for i, maze_data in enumerate(mazes):
+        maze = Maze(maze_data)
+        solver = RNN2MazeSolver(maze, model_type="GRU", device=device)
+        maze.set_algorithm("GRU")
+        solution_path = solver.solve(max_steps=MAX_STEPS)
+        maze.set_solution(solution_path)
+        # Validate and visualize the solution
+        if len(solution_path)<MAX_STEPS and maze.test_solution():
+            logging.info(f"Solved Maze {i + 1}: {solution_path}")
+            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
+            successful_solutions += 1
+        else:
+            maze.plot_maze(show_path=True, show_solution=False, show_position=False)
+            logging.debug(f"Maze {i + 1} failed self-test.")
+    total_mazes = len(mazes)
+    error_rate = (total_mazes - successful_solutions) / total_mazes * 100
+    logging.info(f"GRU Total mazes: {total_mazes}, Successful solutions: {successful_solutions}, Error rate: {error_rate:.2f}%")
+
+
+    # Solve the maze using the LSTM
+    mazes = load_mazes(TEST_MAZES_FILE)
+    successful_solutions = 0
+    for i, maze_data in enumerate(mazes):
+        maze = Maze(maze_data)
+        solver = RNN2MazeSolver(maze, model_type="LSTM", device=device)
+        maze.set_algorithm("LSTM")
+        solution_path = solver.solve(max_steps=MAX_STEPS)
+        maze.set_solution(solution_path)
+        # Validate and visualize the solution
+        if len(solution_path)<MAX_STEPS and maze.test_solution():
+            logging.info(f"Solved Maze {i + 1}: {solution_path}")
+            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
+            successful_solutions += 1
+        else:
+            maze.plot_maze(show_path=True, show_solution=False, show_position=False)
+            logging.debug(f"Maze {i + 1} failed self-test.")
+    total_mazes = len(mazes)
+    error_rate = (total_mazes - successful_solutions) / total_mazes * 100
+    logging.info(f"LSTM Total mazes: {total_mazes}, Successful solutions: {successful_solutions}, Error rate: {error_rate:.2f}%")
+
 
 def main():
-    TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
-    TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
-
     # Start the dashboard.py script as a separate process.
     dashboard_process = subprocess.Popen(["python", "dashboard.py"])
 
@@ -271,7 +334,7 @@ def main():
     # Initialize GRU Model
     if not RETRAIN_MODEL and os.path.exists(GRU_MODEL_PATH):
         gru_model = torch.load(GRU_MODEL_PATH)
-        print("GRU model loaded from file.")
+        logging.debug("GRU model loaded from file.")
     else:
         logging.info("Training GRU model")
         gru_model = MazeGRUModel(
@@ -321,33 +384,7 @@ def main():
     # Ensure the dashboard process is terminated after training.
     dashboard_process.terminate()
 
-
-# Example of solving new mazes using the solver class.
-    mazes = load_mazes(TEST_MAZES_FILE)
-
-
-    successful_solutions = 0
-
-    # Solve the maze using the RNN2MazeSolver
-    for i, maze_data in enumerate(mazes):
-        maze = Maze(maze_data)
-        maze.set_algorithm("RNN")
-        solver = RNN2MazeSolver(maze, model_type="RNN", device=device)
-        solution_path = solver.solve()
-        logging.info(f"Solved Maze {i + 1}: {solution_path}")
-
-        # Validate and visualize the solution
-        if maze.self_test():
-            maze.set_solution(solution_path)
-            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
-            successful_solutions += 1
-        else:
-            maze.plot_maze(show_path=FalTruese, show_solution=False, show_position=False)
-            logging.warning(f"Maze {i + 1} failed self-test.")
-
-    total_mazes = len(mazes)
-    error_rate = (total_mazes - successful_solutions) / total_mazes * 100
-    logging.info(f"Total mazes: {total_mazes}, Successful solutions: {successful_solutions}, Error rate: {error_rate:.2f}%")
+    rnn2_solver(device)
 
 if __name__ == "__main__":
     main()
