@@ -5,6 +5,9 @@ import plotly.graph_objs as go
 import traceback
 import plotly.io as pio
 
+from fpdf import FPDF
+from PIL import Image, ImageDraw, ImageFont
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -63,12 +66,62 @@ def save_latest_loss_chart(loss_file_path, loss_chart):
             )
             # Save the figure as an HTML file
             fig.write_html(html_chart)
+            # Display the graph in Plots tab (for supported IDEs)
+            pio.show(fig)
             fig.show()
             logging.info(f"Latest loss chart saved as {html_chart}")
         except Exception as e:
             logging.error("Error saving loss chart:")
             logging.error(traceback.format_exc())
-
     except Exception as e:
-        logging.error("Error saving loss chart:")
-        logging.error(traceback.format_exc())
+            logging.error(f"Error saving latest loss chart: {e}", exc_info=True)
+            logging.error(traceback.format_exc())
+
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+
+def save_neural_network_diagram(layer_sizes, output_path="output/neural_network_diagram.png"):
+    """
+    Draws and saves a neural network diagram with labeled neurons and layers.
+
+    Args:
+        layer_sizes: List[int] - number of neurons in each layer.
+        labels: List[str] - names of each layer.
+        output_path: str - file path to save the diagram image.
+    """
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.axis('off')
+
+    # Define horizontal spacing of layers
+    n_layers = len(layer_sizes)
+    v_spacing = 1
+    h_spacing = 2
+    radius = 0.15
+
+    # Colors per layer (customizable)
+    layer_colors = ['gold', 'green', 'red', 'blue', 'purple']
+    neuron_positions = []
+
+    # Compute positions for neurons
+    for i, layer_size in enumerate(layer_sizes):
+        layer_top = v_spacing * (layer_size - 1) / 2
+        positions = [(h_spacing * i, layer_top - v_spacing * j) for j in range(layer_size)]
+        neuron_positions.append(positions)
+
+        # Draw neurons
+        for x, y in positions:
+            circle = Circle((x, y), radius, fill=True, color='white', ec=layer_colors[i % len(layer_colors)], lw=3, zorder=5)
+            ax.add_patch(circle)
+
+    # Draw connections
+    for idx in range(n_layers - 1):
+        for (x1, y1) in neuron_positions[idx]:
+            for (x2, y2) in neuron_positions[idx + 1]:
+                ax.annotate("", xy=(x2 - radius, y2), xytext=(x1 + radius, y1),
+                            arrowprops=dict(arrowstyle="->", color='blue', lw=1))
+
+    plt.title("Neural Network Structure", fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close()
+    print(f"Neural network diagram saved at: {output_path}")

@@ -197,9 +197,9 @@ def plot_maze(maze):
     plt.show()
 
 def main():
-    NUM_MAZES = 1000
+    NUM_MAZES = 10
     OUTPUT_FOLDER = 'input'
-    MAZES_FILENAME = 'training_mazes.pkl'
+    MAZES_FILENAME = 'mazes.pkl'
 
     mazes = []
     for i in range(NUM_MAZES):
