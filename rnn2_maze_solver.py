@@ -151,7 +151,6 @@ class RNN2MazeSolver(MazeSolver):
 
         model.to(self.device)
         model.eval()
-
     def solve(self, max_steps=50):
         """
         Solve the maze using the loaded model.
