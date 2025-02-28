@@ -1,6 +1,4 @@
 # rnn2_maze_solver.py
-from warnings import catch_warnings
-
 from base_model import MazeBaseModel
 from maze_trainer import MazeTrainingDataset, RNN2MazeTrainer
 import logging
