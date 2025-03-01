@@ -23,7 +23,7 @@ class MazeBaseModel(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
 
-    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001,training_samples=100, device='cpu'):
+    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001,training_samples=100, device='cpu', tensorboard_writer=None):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.
 
@@ -57,7 +57,7 @@ class MazeBaseModel(nn.Module):
         #Display of training rate
         train_losses = []
 
-        summary_writer = SummaryWriter(log_dir=f"{OUTPUT}{self.__class__.__name__}_{TRAINING_PROGRESS_HTML}")
+        summary_writer = SummaryWriter(log_dir=f"{OUTPUT}model_tensorboard")
 
         # Loop over the specified number of epochs.
         for epoch in range(num_epochs):
@@ -119,6 +119,9 @@ class MazeBaseModel(nn.Module):
 
             train_losses.append(epoch_loss)
 
+            # Log to TensorBoard if writer is provided
+            if tensorboard_writer:
+                tensorboard_writer.add_scalar("Loss/epoch", epoch_loss, epoch)
 
         summary_writer.close()
         last_loss = train_losses[-1] if train_losses else None  # Save the last loss value

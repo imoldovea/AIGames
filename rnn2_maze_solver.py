@@ -11,8 +11,11 @@ from configparser import ConfigParser
 import os, csv, subprocess
 import torch
 import torch.nn as nn
-from chart_utility import save_latest_loss_chart, save_neural_network_diagram
+from chart_utility import save_latest_loss_chart, save_neural_network_diagram, visualize_model_weights
 import traceback
+import wandb
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
 
 # -------------------------------
 # Hyperparameters and Configurations
@@ -42,6 +45,7 @@ LOSS_FILE = f"{OUTPUT}loss_data.csv"
 LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
 MODELS_DIAGRAM = f"{OUTPUT}models_diagram.pdf"
 OUTPUT_PDF = f"{OUTPUT}solved_mazes.pdf"
+SECRETS = "secrets.properties"
 
 TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
 TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
@@ -60,6 +64,9 @@ class MazeRNN2Model(MazeBaseModel):
         self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
         self.model_name = "RNN"
+
+        self.fig, self.ax = plt.subplots()
+        self.img = None
 
     def forward(self, x):
         """
@@ -150,6 +157,30 @@ class RNN2MazeSolver(MazeSolver):
 
         model.to(self.device)
         model.eval()
+
+        # Initialize activations dictionary
+        self.activations = {}
+
+        # Initialize plotting components if needed
+        self.fig, self.ax = plt.subplots()
+        self.img = None
+
+        # Example hook setup (modify as per your actual model architecture)
+        # Assuming the model has an attribute 'rnn'
+        if hasattr(self.model, 'rnn'):
+            self.model.rnn.register_forward_hook(self.save_activation)
+
+    def save_activation(self, module, input, output):
+        """
+        Hook function to save activations from the RNN layer.
+        """
+        if isinstance(output, tuple):
+            # Assuming the first element is the activation tensor
+            activation_tensor = output[0]
+        else:
+            activation_tensor = output
+        self.activations['rnn'] = activation_tensor.detach().cpu().numpy()
+
     def solve(self, max_steps=50):
         """
         Solve the maze using the loaded model.
@@ -178,6 +209,17 @@ class RNN2MazeSolver(MazeSolver):
                 action_probs = self.model(input_tensor)
                 action = torch.argmax(action_probs, dim=1).item()
 
+            # Update the live plot with the current activation (if available)
+            if 'rnn' in self.activations:
+                # For example, visualizing the first sequence's activations:
+                act = self.activations['rnn'][0]  # shape: [seq_length, hidden_size]
+                self.ax.clear()
+                self.img = self.ax.imshow(act, aspect='auto', cmap='viridis')
+                self.ax.set_title("Live RNN Activations")
+                #self.fig.canvas.draw()
+                #self.fig.canvas.flush_events()
+                #plt.pause(0.1)  # Pause briefly to update the plot
+
             # Calculate the next position based on the chosen action
             move_delta = directions[action]
             next_pos = (current_pos[0] + move_delta[0], current_pos[1] + move_delta[1])
@@ -192,7 +234,14 @@ class RNN2MazeSolver(MazeSolver):
             current_pos = next_pos
             # Execute the move in the maze environment
             self.maze.move(current_pos)
-        
+
+        # Clean up the hook after solving
+        if hasattr(self, 'hook_handle'):
+            self.hook_handle.remove()
+
+        # Close the plot if it's open
+        plt.close(self.fig)
+
         # Return the computed path
         return path
 
@@ -222,7 +271,6 @@ def rnn2_solver(models , device = "cpu"):
 
     for model_name, model_obj in models:
         # Solve the maze using the model
-        mazes = load_mazes(TEST_MAZES_FILE)
         successful_solutions = 0
         for i, maze_data in enumerate(mazes):
             maze = Maze(maze_data)
@@ -247,7 +295,7 @@ def rnn2_solver(models , device = "cpu"):
     save_mazes_as_pdf(solved_mazes, OUTPUT_PDF)
 
 
-def train_models(device="cpu"):
+def train_models(device="cpu", batch_size=32):
     """
     Train RNN, GRU, and LSTM models on maze-solving data.
 
@@ -267,11 +315,14 @@ def train_models(device="cpu"):
     try:
         # CSV file for storing training progress.
         with open(LOSS_FILE, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["model", "epoch", "loss"])  # Write header
+            loss_writer = csv.writer(f)
+            loss_writer.writerow(["model", "epoch", "loss"])  # Write header
     except Exception as e:
         throw_error(e)
         logging.error(f"Training mazes file not found: {e}")
+
+    # Initialize TensorBoard SummaryWriter
+    writer = SummaryWriter(log_dir="output/maze_training")
 
     # Instantiate the trainer with the file path for training mazes.
     trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE)
@@ -279,7 +330,7 @@ def train_models(device="cpu"):
     logging.info(f"Created {len(dataset)} training samples.")
     train_ds = MazeTrainingDataset(dataset)
     # Create a DataLoader from the dataset
-    dataloader = DataLoader(train_ds, batch_size=32, shuffle=True)
+    dataloader = DataLoader(train_ds, batch_size, shuffle=True)
 
     # Read configurations
     config = ConfigParser()
@@ -294,6 +345,8 @@ def train_models(device="cpu"):
         num_layers=config.getint("RNN", "num_layers"),
         output_size=config.getint("RNN", "output_size"),
     )
+    # Start watching the model for gradients and parameters
+    wandb.watch(rnn_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(RNN_MODEL_PATH):
         state_dict = torch.load(RNN_MODEL_PATH)
         rnn_model.load_state_dict(state_dict)
@@ -305,11 +358,15 @@ def train_models(device="cpu"):
             num_epochs=config.getint("RNN", "num_epochs"),
             learning_rate=config.getfloat("RNN", "learning_rate"),
             training_samples=config.getint("RNN", "training_samples"),
-            device=device
+            device=device,
+            tensorboard_writer = writer
         )
         logging.info(f"Done training RNN model. Loss {loss:.4f}")
         torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
         logging.info("Saved RNN model")
+        # Log final loss metric to wandb
+        wandb.log({"RNN_final_loss": loss})
+        writer.add_scalar("Loss/RNN_final_loss", loss)
     models.append(("RNN", rnn_model))
 
     # Initialize GRU Model
@@ -319,6 +376,7 @@ def train_models(device="cpu"):
         num_layers=config.getint("GRU", "num_layers"),
         output_size=config.getint("GRU", "output_size"),
     )
+    wandb.watch(gru_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(GRU_MODEL_PATH):
         state_dict = torch.load(GRU_MODEL_PATH)
         gru_model.load_state_dict(state_dict)
@@ -330,10 +388,13 @@ def train_models(device="cpu"):
             num_epochs=config.getint("GRU", "num_epochs"),
             learning_rate=config.getfloat("GRU", "learning_rate"),
             training_samples=config.getint("GRU", "training_samples"),
-            device=device
+            device=device,
+            tensorboard_writer=writer
         )
         torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
         logging.info(f"Done training GRU model. Loss {loss:.4f}")
+        wandb.log({"GRU_final_loss": loss})
+        writer.add_scalar("Loss/GRU_final_loss", loss)
     models.append(("GRU", gru_model))
 
     # Initialize LSTM Model
@@ -343,6 +404,7 @@ def train_models(device="cpu"):
         num_layers=config.getint("LSTM", "num_layers"),
         output_size=config.getint("LSTM", "output_size"),
     )
+    wandb.watch(lstm_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(LSTM_MODEL_PATH):
         state_dict = torch.load(LSTM_MODEL_PATH)
         lstm_model.load_state_dict(state_dict)
@@ -354,36 +416,61 @@ def train_models(device="cpu"):
             num_epochs=config.getint("LSTM", "num_epochs"),
             learning_rate=config.getfloat("LSTM", "learning_rate"),
             training_samples=config.getint("LSTM", "training_samples"),
-            device=device
+            device=device,
+            tensorboard_writer=writer
         )
         torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
         logging.info(f"Done training LSTM model. Loss {loss:.4f}")
+        wandb.log({"LSTM_final_loss": loss})
+        writer.add_scalar("Loss/LSTM_final_loss", loss)
     models.append(("LSTM", lstm_model))
 
     # After training ends, save the latest loss chart
     if RETRAIN_MODEL:
         save_latest_loss_chart(loss_file_path=LOSS_FILE, loss_chart=LOSS_PLOT_FILE)
 
+    writer.close()
+
+    logging.info("Training complete.")
     # Return model names and trained models
     return models
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+
+    config = ConfigParser()
+    os.environ['WANDB_MODE'] = 'online'
+    config.read(SECRETS)
+    wandb.login(key=config.get("WandB", "api_key"))
+
+
     # Start the dashboard.py script as a separate process.
     dashboard_process = subprocess.Popen(["python", "dashboard.py"])
     # Train models
-    models = train_models(device)
+    logging.info("Training models...")
+    config.read("config.properties")
+    batch_size = config.getint(section="DEFAULT",option="batch_size")
+    # Initialize wandb with your project and configuration
+    wandb.init(project="maze_solver_training", config={
+        "batch_size": batch_size,
+        "device": str(device),
+        # You can also add other hyperparameters here
+    })
+    models = train_models(device=device,batch_size=batch_size)
     # Ensure the dashboard process is terminated after training.
     dashboard_process.terminate()
 
     try:
         save_neural_network_diagram(models,"output/")
+        #visualize_model_weights(models)
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 
     # Test models.
     rnn2_solver(models, device)
+
+    # Finish the wandb run
+    wandb.finish()
 
 if __name__ == "__main__":
     main()
