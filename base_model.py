@@ -23,7 +23,7 @@ class MazeBaseModel(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
 
-    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001,training_samples=100, device='cpu', tensorboard_writer=None):
+    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001,training_samples=100, weight_decay=0.001, device='cpu', tensorboard_writer=None):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.
 
@@ -40,13 +40,13 @@ class MazeBaseModel(nn.Module):
         self.to(device)
 
         # Define the optimizer as Adam and set the learning rate.
-        optimizer = optim.Adam(self.parameters(), lr=learning_rate)
+        optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
         # Define a learning rate scheduler (Reduce LR when loss plateaus)
         #Step Decay (Reduce LR every 10 epochs)
         #scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
         #Reduce LR if No Improvement
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=5)
 
         # Define the loss function as cross-entropy loss.
         criterion = nn.CrossEntropyLoss()

@@ -5,6 +5,7 @@ import logging
 from numpy.f2py.auxfuncs import throw_error
 from maze_solver import MazeSolver
 from torch.utils.data import DataLoader, Dataset
+import torch.nn.functional as F
 from maze import Maze  # Adjust the import path if necessary
 from utils import load_mazes, save_mazes_as_pdf
 from configparser import ConfigParser
@@ -16,11 +17,12 @@ import traceback
 import wandb
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
+import random
 
 # -------------------------------
 # Hyperparameters and Configurations
 # -------------------------------
-RETRAIN_MODEL = True
+RETRAIN_MODEL = False
 
 # Maze encoding constants
 PATH = 0
@@ -49,7 +51,7 @@ SECRETS = "secrets.properties"
 
 TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
 TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
-MAX_STEPS = 40
+MAX_STEPS = 50
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -206,8 +208,19 @@ class RNN2MazeSolver(MazeSolver):
 
             # Predict the next action using the model
             with torch.no_grad():
-                action_probs = self.model(input_tensor)
-                action = torch.argmax(action_probs, dim=1).item()
+                #action_probs = self.model(input_tensor)
+                #action = torch.argmax(action_probs, dim=1).item()
+
+                temperature = 1  # Increase for more exploration, decrease for more certainty
+                with torch.no_grad():
+                    action_logits = self.model(input_tensor)
+
+                # action_probs = F.softmax(action_logits / temperature, dim=1)
+                # action = torch.multinomial(action_probs, num_samples=1).item()
+
+                # Assume action_logits is the raw output from your model.
+                action_probs = F.softmax(action_logits, dim=1)
+                action = torch.multinomial(action_probs, num_samples=1).item()
 
             # Update the live plot with the current activation (if available)
             if 'rnn' in self.activations:
@@ -358,6 +371,7 @@ def train_models(device="cpu", batch_size=32):
             num_epochs=config.getint("RNN", "num_epochs"),
             learning_rate=config.getfloat("RNN", "learning_rate"),
             training_samples=config.getint("RNN", "training_samples"),
+            weight_decay=config.getfloat("RNN", "weight_decay"),
             device=device,
             tensorboard_writer = writer
         )
@@ -388,6 +402,7 @@ def train_models(device="cpu", batch_size=32):
             num_epochs=config.getint("GRU", "num_epochs"),
             learning_rate=config.getfloat("GRU", "learning_rate"),
             training_samples=config.getint("GRU", "training_samples"),
+            weight_decay=config.getfloat("GRU", "weight_decay"),
             device=device,
             tensorboard_writer=writer
         )
@@ -416,6 +431,7 @@ def train_models(device="cpu", batch_size=32):
             num_epochs=config.getint("LSTM", "num_epochs"),
             learning_rate=config.getfloat("LSTM", "learning_rate"),
             training_samples=config.getint("LSTM", "training_samples"),
+            weight_decay=config.getfloat("LSTM", "weight_decay"),
             device=device,
             tensorboard_writer=writer
         )
