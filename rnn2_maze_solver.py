@@ -1,6 +1,4 @@
 # rnn2_maze_solver.py
-from warnings import catch_warnings
-
 from base_model import MazeBaseModel
 from maze_trainer import MazeTrainingDataset, RNN2MazeTrainer
 import logging
@@ -14,6 +12,7 @@ import os, csv, subprocess
 import torch
 import torch.nn as nn
 from chart_utility import save_latest_loss_chart, save_neural_network_diagram
+import traceback
 
 # -------------------------------
 # Hyperparameters and Configurations
@@ -305,8 +304,8 @@ def train_models(device="cpu"):
             dataloader,
             num_epochs=config.getint("RNN", "num_epochs"),
             learning_rate=config.getfloat("RNN", "learning_rate"),
-            device=device,
-            writer=writer
+            training_samples=config.getint("RNN", "training_samples"),
+            device=device
         )
         logging.info(f"Done training RNN model. Loss {loss:.4f}")
         torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
@@ -330,8 +329,8 @@ def train_models(device="cpu"):
             dataloader,
             num_epochs=config.getint("GRU", "num_epochs"),
             learning_rate=config.getfloat("GRU", "learning_rate"),
-            device=device,
-            writer=writer
+            training_samples=config.getint("GRU", "training_samples"),
+            device=device
         )
         torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
         logging.info(f"Done training GRU model. Loss {loss:.4f}")
@@ -354,8 +353,8 @@ def train_models(device="cpu"):
             dataloader,
             num_epochs=config.getint("LSTM", "num_epochs"),
             learning_rate=config.getfloat("LSTM", "learning_rate"),
-            device=device,
-            writer=writer
+            training_samples=config.getint("LSTM", "training_samples"),
+            device=device
         )
         torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
         logging.info(f"Done training LSTM model. Loss {loss:.4f}")
@@ -373,16 +372,15 @@ def main():
     
     # Start the dashboard.py script as a separate process.
     dashboard_process = subprocess.Popen(["python", "dashboard.py"])
-    
     # Train models
     models = train_models(device)
     # Ensure the dashboard process is terminated after training.
     dashboard_process.terminate()
 
     try:
-        save_neural_network_diagram(models,MODELS_DIAGRAM)
+        save_neural_network_diagram(models,"output/")
     except Exception as e:
-        logging.error(f"Error saving neural network diagram: {e}")
+        logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 
     # Test models.
     rnn2_solver(models, device)

@@ -23,7 +23,7 @@ class MazeBaseModel(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
 
-    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001, device='cpu',writer=None):
+    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001,training_samples=100, device='cpu'):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.
 
@@ -64,7 +64,10 @@ class MazeBaseModel(nn.Module):
             running_loss = 0.0  # Accumulate loss for the current epoch
 
             # Iterate through batches of inputs and targets from the dataloader.
-            for inputs, targets in dataloader:
+            for iteration, (inputs, targets) in enumerate(dataloader):
+                if iteration >= training_samples:
+                    break
+
                 # Add a sequence length dimension to inputs and move to the specified device.
                 inputs = inputs.unsqueeze(1).to(device).float()
 

@@ -5,11 +5,7 @@ import plotly.graph_objs as go
 import traceback
 import plotly.io as pio
 
-from fpdf import FPDF
-from PIL import Image, ImageDraw, ImageFont
-
 logging.basicConfig(level=logging.INFO)
-
 
 def save_latest_loss_chart(loss_file_path, loss_chart):
     """
@@ -77,51 +73,67 @@ def save_latest_loss_chart(loss_file_path, loss_chart):
             logging.error(f"Error saving latest loss chart: {e}", exc_info=True)
             logging.error(traceback.format_exc())
 
-import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
 
-def save_neural_network_diagram(layer_sizes, output_path="output/neural_network_diagram.png"):
+import os
+import torch
+from torchviz import make_dot
+from torch.utils.tensorboard import SummaryWriter
+import torch.onnx
+
+def save_neural_network_diagram(models, output_dir="output/"):
     """
-    Draws and saves a neural network diagram with labeled neurons and layers.
+    Draws and saves neural network diagrams using Torchviz, HiddenLayer,
+    exports to ONNX for Netron visualization, and logs the graph for TensorBoard.
 
-    Args:
-        layer_sizes: List[int] - number of neurons in each layer.
-        labels: List[str] - names of each layer.
-        output_path: str - file path to save the diagram image.
+    Parameters:
+    - models (list): List of models (nn.Module) for which to generate diagrams.
+    - output_dir (str): Directory where diagram images and logs will be saved.
+
+    Raises:
+    - ValueError: If `models` is empty or not a list.
+    - RuntimeError: If graph generation, export, or file writing fails.
     """
-    fig, ax = plt.subplots(figsize=(12, 8))
-    ax.axis('off')
+    if not models or not isinstance(models, list):
+        raise ValueError("The 'models' parameter must be a non-empty list of neural network models.")
 
-    # Define horizontal spacing of layers
-    n_layers = len(layer_sizes)
-    v_spacing = 1
-    h_spacing = 2
-    radius = 0.15
+    os.makedirs(output_dir, exist_ok=True)
 
-    # Colors per layer (customizable)
-    layer_colors = ['gold', 'green', 'red', 'blue', 'purple']
-    neuron_positions = []
+    for idx, model_tuple in enumerate(models):
+        model = model_tuple[1]  # Adjust the index based on your tuple structure
+        model.eval()  # Set model to evaluation mode
+        print(model)
 
-    # Compute positions for neurons
-    for i, layer_size in enumerate(layer_sizes):
-        layer_top = v_spacing * (layer_size - 1) / 2
-        positions = [(h_spacing * i, layer_top - v_spacing * j) for j in range(layer_size)]
-        neuron_positions.append(positions)
+        input_size = 4
+        seq_length = 14
+        dummy_input = torch.randn(1, seq_length, input_size)
+        output = model(dummy_input)
 
-        # Draw neurons
-        for x, y in positions:
-            circle = Circle((x, y), radius, fill=True, color='white', ec=layer_colors[i % len(layer_colors)], lw=3, zorder=5)
-            ax.add_patch(circle)
+        ## 1. Torchviz: Generate a PDF of the computational graph.
+        try:
+            dot = make_dot(output, params=dict(model.named_parameters()))
+            torchviz_path = os.path.join(output_dir, f"model_{model.model_name}_torchviz")
+            dot.format = "pdf"
+            dot.render(torchviz_path, cleanup=True)
+        except Exception as e:
+            logging.error(f"Torchviz graph generation failed: {e}")
+            raise RuntimeError(f"Torchviz graph generation failed: {e}")
 
-    # Draw connections
-    for idx in range(n_layers - 1):
-        for (x1, y1) in neuron_positions[idx]:
-            for (x2, y2) in neuron_positions[idx + 1]:
-                ax.annotate("", xy=(x2 - radius, y2), xytext=(x1 + radius, y1),
-                            arrowprops=dict(arrowstyle="->", color='blue', lw=1))
+        ## 3. Netron: Export the model to ONNX format for interactive viewing.
+        try:
+            onnx_path = os.path.join(output_dir, f"model_{model.model_name}.onnx")
+            torch.onnx.export(model, dummy_input, onnx_path, export_params=True, opset_version=11)
+            # Open the ONNX file in Netron (manually or via netron.start(onnx_path) for interactive visualization)
+        except Exception as e:
+            logging.error(f"ONNX export for Netron visualization failed: {e}")
+            raise RuntimeError(f"ONNX export for Netron visualization failed: {e}")
 
-    plt.title("Neural Network Structure", fontsize=16, fontweight='bold')
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300)
-    plt.close()
-    print(f"Neural network diagram saved at: {output_path}")
+        ## 4. TensorBoard: Log the model graph for visualization.
+        try:
+            tb_log_dir = os.path.join(output_dir, f"model_{model.model_name}_tensorboard")
+            writer = SummaryWriter(log_dir=output_dir)
+            writer.add_graph(model, dummy_input)
+            writer.close()
+            # To view the graph, run: tensorboard --logdir={tb_log_dir} in your terminal.
+        except Exception as e:
+            logging.error(f"TensorBoard graph logging failed: {e}")
+            raise RuntimeError(f"TensorBoard graph logging failed: {e}")
