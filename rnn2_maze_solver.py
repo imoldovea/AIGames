@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 # -------------------------------
 # Hyperparameters and Configurations
 # -------------------------------
-RETRAIN_MODEL = False
+RETRAIN_MODEL = True
 
 # Maze encoding constants
 PATH = 0
