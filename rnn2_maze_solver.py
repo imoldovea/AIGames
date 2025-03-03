@@ -3,9 +3,9 @@ from base_model import MazeBaseModel
 from maze_trainer import MazeTrainingDataset, RNN2MazeTrainer
 import logging
 from numpy.f2py.auxfuncs import throw_error
+import numpy as np
 from maze_solver import MazeSolver
 from torch.utils.data import DataLoader, Dataset
-import torch.nn.functional as F
 from maze import Maze  # Adjust the import path if necessary
 from utils import load_mazes, save_mazes_as_pdf
 from configparser import ConfigParser
@@ -17,12 +17,11 @@ import traceback
 import wandb
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
-import random
 
 # -------------------------------
 # Hyperparameters and Configurations
 # -------------------------------
-RETRAIN_MODEL = False
+RETRAIN_MODEL = True
 
 # Maze encoding constants
 PATH = 0
@@ -51,7 +50,6 @@ SECRETS = "secrets.properties"
 
 TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
 TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
-MAX_STEPS = 50
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -59,16 +57,51 @@ logging.getLogger().setLevel(logging.INFO)
 # RNN Model Definition
 # -------------------------------
 class MazeRNN2Model(MazeBaseModel):
-    def __init__(self, input_size, hidden_size, num_layers, output_size):
+    def __init__(self, input_size=5, hidden_size=128, num_layers=2, output_size=4):
         super(MazeRNN2Model, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
+        self.rnn = nn.RNN(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True  # Specifies if the first dimension is the batch size
+        )
+        self.fc = nn.Linear(
+            in_features=hidden_size,  # Number of input features to the fully connected layer
+            out_features=output_size  # Number of output features (actions in this case)
+        )
         self.model_name = "RNN"
+
+        # Initialize weights and biases with random values
+        self._initialize_weights()
 
         self.fig, self.ax = plt.subplots()
         self.img = None
+
+    def _initialize_weights(self):
+        """
+        Initializes the weights and biases of the RNN layers.
+        
+        This method assigns Xavier uniform initialization to the weights
+        and zero initialization to the biases of the RNN model.
+        
+        Steps:
+        - For each parameter in the RNN, check if it's a weight or a bias.
+        - If it's a weight, use Xavier uniform initialization.
+        - If it's a bias, set it to zero.
+        
+        Args:
+            None
+        
+        Returns:
+            None
+        """
+        for name, param in self.rnn.named_parameters():
+            if 'weight' in name:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
 
     def forward(self, x):
         """
@@ -79,13 +112,14 @@ class MazeRNN2Model(MazeBaseModel):
             Tensor of shape [batch_size, output_size].
         """
         # Initialize hidden state with zeros
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size, device=x.device)
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
         # Forward propagate RNN
         out, _ = self.rnn(x, h0)
-        # Get the output from the last time step and pass it through the FC layer
-        out = self.fc(out[:, -1, :])
+        # Take the output of the last time step
+        out = out[:, -1, :]
+        # Fully connected layer
+        out = self.fc(out)
         return out
-
 
 # -------------------------------
 # GRU Model Definition
@@ -183,7 +217,7 @@ class RNN2MazeSolver(MazeSolver):
             activation_tensor = output
         self.activations['rnn'] = activation_tensor.detach().cpu().numpy()
 
-    def solve(self, max_steps=50):
+    def solve(self, max_steps=25):
         """
         Solve the maze using the loaded model.
         
@@ -195,32 +229,34 @@ class RNN2MazeSolver(MazeSolver):
         """
         # Initialize starting position and path
         current_pos = self.maze.start_position
+        config = ConfigParser()
+        config.read("config.properties")
+        max_steps = config.getint("DEFAULT", "max_steps")
         path = [current_pos]
         # Predefined directions: up, down, left, and right
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-
+        step_number = 0
         # Loop until reaching the exit or exceeding the maximum steps
         while self.maze.exit != current_pos and len(path) < max_steps:
+            step_number += 1
+            step_number_normalized = step_number / max_steps
             # Compute the local context around the current position
             local_context = self._compute_local_context(current_pos, directions)
+
+            # Combine local_context with step_number_normalized
+            input_features = np.append(local_context,step_number_normalized).astype(np.float32)
+
             # Convert the local context to a tensor suitable for the model
-            input_tensor = torch.tensor([local_context], device=self.device).float().unsqueeze(1)
+                #input_tensor = torch.tensor([local_context], device=self.device).float().unsqueeze(1)
+            # Combine local_context with step_number_normalized
+            input_tensor = torch.tensor(input_features).unsqueeze(0).unsqueeze(0).to(self.device)  # Shape: [1, 1, 5]
 
             # Predict the next action using the model
+
+            temperature = 1  # Increase for more exploration, decrease for more certainty
             with torch.no_grad():
-                #action_probs = self.model(input_tensor)
-                #action = torch.argmax(action_probs, dim=1).item()
-
-                temperature = 1  # Increase for more exploration, decrease for more certainty
-                with torch.no_grad():
-                    action_logits = self.model(input_tensor)
-
-                # action_probs = F.softmax(action_logits / temperature, dim=1)
-                # action = torch.multinomial(action_probs, num_samples=1).item()
-
-                # Assume action_logits is the raw output from your model.
-                action_probs = F.softmax(action_logits, dim=1)
-                action = torch.multinomial(action_probs, num_samples=1).item()
+                output = self.model(input_tensor)
+                action = torch.argmax(output, dim=1).item()
 
             # Update the live plot with the current activation (if available)
             if 'rnn' in self.activations:
@@ -343,7 +379,10 @@ def train_models(device="cpu", batch_size=32):
     logging.info(f"Created {len(dataset)} training samples.")
     train_ds = MazeTrainingDataset(dataset)
     # Create a DataLoader from the dataset
-    dataloader = DataLoader(train_ds, batch_size, shuffle=True)
+    num_workers = 2
+    if device == "cuda":
+        num_workers = 16
+    dataloader = DataLoader(train_ds, batch_size, shuffle=True, num_workers=num_workers)
 
     # Read configurations
     config = ConfigParser()
@@ -353,11 +392,12 @@ def train_models(device="cpu", batch_size=32):
 
     # RNN model:
     rnn_model = MazeRNN2Model(
-        input_size=config.getint("RNN", "input_size"),
+        input_size=config.getint("RNN", "input_size", fallback=5),
         hidden_size=config.getint("RNN", "hidden_size"),
         num_layers=config.getint("RNN", "num_layers"),
-        output_size=config.getint("RNN", "output_size"),
+        output_size=config.getint("RNN", "output_size", fallback=4),
     )
+    rnn_model.to(device)
     # Start watching the model for gradients and parameters
     wandb.watch(rnn_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(RNN_MODEL_PATH):
@@ -385,11 +425,12 @@ def train_models(device="cpu", batch_size=32):
 
     # Initialize GRU Model
     gru_model = MazeGRUModel(
-        input_size=config.getint("GRU", "input_size"),
+        input_size=config.getint("GRU", "input_size", fallback=5),
         hidden_size=config.getint("GRU", "hidden_size"),
         num_layers=config.getint("GRU", "num_layers"),
-        output_size=config.getint("GRU", "output_size"),
+        output_size=config.getint("GRU", "output_size", fallback=4),
     )
+    gru_model.to(device)
     wandb.watch(gru_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(GRU_MODEL_PATH):
         state_dict = torch.load(GRU_MODEL_PATH)
@@ -414,11 +455,13 @@ def train_models(device="cpu", batch_size=32):
 
     # Initialize LSTM Model
     lstm_model = MazeLSTMModel(
-        input_size=config.getint("LSTM", "input_size"),
+
+        input_size=config.getint("LSTM", "input_size", fallback=5),
+        output_size=config.getint("LSTM", "output_size", fallback=4),
         hidden_size=config.getint("LSTM", "hidden_size"),
         num_layers=config.getint("LSTM", "num_layers"),
-        output_size=config.getint("LSTM", "output_size"),
     )
+    lstm_model.to(device)
     wandb.watch(lstm_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(LSTM_MODEL_PATH):
         state_dict = torch.load(LSTM_MODEL_PATH)
@@ -453,6 +496,9 @@ def train_models(device="cpu", batch_size=32):
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    log = logging.getLogger('werkzeug')
+    log.disabled = True
 
     config = ConfigParser()
     os.environ['WANDB_MODE'] = 'online'
