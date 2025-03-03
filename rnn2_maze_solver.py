@@ -229,9 +229,6 @@ class RNN2MazeSolver(MazeSolver):
         """
         # Initialize starting position and path
         current_pos = self.maze.start_position
-        config = ConfigParser()
-        config.read("config.properties")
-        max_steps = config.getint("DEFAULT", "max_steps")
         path = [current_pos]
         # Predefined directions: up, down, left, and right
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -317,6 +314,9 @@ def rnn2_solver(models , device = "cpu"):
     # Solve the maze using the RNN
     mazes = load_mazes(TEST_MAZES_FILE)
     solved_mazes = []
+    config = ConfigParser()
+    config.read("config.properties")
+    max_steps = config.getint("DEFAULT", "max_steps")
 
     for model_name, model_obj in models:
         # Solve the maze using the model
@@ -325,10 +325,10 @@ def rnn2_solver(models , device = "cpu"):
             maze = Maze(maze_data)
             solver = RNN2MazeSolver(maze, model_obj, device=device)
             maze.set_algorithm(model_name)
-            solution_path = solver.solve(max_steps=MAX_STEPS)
+            solution_path = solver.solve(max_steps=max_steps)
             maze.set_solution(solution_path)
             # Validate and visualize the solution
-            if len(solution_path) < MAX_STEPS and maze.test_solution():
+            if len(solution_path) < max_steps and maze.test_solution():
                 logging.debug(f"Solved Maze {i + 1}: {solution_path}")
                 maze.plot_maze(show_path=False, show_solution=True, show_position=False)
                 successful_solutions += 1
