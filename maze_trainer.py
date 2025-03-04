@@ -8,8 +8,11 @@ from torch.utils.data import Dataset
 import logging
 from maze import Maze
 from configparser import ConfigParser
+import torch
 
 WALL = 1
+DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
 
 # -------------------------------
 # Custom Dataset for Training Samples
@@ -83,17 +86,16 @@ class RNN2MazeTrainer:
         Constructs a dataset for training a maze-navigating model.
         """
         dataset = []
-        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
         direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
         for maze in self.training_mazes:
             solution = maze.get_solution()
             for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
                 steps_number = i
-                local_context = self._compute_local_context(maze, current_pos, directions)
+                local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
                 move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
-                if move_delta not in direction_to_target:
+                if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
-                target_action = direction_to_target[move_delta]
+                target_action = DIRECTION_TO_ACTION[move_delta]
                 dataset.append((local_context, target_action, steps_number))
         return dataset
 
@@ -109,6 +111,20 @@ class RNN2MazeTrainer:
 # -------------------------------
 # Model Training Function
 # -------------------------------
+def load_model_state(model, model_path, old_prefix, new_prefix):
+    """
+    Helper function to remap keys from the old state_dict prefix to the new one.
+    """
+    state_dict = torch.load(model_path)
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith(old_prefix):
+            new_key = new_prefix + key[len(old_prefix):]
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value
+    model.load_state_dict(new_state_dict)
+
 def train_models(device="cpu", batch_size=32):
     """
     Trains RNN, GRU, and LSTM models on maze-solving data.
@@ -121,7 +137,8 @@ def train_models(device="cpu", batch_size=32):
     from torch.utils.data import DataLoader
     from torch.utils.tensorboard import SummaryWriter
     from configparser import ConfigParser
-    from model import MazeRNN2Model, MazeGRUModel, MazeLSTMModel
+    # Import the unified model
+    from model import MazeRecurrentModel
 
     OUTPUT = "output/"
     INPUT = "input/"
@@ -156,7 +173,8 @@ def train_models(device="cpu", batch_size=32):
     models = []
 
     # RNN Model Training
-    rnn_model = MazeRNN2Model(
+    rnn_model = MazeRecurrentModel(
+        mode_type="RNN",
         input_size=config.getint("RNN", "input_size", fallback=5),
         hidden_size=config.getint("RNN", "hidden_size"),
         num_layers=config.getint("RNN", "num_layers"),
@@ -165,8 +183,7 @@ def train_models(device="cpu", batch_size=32):
     rnn_model.to(device)
     wandb.watch(rnn_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(RNN_MODEL_PATH):
-        state_dict = torch.load(RNN_MODEL_PATH)
-        rnn_model.load_state_dict(state_dict)
+        load_model_state(rnn_model, RNN_MODEL_PATH, "rnn.", "recurrent.")
         logging.info("RNN model loaded from file")
     else:
         logging.info("Training RNN model")
@@ -187,7 +204,8 @@ def train_models(device="cpu", batch_size=32):
     models.append(("RNN", rnn_model))
 
     # GRU Model Training
-    gru_model = MazeGRUModel(
+    gru_model = MazeRecurrentModel(
+        mode_type="GRU",
         input_size=config.getint("GRU", "input_size", fallback=5),
         hidden_size=config.getint("GRU", "hidden_size"),
         num_layers=config.getint("GRU", "num_layers"),
@@ -196,8 +214,7 @@ def train_models(device="cpu", batch_size=32):
     gru_model.to(device)
     wandb.watch(gru_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(GRU_MODEL_PATH):
-        state_dict = torch.load(GRU_MODEL_PATH)
-        gru_model.load_state_dict(state_dict)
+        load_model_state(gru_model, GRU_MODEL_PATH, "gru.", "recurrent.")
         logging.debug("GRU model loaded from file.")
     else:
         logging.info("Training GRU model")
@@ -217,17 +234,17 @@ def train_models(device="cpu", batch_size=32):
     models.append(("GRU", gru_model))
 
     # LSTM Model Training
-    lstm_model = MazeLSTMModel(
+    lstm_model = MazeRecurrentModel(
+        mode_type="LSTM",
         input_size=config.getint("LSTM", "input_size", fallback=5),
-        output_size=config.getint("LSTM", "output_size", fallback=4),
         hidden_size=config.getint("LSTM", "hidden_size"),
         num_layers=config.getint("LSTM", "num_layers"),
+        output_size=config.getint("LSTM", "output_size", fallback=4),
     )
     lstm_model.to(device)
     wandb.watch(lstm_model, log="all", log_freq=10)
     if not RETRAIN_MODEL and os.path.exists(LSTM_MODEL_PATH):
-        state_dict = torch.load(LSTM_MODEL_PATH)
-        lstm_model.load_state_dict(state_dict)
+        load_model_state(lstm_model, LSTM_MODEL_PATH, "lstm.", "recurrent.")
         logging.info("LSTM model loaded from file.")
     else:
         logging.info("Training LSTM model")

@@ -21,7 +21,13 @@ class MazeSolver(ABC):
         """
         pass
 
-    def profile(func):
+    @staticmethod
+    def profiled(func):
+        """
+        A decorator that provides profiling for a given function. It measures and prints the function's 
+        execution statistics such as cumulative time taken, using cProfile.
+        """
+
         def wrapper(*args, **kwargs):
             profiler = cProfile.Profile()
             profiler.enable()
@@ -32,6 +38,7 @@ class MazeSolver(ABC):
             stats.print_stats()
             print(s.getvalue())
             return result
+
         return wrapper
 
     def loss(self):
