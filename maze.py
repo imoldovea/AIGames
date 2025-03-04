@@ -270,11 +270,11 @@ class Maze:
 
         # Check if the solution length is greater than 1
         if self._solution and len(self._solution) <= 1:
-            self.logger.error("Solution length is less than 2.")
+            self.logger.debug("Solution length is less than 2.")
             return False
 
         if not self._solution or self._solution[0] != self.start_position:
-            self.logger.error("Solution does not start at the start position.")
+            self.logger.debug("Solution does not start at the start position.")
             return False
 
         if self.exit is None or self._solution[-1] != self.exit:

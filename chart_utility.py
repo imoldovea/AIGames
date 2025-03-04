@@ -102,15 +102,16 @@ def save_neural_network_diagram(models, output_dir="output/"):
         raise ValueError("The 'models' parameter must be a non-empty list of neural network models.")
 
     os.makedirs(output_dir, exist_ok=True)
-
+    config = ConfigParser()
+    config.read("config.properties")
     for idx, model_tuple in enumerate(models):
         model = model_tuple[1]  # Adjust the index based on your tuple structure
         model.eval()  # Set model to evaluation mode
         print(model)
 
-        input_size = 4
-        seq_length = 20
-        batch_size = 1
+        input_size = config.getint("DEFAULT", "input_size", fallback=5)
+        seq_length = config.getint("DEFAULT", "max_steps", fallback=5)
+        batch_size = config.getint("DEFAULT", "batch_size", fallback=5)
         dummy_input = torch.randn(batch_size, seq_length, input_size)  # Fixed batch size of 1
         output = model(dummy_input)
 

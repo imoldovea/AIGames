@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 # -------------------------------
 # Hyperparameters and Configurations
 # -------------------------------
-RETRAIN_MODEL = True
+RETRAIN_MODEL = False
 
 # Maze encoding constants
 PATH = 0
@@ -52,6 +52,9 @@ TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
 TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
 
 logging.getLogger().setLevel(logging.INFO)
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.WARNING)
+log.disabled = True
 
 # -------------------------------
 # RNN Model Definition
@@ -272,7 +275,7 @@ class RNN2MazeSolver(MazeSolver):
 
             # Check if the move is valid (within bounds and not a wall)
             if not self.maze.is_within_bounds(next_pos) or self.maze.grid[next_pos] == WALL:
-                logging.error(f"Predicted invalid move to {next_pos} from {current_pos}.")
+                logging.debug(f"Predicted invalid move to {next_pos} from {current_pos}.")
                 break
 
             # Add the next position to the path and update the current position
@@ -496,9 +499,6 @@ def train_models(device="cpu", batch_size=32):
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    log = logging.getLogger('werkzeug')
-    log.disabled = True
 
     config = ConfigParser()
     os.environ['WANDB_MODE'] = 'online'
