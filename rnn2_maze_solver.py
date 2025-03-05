@@ -4,22 +4,21 @@
 import numpy as np
 import torch
 import logging
+from utils import setup_logging
 import os, subprocess, traceback
 import matplotlib.pyplot as plt
 from configparser import ConfigParser
 import wandb
-from torch.utils.tensorboard import SummaryWriter
 from maze_solver import MazeSolver
 from maze import Maze  # Assumes maze.py exists
 from utils import load_mazes, save_mazes_as_pdf
 from chart_utility import save_neural_network_diagram
 from maze_trainer import train_models  # Training function from maze_trainer.py
-from model import MazeRecurrentModel  # New unified model
 
 # -------------------------------
 # Global Configurations and Constants
 # -------------------------------
-RETRAIN_MODEL = False
+RETRAIN_MODEL = True
 
 # Maze encoding constants
 PATH = 0
@@ -39,11 +38,6 @@ MODELS_DIAGRAM = f"{OUTPUT}models_diagram.pdf"
 OUTPUT_PDF = f"{OUTPUT}solved_mazes.pdf"
 SECRETS = "secrets.properties"
 TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
-
-logging.getLogger().setLevel(logging.INFO)
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.WARNING)
-log.disabled = True
 
 # -------------------------------
 # RNN2MazeSolver Class (Inference)
@@ -166,4 +160,9 @@ def main():
     wandb.finish()
 
 if __name__ == "__main__":
+    #setup logging
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    logger.debug("Logging is configured.")
+
     main()

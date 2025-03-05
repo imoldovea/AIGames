@@ -1,15 +1,11 @@
 from numpy.f2py.auxfuncs import throw_error
 
 from maze_solver import MazeSolver
+from utils import setup_logging
 from maze import Maze
 import pickle
 import logging
 import traceback
-from utils import (
-    save_movie,
-    display_all_mazes,
-    save_mazes_as_pdf,
-    load_mazes)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -116,4 +112,9 @@ def backtracking_solver() -> None:
 
 
 if __name__ == '__main__':
+    #setup logging
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    logger.debug("Logging is configured.")
+
     backtracking_solver()

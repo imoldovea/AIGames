@@ -86,7 +86,6 @@ class RNN2MazeTrainer:
         Constructs a dataset for training a maze-navigating model.
         """
         dataset = []
-        direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
         for maze in self.training_mazes:
             solution = maze.get_solution()
             for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):

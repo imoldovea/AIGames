@@ -4,6 +4,13 @@ import plotly.graph_objs as go
 import plotly.io as pio
 import plotly.express as px
 from configparser import ConfigParser
+import os
+import torch
+from torchviz import make_dot
+import traceback
+from torch.utils.tensorboard import SummaryWriter
+import torch.onnx
+
 
 OUTPUT = "output/"
 
@@ -78,14 +85,6 @@ def save_latest_loss_chart(loss_file_path, loss_chart):
             logging.error(traceback.format_exc())
 
 
-import os
-import torch
-from torchviz import make_dot
-import traceback
-from torch.utils.tensorboard import SummaryWriter
-import torch.onnx
-import logging
-
 def save_neural_network_diagram(models, output_dir="output/"):
     """
     Draws and saves neural network diagrams using Torchviz,
@@ -119,7 +118,7 @@ def save_neural_network_diagram(models, output_dir="output/"):
         ## 1. Torchviz: Generate a PDF of the computational graph.
         try:
             dot = make_dot(output, params=dict(model.named_parameters()))
-            torchviz_path = os.path.join(output_dir, f"model_{idx}_torchviz")
+            torchviz_path = f"{OUTPUT}model_{idx}_torchviz.pdf"
             dot.format = "pdf"
             dot.render(torchviz_path, cleanup=True)
         except Exception as e:

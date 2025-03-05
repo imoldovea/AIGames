@@ -7,15 +7,20 @@ from torch import optim
 import logging
 import torch.optim.lr_scheduler as lr_scheduler
 import csv
+import os
 
 OUTPUT = "output/"
 TRAINING_PROGRESS_HTML = "training_progress.html"
 TRAINING_PROGRESS_PNG = "training_progress.png"
-LOSS_FILE = f"{OUTPUT}loss_data.csv"
+LOSS_FILE = os.path.join(OUTPUT, "loss_data.csv")
+os.makedirs(OUTPUT, exist_ok=True)
+
+
 
 class MazeBaseModel(nn.Module):
     def __init__(self):
         super(MazeBaseModel, self).__init__()
+        self.model_name = "MazeBaseModel"  # Define the model name
 
     def forward(self, x):
         """
@@ -72,7 +77,7 @@ class MazeBaseModel(nn.Module):
                     break
 
             epoch_loss = running_loss / len(dataloader.dataset)
-            logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
 
             scheduler.step(epoch_loss)
             with open(LOSS_FILE, "a", newline="") as f:

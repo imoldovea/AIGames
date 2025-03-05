@@ -4,10 +4,8 @@ from maze import Maze
 from collections import deque
 import traceback
 import logging
+from utils import setup_logging
 import pickle
-
-logging.basicConfig(level=logging.INFO)
-
 
 class BFSMazeSolver(MazeSolver):
     def __init__(self, maze):
@@ -68,7 +66,7 @@ class BFSMazeSolver(MazeSolver):
 
 
 # Example test function for the BFS solver
-def test_bfs_solver():
+def bfs_solver():
     """
     Test function that loads an array of mazes from 'input/mazes.npy',
     creates a Maze object using the first maze in the array, sets an exit,
@@ -110,4 +108,9 @@ def test_bfs_solver():
 
 
 if __name__ == '__main__':
-    test_bfs_solver()
+    #setup logging
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    logger.debug("Logging is configured.")
+
+    bfs_solver()

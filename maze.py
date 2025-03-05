@@ -111,12 +111,13 @@ class Maze:
         if self.is_valid_move(position):
             self.current_position = position
             self.path.append(position)
-            self.logger.debug("Moved to position %s", position)
+            #self.logger.debug("Moved to position %s", position)
 
             if backtrack:
-                logging.debug("Backtracking to position %s", position)
+                #logging.debug("Backtracking to position %s", position)
                 self.path.pop()
-                logging.debug("Backtrack complete. Current position is %s", self.current_position, " ", len(self.path))
+                #logging.debug(
+                #    f"Backtrack complete. Current position is {self.current_position}, Path length: {len(self.path)}")
                 if position not in self.visited_cells:
                     self.visited_cells.append(position)
 

@@ -4,6 +4,7 @@ import random
 import pickle
 import matplotlib.pyplot as plt
 import logging
+from utils import setup_logging
 
 
 IMG_SIZE = 26
@@ -213,5 +214,9 @@ def main():
     save_mazes(OUTPUT_FOLDER, MAZES_FILENAME, mazes)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    #setup logging
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    logger.debug("Logging is configured.")
+
     main()
