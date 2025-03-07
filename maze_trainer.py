@@ -325,7 +325,6 @@ def train_models(device="cpu", batch_size=32):
         wandb.log({"LSTM_final_loss": loss})
         writer.add_scalar("Loss/LSTM_final_loss", loss)
     models.append(("LSTM", lstm_model))
-
     writer.close()
     logging.info("Training complete.")
     return models

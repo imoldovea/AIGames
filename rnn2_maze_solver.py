@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import logging
 from utils import setup_logging
-import os, subprocess, traceback
+import os, subprocess, traceback, sys
 import matplotlib.pyplot as plt
 from configparser import ConfigParser
 import wandb
@@ -144,7 +144,9 @@ def main():
     #Monitoring
     wandb.login(key=config.get("WandB", "api_key"))
     dashboard_process = subprocess.Popen(["python", "dashboard.py"])
-    tensorboard_process = subprocess.Popen(['tensorboard', '--logdir=runs'])
+    tensorboard_process = subprocess.Popen([sys.executable, '-m', 'tensorboard', '--logdir=runs'])
+    logging.info(f"Dashboard and Tensorboard processes started on url: http://localhost:6006/ and http://localhost:6007/, respectively. Waiting for models to be trained.")
+
 
     #training
     logging.info("Training models...")

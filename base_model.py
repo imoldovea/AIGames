@@ -120,60 +120,8 @@ class MazeBaseModel(nn.Module):
 
             train_losses.append(epoch_loss)
 
-            self.eval()  # Put model in evaluation mode for validation
-            val_loss_sum = 0.0
-            num_batches = 0
-
-            with torch.no_grad():
-                for batch in val_loder:
-                    local_context, target_action, steps_number = batch
-                    # Convert target_action to a tensor and force it to be 1D (batch dimension)
-                    if isinstance(target_action, (list, tuple)):
-                        # If it's already a list of integers (when batch_size > 1)
-                        target_action = torch.tensor(target_action, dtype=torch.long, device=device)
-                    else:
-                        # For a single sample (batch_size == 1), wrap it in a list to get shape (1,)
-                        target_action = torch.tensor([target_action], dtype=torch.long, device=device)
-                    # Ensure local_context is a PyTorch tensor and at least 2D
-                    if not isinstance(local_context, torch.Tensor):
-                        local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
-                    if local_context.ndim == 1:
-                        local_context = local_context.unsqueeze(0)  # (features,) -> (1, features)
-
-                    # Ensure steps_number is a PyTorch tensor and reshape to (batch_size, 1)
-                    if not isinstance(steps_number, torch.Tensor):
-                        steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
-                    if steps_number.ndim == 0:
-                        steps_number = steps_number.unsqueeze(0)  # scalar -> (1,)
-                    if steps_number.ndim == 1:
-                        steps_number = steps_number.unsqueeze(1)  # (batch_size,) -> (batch_size, 1)
-
-                    # Now both tensors should be 2D.
-                    # For instance: local_context -> (batch_size, num_features) and steps_number -> (batch_size, 1)
-                    inputs = torch.cat((local_context, steps_number), dim=1)
-                    # Add the sequence dimension for RNN input (resulting in shape: (batch_size, sequence_length=1, num_features+1))
-                    inputs = inputs.unsqueeze(1)
-
-                    # Forward pass
-                    outputs = self.forward(inputs)  # Pass through mode
-
-                    loss = criterion(outputs, target_action)  # Define your loss_function as per your training setup
-                    val_loss_sum += loss.item()
-
-                    num_batches += 1
-
-            # Compute average validation loss
-            val_loss = val_loss_sum / num_batches if num_batches > 0 else 0.0
-
-            if tensorboard_writer:
-                tensorboard_writer.add_scalar("Loss/epoch", epoch_loss, epoch)
-                tensorboard_writer.add_scalar("Loss/Validation", val_loss, epoch)
-
-                # Log weight updates and gradient norms
-                for name, param in self.named_parameters():
-                    tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
-                    if param.grad is not None:
-                        tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
+            # After finishing the training epoch and recording epoch_loss, do validation:
+            self.validate_model(val_loder, criterion, device, epoch, tensorboard_writer)
 
             if epoch_loss < min(train_losses):
                 trigger_times = 0
@@ -183,9 +131,71 @@ class MazeBaseModel(nn.Module):
                     logging.info(f"Early Stopping Triggered at Epoch {epoch + 1}")
                     break
 
-        if tensorboard_writer:
-            tensorboard_writer.close()
-
         last_loss = train_losses[-1] if train_losses else None
         logging.info(f"Training Complete for {self._get_name()}. Final Loss: {last_loss}")
         return self, last_loss
+
+    def validate_model(self, val_loader, criterion, device, epoch, tensorboard_writer=None):
+        """
+        Runs the validation phase and logs metrics.
+
+        Parameters:
+            val_loader: Validation DataLoader.
+            criterion: Loss function.
+            device: Device to use (e.g. 'cpu' or 'cuda').
+            epoch: Current epoch (for logging purposes).
+            tensorboard_writer: Optional TensorBoard writer for logging.
+
+        Returns:
+            Average validation loss.
+        """
+        self.eval()  # Set model to evaluation mode
+        val_loss_sum = 0.0
+        num_batches = 0
+
+        with torch.no_grad():
+            for batch in val_loader:
+                local_context, target_action, steps_number = batch
+
+                # Convert target_action to a tensor ensuring it has a batch dimension
+                if isinstance(target_action, (list, tuple)):
+                    target_action = torch.tensor(target_action, dtype=torch.long, device=device)
+                else:
+                    target_action = torch.tensor([target_action], dtype=torch.long, device=device)
+
+                # Ensure local_context is a tensor and at least 2D
+                if not isinstance(local_context, torch.Tensor):
+                    local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
+                if local_context.ndim == 1:
+                    local_context = local_context.unsqueeze(0)
+
+                # Ensure steps_number is a tensor with shape (batch_size, 1)
+                if not isinstance(steps_number, torch.Tensor):
+                    steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
+                if steps_number.ndim == 0:
+                    steps_number = steps_number.unsqueeze(0)
+                if steps_number.ndim == 1:
+                    steps_number = steps_number.unsqueeze(1)
+
+                # Concatenate local_context and steps_number along the feature dimension
+                inputs = torch.cat((local_context, steps_number), dim=1)
+                # Add a sequence dimension for RNN input: (batch_size, sequence_length, num_features)
+                inputs = inputs.unsqueeze(1)
+
+                # Forward pass
+                outputs = self.forward(inputs)
+                loss = criterion(outputs, target_action)
+                val_loss_sum += loss.item()
+                num_batches += 1
+
+        val_loss = val_loss_sum / num_batches if num_batches > 0 else 0.0
+
+        if tensorboard_writer:
+            tensorboard_writer.add_scalar("Loss/epoch", epoch, epoch)
+            tensorboard_writer.add_scalar("Loss/Validation", val_loss, epoch)
+            for name, param in self.named_parameters():
+                tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
+                if param.grad is not None:
+                    tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
+
+        return val_loss
