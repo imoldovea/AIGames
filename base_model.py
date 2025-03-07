@@ -74,6 +74,7 @@ class MazeBaseModel(nn.Module):
                 running_loss += loss.item() * inputs.size(0)
 
                 if iteration >= training_samples:
+                    logging.info(f"Training samples limit: Epoch {epoch + 1}/{num_epochs}, Iteration {iteration + 1}/{training_samples}, Loss: {loss.item():.4f}")
                     break
 
             epoch_loss = running_loss / len(dataloader.dataset)

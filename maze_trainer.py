@@ -7,8 +7,14 @@ from backtrack_maze_solver import BacktrackingMazeSolver
 from torch.utils.data import Dataset
 import logging
 from maze import Maze
-from configparser import ConfigParser
+import os, csv, subprocess, traceback
 import torch
+import wandb
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from configparser import ConfigParser
+# Import the unified model
+from model import MazeRecurrentModel
 
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -130,14 +136,6 @@ def train_models(device="cpu", batch_size=32):
     Returns:
         list: Tuples of model name and trained model.
     """
-    import os, csv, subprocess, traceback
-    import torch
-    import wandb
-    from torch.utils.data import DataLoader
-    from torch.utils.tensorboard import SummaryWriter
-    from configparser import ConfigParser
-    # Import the unified model
-    from model import MazeRecurrentModel
 
     OUTPUT = "output/"
     INPUT = "input/"

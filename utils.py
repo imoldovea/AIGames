@@ -16,8 +16,21 @@ def setup_logging():
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)  # Capture all levels of logs
 
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.WARNING)
+    werkzeug_logger.disabled = True
+
+    wandb_logger = logging.getLogger('wandb')
+    wandb_logger.setLevel(logging.WARNING)
+    wandb_logger.disabled = True
+    os.environ["WANDB_SILENT"] = "true"
+
+    #avoid log propagation
+    if logger.hasHandlers():  # Check if handlers are already attached
+        return
+
     # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(filename)s - %(levelname)s - %(message)s')
 
     # Console handler for INFO level and above
     console_handler = logging.StreamHandler()
@@ -30,10 +43,6 @@ def setup_logging():
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
-
-    log = logging.getLogger('werkzeug')
-    log.setLevel(logging.WARNING)
-    log.disabled = True
 
 
 # Define a custom PDF class (optional, for adding a header)
