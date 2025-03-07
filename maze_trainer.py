@@ -187,7 +187,7 @@ def train_models(device="cpu", batch_size=32):
         logging.info("RNN model loaded from file")
     else:
         logging.info("Training RNN model")
-        loss = rnn_model.train_model(
+        rnn_model, loss = rnn_model.train_model(
             dataloader,
             num_epochs=config.getint("RNN", "num_epochs"),
             learning_rate=config.getfloat("RNN", "learning_rate"),
@@ -218,7 +218,7 @@ def train_models(device="cpu", batch_size=32):
         logging.debug("GRU model loaded from file.")
     else:
         logging.info("Training GRU model")
-        loss = gru_model.train_model(
+        gru_model, loss = gru_model.train_model(
             dataloader,
             num_epochs=config.getint("GRU", "num_epochs"),
             learning_rate=config.getfloat("GRU", "learning_rate"),
@@ -248,7 +248,7 @@ def train_models(device="cpu", batch_size=32):
         logging.info("LSTM model loaded from file.")
     else:
         logging.info("Training LSTM model")
-        loss = lstm_model.train_model(
+        lstm_model, loss = lstm_model.train_model(
             dataloader,
             num_epochs=config.getint("LSTM", "num_epochs"),
             learning_rate=config.getfloat("LSTM", "learning_rate"),
