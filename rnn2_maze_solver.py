@@ -18,7 +18,6 @@ from maze_trainer import train_models  # Training function from maze_trainer.py
 # -------------------------------
 # Global Configurations and Constants
 # -------------------------------
-RETRAIN_MODEL = True
 
 # Maze encoding constants
 PATH = 0

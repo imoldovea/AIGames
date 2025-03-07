@@ -143,9 +143,12 @@ def train_models(device="cpu", batch_size=32):
     GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
     LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
     LOSS_FILE = f"{OUTPUT}loss_data.csv"
-    LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
-    RETRAIN_MODEL = False
+
     TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
+
+    config = ConfigParser()
+    config.read("config.properties")
+    retrain_model = config.getboolean("DEFAULT", "retrain_model", fallback=False)
 
     try:
         with open(LOSS_FILE, "w", newline="") as f:
@@ -179,7 +182,7 @@ def train_models(device="cpu", batch_size=32):
     )
     rnn_model.to(device)
     wandb.watch(rnn_model, log="all", log_freq=10)
-    if not RETRAIN_MODEL and os.path.exists(RNN_MODEL_PATH):
+    if not retrain_model and os.path.exists(RNN_MODEL_PATH):
         load_model_state(rnn_model, RNN_MODEL_PATH, "rnn.", "recurrent.")
         logging.info("RNN model loaded from file")
     else:
@@ -210,7 +213,7 @@ def train_models(device="cpu", batch_size=32):
     )
     gru_model.to(device)
     wandb.watch(gru_model, log="all", log_freq=10)
-    if not RETRAIN_MODEL and os.path.exists(GRU_MODEL_PATH):
+    if not retrain_model and os.path.exists(GRU_MODEL_PATH):
         load_model_state(gru_model, GRU_MODEL_PATH, "gru.", "recurrent.")
         logging.debug("GRU model loaded from file.")
     else:
@@ -240,7 +243,7 @@ def train_models(device="cpu", batch_size=32):
     )
     lstm_model.to(device)
     wandb.watch(lstm_model, log="all", log_freq=10)
-    if not RETRAIN_MODEL and os.path.exists(LSTM_MODEL_PATH):
+    if not retrain_model and os.path.exists(LSTM_MODEL_PATH):
         load_model_state(lstm_model, LSTM_MODEL_PATH, "lstm.", "recurrent.")
         logging.info("LSTM model loaded from file.")
     else:
