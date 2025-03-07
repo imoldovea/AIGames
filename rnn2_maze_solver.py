@@ -140,8 +140,13 @@ def main():
     config = ConfigParser()
     os.environ['WANDB_MODE'] = 'online'
     config.read(SECRETS)
+
+    #Monitoring
     wandb.login(key=config.get("WandB", "api_key"))
     dashboard_process = subprocess.Popen(["python", "dashboard.py"])
+    tensorboard_process = subprocess.Popen(['tensorboard', '--logdir=runs'])
+
+    #training
     logging.info("Training models...")
     config.read("config.properties")
     batch_size = config.getint("DEFAULT", "batch_size")
@@ -150,13 +155,16 @@ def main():
         "device": str(device),
     })
     models = train_models(device=device, batch_size=batch_size)
-    dashboard_process.terminate()
     try:
         save_neural_network_diagram(models, "output/")
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
     rnn2_solver(models, device)
+
+    dashboard_process.terminate()
     wandb.finish()
+    tensorboard_process.terminate()
+
 
 if __name__ == "__main__":
     #setup logging

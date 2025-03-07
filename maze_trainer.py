@@ -11,14 +11,19 @@ import os, csv, subprocess, traceback
 import torch
 import wandb
 from torch.utils.data import DataLoader
+import pickle
 from torch.utils.tensorboard import SummaryWriter
+import os
 from configparser import ConfigParser
 # Import the unified model
 from model import MazeRecurrentModel
 
+
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
+
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 # -------------------------------
 # Custom Dataset for Training Samples
@@ -44,23 +49,66 @@ class MazeTrainingDataset(Dataset):
         step_number_normalized = step_number / self.max_steps
         return np.array(local_context, dtype=np.float32), target_action, step_number_normalized
 
+class ValidationDataset(MazeTrainingDataset):
+    """
+    Subclass of MazeTrainingDataset to handle validation data.
+    Loads validation mazes from a specified file.
+    """
+
+    def __init__(self, data):
+        """
+        Args:
+            data (list): List of tuples containing:
+                - local_context (list): State of maze cells around the current position.
+                - target_action (int): Action to take (0: up, 1: down, 2: left, 3: right).
+                - step_number (int): Step number in the solution path.
+        """
+        self.data = data
+        max_steps = max(sample[2] for sample in data)
+        self.max_steps = max_steps
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        local_context, target_action, step_number = self.data[idx]
+        step_number_normalized = step_number / self.max_steps
+        return np.array(local_context, dtype=np.float32), target_action, step_number_normalized
+
+
+
 # -------------------------------
 # Training Utilities (Imitation Learning Setup)
 # -------------------------------
 class RNN2MazeTrainer:
-    def __init__(self, training_file_path="input/training_mazes.pkl"):
+    def __init__(self, training_file_path="input/training_mazes.pkl", validation_file_path="input/validation_mazes.pkl"):
         """
         Loads and processes training mazes.
         """
         self.training_file_path = training_file_path
+        self.validation_file_path = validation_file_path
         config = ConfigParser()
         config.read("config.properties")
-        self.training_mazes = self._load_and_process_training_mazes()[:int(config.getint("DEFAULT", "training_samples"))]
+        training_samples = config.getint("DEFAULT", "training_samples")
 
-    def _load_and_process_training_mazes(self):
-        training_mazes = self._load_mazes_safe(self.training_file_path)
+        self.training_mazes = self._load_and_process_training_mazes(training_file_path,training_samples)
+        self.validation_mazes = self._load_and_process_training_mazes(validation_file_path,training_samples/10)
+
+    def _load_and_process_training_mazes(self, path, training_samples):
+        """
+            Loads and processes training mazes from the specified file path.
+        
+            Parameters:
+                file_path (str): Path to the training mazes file.
+        
+            Returns:
+                List of processed training mazes.
+            """
+        training_mazes = self._load_mazes_safe(path)
         solved_training_mazes = []
         for i, maze_data in enumerate(training_mazes):
+            if i >= training_samples:
+                break
             try:
                 solved_training_mazes.append(self._process_maze(maze_data, i))
             except Exception as e:
@@ -102,7 +150,20 @@ class RNN2MazeTrainer:
                     raise KeyError(f"Invalid move delta: {move_delta}")
                 target_action = DIRECTION_TO_ACTION[move_delta]
                 dataset.append((local_context, target_action, steps_number))
-        return dataset
+
+        validation_dataset = []
+        for maze in self.validation_mazes:
+            solution = maze.get_solution()
+            for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
+                steps_number = i
+                local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
+                move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
+                if move_delta not in DIRECTION_TO_ACTION:
+                    raise KeyError(f"Invalid move delta: {move_delta}")
+                target_action = DIRECTION_TO_ACTION[move_delta]
+                validation_dataset.append((local_context, target_action, steps_number))
+
+        return dataset, validation_dataset
 
     def _compute_local_context(self, maze, position, directions):
         r, c = position
@@ -145,6 +206,7 @@ def train_models(device="cpu", batch_size=32):
     LOSS_FILE = f"{OUTPUT}loss_data.csv"
 
     TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
+    VALIDATION_MAZES_FILE = f"{INPUT}validation_mazes.pkl"
 
     config = ConfigParser()
     config.read("config.properties")
@@ -158,10 +220,11 @@ def train_models(device="cpu", batch_size=32):
         logging.error(f"Error setting up loss file: {e}")
 
     writer = SummaryWriter(log_dir="output/maze_training")
-    trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE)
-    dataset = trainer.create_dataset()
+    trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE, VALIDATION_MAZES_FILE)
+    dataset, validation_dataset= trainer.create_dataset()
     logging.info(f"Created {len(dataset)} training samples.")
     train_ds = MazeTrainingDataset(dataset)
+    validation_ds = ValidationDataset(validation_dataset)
     num_workers = 16 if device == "cuda" else 2
     dataloader = DataLoader(train_ds, batch_size, shuffle=True, num_workers=num_workers)
 
@@ -188,10 +251,10 @@ def train_models(device="cpu", batch_size=32):
     else:
         logging.info("Training RNN model")
         rnn_model, loss = rnn_model.train_model(
-            dataloader,
+            dataloader = dataloader,
+            val_loder=validation_ds,
             num_epochs=config.getint("RNN", "num_epochs"),
             learning_rate=config.getfloat("RNN", "learning_rate"),
-            training_samples=config.getint("RNN", "training_samples"),
             weight_decay=config.getfloat("RNN", "weight_decay"),
             device=device,
             tensorboard_writer=writer
@@ -219,10 +282,10 @@ def train_models(device="cpu", batch_size=32):
     else:
         logging.info("Training GRU model")
         gru_model, loss = gru_model.train_model(
-            dataloader,
+            dataloader = dataloader,
+            val_loder=validation_ds,
             num_epochs=config.getint("GRU", "num_epochs"),
             learning_rate=config.getfloat("GRU", "learning_rate"),
-            training_samples=config.getint("GRU", "training_samples"),
             weight_decay=config.getfloat("GRU", "weight_decay"),
             device=device,
             tensorboard_writer=writer
@@ -249,10 +312,10 @@ def train_models(device="cpu", batch_size=32):
     else:
         logging.info("Training LSTM model")
         lstm_model, loss = lstm_model.train_model(
-            dataloader,
+            dataloader = dataloader,
+            val_loder=validation_ds,
             num_epochs=config.getint("LSTM", "num_epochs"),
             learning_rate=config.getfloat("LSTM", "learning_rate"),
-            training_samples=config.getint("LSTM", "training_samples"),
             weight_decay=config.getfloat("LSTM", "weight_decay"),
             device=device,
             tensorboard_writer=writer

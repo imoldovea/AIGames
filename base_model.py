@@ -32,7 +32,7 @@ class MazeBaseModel(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
 
-    def train_model(self, dataloader, valloder, num_epochs=20, learning_rate=0.001, training_samples=100, weight_decay=0.001,
+    def train_model(self, dataloader, val_loder, num_epochs=20, learning_rate=0.001, weight_decay=0.001,
                     device='cpu', tensorboard_writer=None):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.
@@ -59,20 +59,41 @@ class MazeBaseModel(nn.Module):
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=patience)
         criterion = nn.CrossEntropyLoss()
 
-        self.train()  # Put the model in training mode
+
         train_losses = []  # List to store the epoch losses for training
 
         for epoch in range(num_epochs):
             running_loss = 0.0
-
+            self.train()  # Put the model in training mode
             # Loop through batches from the data loader
             for iteration, (local_context, target_action, steps_number) in enumerate(dataloader):
                 target_action = target_action.to(device)
-                local_context = torch.tensor(local_context).to(device).float()  # Load batch and send to device
-                steps_number = steps_number.to(device).unsqueeze(
-                    1).float()  # Ensure step number shape is [batch_size, 1]
-                inputs = torch.cat((local_context, steps_number), dim=1)  # Concatenate context and steps
-                inputs = inputs.unsqueeze(1)  # Add channel dimension for compatibility with 1D conv layers (if used)
+                # Convert local_context to PyTorch tensor and ensure it's at least 2D
+                local_context = torch.tensor(local_context, dtype=torch.float32, device=device)
+
+                # If local_context is 1D, convert it to 2D (batch_size, num_features)
+                if local_context.dim() == 1:
+                    local_context = local_context.unsqueeze(0)  # Convert shape (num_features,) → (1, num_features)
+
+                # Convert steps_number to PyTorch tensor and ensure it's at least 2D
+                steps_number = torch.tensor(steps_number, dtype=torch.float32, device=device)
+
+                # If steps_number is 0D (a single scalar), make it 1D
+                if steps_number.dim() == 0:
+                    steps_number = steps_number.unsqueeze(0)  # Convert scalar to (1,)
+
+                # Make sure steps_number is (batch_size, 1)
+                steps_number = steps_number.unsqueeze(1)  # Convert shape (1,) → (1, 1)
+
+                # Ensure both tensors are now 2D before concatenation
+                assert local_context.dim() == 2, f"local_context has wrong shape: {local_context.shape}"
+                assert steps_number.dim() == 2, f"steps_number has wrong shape: {steps_number.shape}"
+
+                # Concatenate along the feature dimension
+                inputs = torch.cat((local_context, steps_number), dim=1)
+
+                # Add sequence dimension for RNN input
+                inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
 
                 assert inputs.shape[-1] == 5, f"Expected input features to be 5, but got {inputs.shape[-1]}"
                 assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
@@ -87,11 +108,6 @@ class MazeBaseModel(nn.Module):
 
                 running_loss += loss.item() * inputs.size(0)
 
-                if iteration + 1 >= training_samples:
-                    logging.info(f"Training samples limit: Epoch {epoch + 1}/{num_epochs}, Iteration {iteration + 1}/{training_samples}, Loss: {loss.item():.4f}")
-                    break
-
-
             epoch_loss = running_loss / len(dataloader.dataset)
 
             #Moitoring
@@ -104,27 +120,50 @@ class MazeBaseModel(nn.Module):
 
             train_losses.append(epoch_loss)
 
-
             self.eval()  # Put model in evaluation mode for validation
             val_loss_sum = 0.0
             num_batches = 0
 
-            # No gradients are needed for validation
             with torch.no_grad():
-                for data, labels in valloder:  #
-                    data, labels = data.to(device), labels.to(device)  # Move data to GPU/CPU as appropriate
+                for batch in val_loder:
+                    local_context, target_action, steps_number = batch
+                    # Convert target_action to a tensor and force it to be 1D (batch dimension)
+                    if isinstance(target_action, (list, tuple)):
+                        # If it's already a list of integers (when batch_size > 1)
+                        target_action = torch.tensor(target_action, dtype=torch.long, device=device)
+                    else:
+                        # For a single sample (batch_size == 1), wrap it in a list to get shape (1,)
+                        target_action = torch.tensor([target_action], dtype=torch.long, device=device)
+                    # Ensure local_context is a PyTorch tensor and at least 2D
+                    if not isinstance(local_context, torch.Tensor):
+                        local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
+                    if local_context.ndim == 1:
+                        local_context = local_context.unsqueeze(0)  # (features,) -> (1, features)
+
+                    # Ensure steps_number is a PyTorch tensor and reshape to (batch_size, 1)
+                    if not isinstance(steps_number, torch.Tensor):
+                        steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
+                    if steps_number.ndim == 0:
+                        steps_number = steps_number.unsqueeze(0)  # scalar -> (1,)
+                    if steps_number.ndim == 1:
+                        steps_number = steps_number.unsqueeze(1)  # (batch_size,) -> (batch_size, 1)
+
+                    # Now both tensors should be 2D.
+                    # For instance: local_context -> (batch_size, num_features) and steps_number -> (batch_size, 1)
+                    inputs = torch.cat((local_context, steps_number), dim=1)
+                    # Add the sequence dimension for RNN input (resulting in shape: (batch_size, sequence_length=1, num_features+1))
+                    inputs = inputs.unsqueeze(1)
 
                     # Forward pass
-                    outputs = self(data)
+                    outputs = self.forward(inputs)  # Pass through mode
 
-                    # Compute loss
-                    loss = criterion(outputs, labels)  # Define your loss_function as per your training setup
+                    loss = criterion(outputs, target_action)  # Define your loss_function as per your training setup
                     val_loss_sum += loss.item()
 
                     num_batches += 1
 
             # Compute average validation loss
-            val_loss = val_loss_sum / num_batches
+            val_loss = val_loss_sum / num_batches if num_batches > 0 else 0.0
 
             if tensorboard_writer:
                 tensorboard_writer.add_scalar("Loss/epoch", epoch_loss, epoch)
