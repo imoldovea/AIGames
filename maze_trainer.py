@@ -1,11 +1,18 @@
-#maze_trainer.py
+# maze_trainer.py
+# MazeTrainingDataset and RNN2MazeTrainer
+
 import numpy as np
-import torch
 import utils
 from backtrack_maze_solver import BacktrackingMazeSolver
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 import logging
 from maze import Maze
+from configparser import ConfigParser
+import torch
+
+WALL = 1
+DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
 
 # -------------------------------
 # Custom Dataset for Training Samples
@@ -13,21 +20,23 @@ from maze import Maze
 class MazeTrainingDataset(Dataset):
     def __init__(self, data):
         """
-        data: a list of tuples (local_context, target_action)
-              local_context: list of 4 scalar values (e.g., [0, 0, 1, 1])
-              target_action: integer (0-3)
+        Args:
+            data (list): List of tuples containing:
+                - local_context (list): State of maze cells around the current position.
+                - target_action (int): Action to take (0: up, 1: down, 2: left, 3: right).
+                - step_number (int): Step number in the solution path.
         """
         self.data = data
+        max_steps = max(sample[2] for sample in data)
+        self.max_steps = max_steps
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        local_context, target_action = self.data[idx]
-        # Convert list of scalars to a numpy array then to a tensor of shape [4]
-        local_context = torch.from_numpy(np.array(local_context)).float()
-        return local_context, torch.tensor(target_action, dtype=torch.long)
-
+        local_context, target_action, step_number = self.data[idx]
+        step_number_normalized = step_number / self.max_steps
+        return np.array(local_context, dtype=np.float32), target_action, step_number_normalized
 
 # -------------------------------
 # Training Utilities (Imitation Learning Setup)
@@ -35,18 +44,14 @@ class MazeTrainingDataset(Dataset):
 class RNN2MazeTrainer:
     def __init__(self, training_file_path="input/training_mazes.pkl"):
         """
-        Initializes the trainer with a file path for training mazes.
-        Loads and processes the training mazes upon instantiation.
+        Loads and processes training mazes.
         """
         self.training_file_path = training_file_path
-        self.training_mazes = self._load_and_process_training_mazes()
+        config = ConfigParser()
+        config.read("config.properties")
+        self.training_mazes = self._load_and_process_training_mazes()[:int(config.getint("DEFAULT", "training_samples"))]
 
     def _load_and_process_training_mazes(self):
-        """
-        Loads training mazes from the specified file and processes each maze.
-        Returns:
-            list: A list of Maze objects with computed solutions.
-        """
         training_mazes = self._load_mazes_safe(self.training_file_path)
         solved_training_mazes = []
         for i, maze_data in enumerate(training_mazes):
@@ -78,38 +83,22 @@ class RNN2MazeTrainer:
 
     def create_dataset(self):
         """
-        Constructs a dataset for training a model to navigate mazes.
-        Each training sample is a tuple (local_context, target_action), where:
-          - local_context: A list of 4 values representing the state of the maze cells
-                           in the order [up, down, left, right] relative to the current position.
-                           (0 for corridor, 1 for wall; out-of-bound cells are treated as walls.)
-          - target_action: An integer (0: up, 1: down, 2: left, 3: right) representing the move
-                           from the current position to the next position in the solution.
-        Returns:
-            list: A list of (local_context, target_action) training samples.
+        Constructs a dataset for training a maze-navigating model.
         """
         dataset = []
-        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
-        direction_to_target = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
-
         for maze in self.training_mazes:
-            solution = maze.get_solution()  # List of coordinates from start to exit
-            for i in range(len(solution) - 1):
-                current_pos = solution[i]
-                next_pos = solution[i + 1]
-                local_context = self._compute_local_context(maze, current_pos, directions)
+            solution = maze.get_solution()
+            for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
+                steps_number = i
+                local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
                 move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
-                if move_delta not in direction_to_target:
+                if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
-                target_action = direction_to_target[move_delta]
-                dataset.append((local_context, target_action))
+                target_action = DIRECTION_TO_ACTION[move_delta]
+                dataset.append((local_context, target_action, steps_number))
         return dataset
 
     def _compute_local_context(self, maze, position, directions):
-        """
-        Computes the local context around a given position in a maze.
-        Returns a list of cell states in the order defined by 'directions'.
-        """
         r, c = position
         local_context = []
         for dr, dc in directions:
@@ -117,3 +106,162 @@ class RNN2MazeTrainer:
             cell_state = maze.grid[neighbor] if maze.is_within_bounds(neighbor) else WALL
             local_context.append(cell_state)
         return local_context
+
+# -------------------------------
+# Model Training Function
+# -------------------------------
+def load_model_state(model, model_path, old_prefix, new_prefix):
+    """
+    Helper function to remap keys from the old state_dict prefix to the new one.
+    """
+    state_dict = torch.load(model_path)
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith(old_prefix):
+            new_key = new_prefix + key[len(old_prefix):]
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value
+    model.load_state_dict(new_state_dict)
+
+def train_models(device="cpu", batch_size=32):
+    """
+    Trains RNN, GRU, and LSTM models on maze-solving data.
+    Returns:
+        list: Tuples of model name and trained model.
+    """
+    import os, csv, subprocess, traceback
+    import torch
+    import wandb
+    from torch.utils.data import DataLoader
+    from torch.utils.tensorboard import SummaryWriter
+    from configparser import ConfigParser
+    # Import the unified model
+    from model import MazeRecurrentModel
+
+    OUTPUT = "output/"
+    INPUT = "input/"
+    RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
+    GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
+    LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
+    LOSS_FILE = f"{OUTPUT}loss_data.csv"
+    LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
+    RETRAIN_MODEL = False
+    TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
+
+    try:
+        with open(LOSS_FILE, "w", newline="") as f:
+            loss_writer = csv.writer(f)
+            loss_writer.writerow(["model", "epoch", "loss"])
+    except Exception as e:
+        logging.error(f"Error setting up loss file: {e}")
+
+    writer = SummaryWriter(log_dir="output/maze_training")
+    trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE)
+    dataset = trainer.create_dataset()
+    logging.info(f"Created {len(dataset)} training samples.")
+    train_ds = MazeTrainingDataset(dataset)
+    num_workers = 16 if device == "cuda" else 2
+    dataloader = DataLoader(train_ds, batch_size, shuffle=True, num_workers=num_workers)
+
+    config = ConfigParser()
+    config.read("config.properties")
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logging.info(f'Using device: {device}')
+
+    models = []
+
+    # RNN Model Training
+    rnn_model = MazeRecurrentModel(
+        mode_type="RNN",
+        input_size=config.getint("RNN", "input_size", fallback=5),
+        hidden_size=config.getint("RNN", "hidden_size"),
+        num_layers=config.getint("RNN", "num_layers"),
+        output_size=config.getint("RNN", "output_size", fallback=4),
+    )
+    rnn_model.to(device)
+    wandb.watch(rnn_model, log="all", log_freq=10)
+    if not RETRAIN_MODEL and os.path.exists(RNN_MODEL_PATH):
+        load_model_state(rnn_model, RNN_MODEL_PATH, "rnn.", "recurrent.")
+        logging.info("RNN model loaded from file")
+    else:
+        logging.info("Training RNN model")
+        loss = rnn_model.train_model(
+            dataloader,
+            num_epochs=config.getint("RNN", "num_epochs"),
+            learning_rate=config.getfloat("RNN", "learning_rate"),
+            training_samples=config.getint("RNN", "training_samples"),
+            weight_decay=config.getfloat("RNN", "weight_decay"),
+            device=device,
+            tensorboard_writer=writer
+        )
+        logging.info(f"Done training RNN model. Loss {loss:.4f}")
+        torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
+        logging.info("Saved RNN model")
+        wandb.log({"RNN_final_loss": loss})
+        writer.add_scalar("Loss/RNN_final_loss", loss)
+    models.append(("RNN", rnn_model))
+
+    # GRU Model Training
+    gru_model = MazeRecurrentModel(
+        mode_type="GRU",
+        input_size=config.getint("GRU", "input_size", fallback=5),
+        hidden_size=config.getint("GRU", "hidden_size"),
+        num_layers=config.getint("GRU", "num_layers"),
+        output_size=config.getint("GRU", "output_size", fallback=4),
+    )
+    gru_model.to(device)
+    wandb.watch(gru_model, log="all", log_freq=10)
+    if not RETRAIN_MODEL and os.path.exists(GRU_MODEL_PATH):
+        load_model_state(gru_model, GRU_MODEL_PATH, "gru.", "recurrent.")
+        logging.debug("GRU model loaded from file.")
+    else:
+        logging.info("Training GRU model")
+        loss = gru_model.train_model(
+            dataloader,
+            num_epochs=config.getint("GRU", "num_epochs"),
+            learning_rate=config.getfloat("GRU", "learning_rate"),
+            training_samples=config.getint("GRU", "training_samples"),
+            weight_decay=config.getfloat("GRU", "weight_decay"),
+            device=device,
+            tensorboard_writer=writer
+        )
+        torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
+        logging.info(f"Done training GRU model. Loss {loss:.4f}")
+        wandb.log({"GRU_final_loss": loss})
+        writer.add_scalar("Loss/GRU_final_loss", loss)
+    models.append(("GRU", gru_model))
+
+    # LSTM Model Training
+    lstm_model = MazeRecurrentModel(
+        mode_type="LSTM",
+        input_size=config.getint("LSTM", "input_size", fallback=5),
+        hidden_size=config.getint("LSTM", "hidden_size"),
+        num_layers=config.getint("LSTM", "num_layers"),
+        output_size=config.getint("LSTM", "output_size", fallback=4),
+    )
+    lstm_model.to(device)
+    wandb.watch(lstm_model, log="all", log_freq=10)
+    if not RETRAIN_MODEL and os.path.exists(LSTM_MODEL_PATH):
+        load_model_state(lstm_model, LSTM_MODEL_PATH, "lstm.", "recurrent.")
+        logging.info("LSTM model loaded from file.")
+    else:
+        logging.info("Training LSTM model")
+        loss = lstm_model.train_model(
+            dataloader,
+            num_epochs=config.getint("LSTM", "num_epochs"),
+            learning_rate=config.getfloat("LSTM", "learning_rate"),
+            training_samples=config.getint("LSTM", "training_samples"),
+            weight_decay=config.getfloat("LSTM", "weight_decay"),
+            device=device,
+            tensorboard_writer=writer
+        )
+        torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
+        logging.info(f"Done training LSTM model. Loss {loss:.4f}")
+        wandb.log({"LSTM_final_loss": loss})
+        writer.add_scalar("Loss/LSTM_final_loss", loss)
+    models.append(("LSTM", lstm_model))
+
+    writer.close()
+    logging.info("Training complete.")
+    return models

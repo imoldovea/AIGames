@@ -4,6 +4,7 @@ import random
 import pickle
 import matplotlib.pyplot as plt
 import logging
+from utils import setup_logging
 
 
 IMG_SIZE = 26
@@ -197,9 +198,9 @@ def plot_maze(maze):
     plt.show()
 
 def main():
-    NUM_MAZES = 10
+    NUM_MAZES = 10000
     OUTPUT_FOLDER = 'input'
-    MAZES_FILENAME = 'mazes.pkl'
+    MAZES_FILENAME = 'training_mazes.pkl'
 
     mazes = []
     for i in range(NUM_MAZES):
@@ -213,5 +214,9 @@ def main():
     save_mazes(OUTPUT_FOLDER, MAZES_FILENAME, mazes)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    #setup logging
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    logger.debug("Logging is configured.")
+
     main()

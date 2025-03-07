@@ -8,11 +8,12 @@ def mazes():
     print("Current directory:", os.getcwd())
 
     # Construct absolute paths using os.path.join
-    project_dir = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
+    project_dir = os.getcwd()
+    print("Project directory:", project_dir)
 
     maze_files = [
-        os.path.join(project_dir, 'input', 'mazes.pkl'),
-        os.path.join(project_dir, 'input', 'training_mazes.pkl')
+        os.path.join('input', 'mazes.pkl'),
+        os.path.join('input', 'training_mazes.pkl')
     ]
 
     return [utils.load_mazes(file) for file in maze_files]

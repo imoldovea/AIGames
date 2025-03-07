@@ -1,21 +1,26 @@
-#base_model.py
+# base_model.py
+# MazeBaseModel
+
 import torch.nn as nn
 import torch
 from torch import optim
 import logging
 import torch.optim.lr_scheduler as lr_scheduler
-from torch.utils.tensorboard import SummaryWriter
 import csv
-
+import os
 
 OUTPUT = "output/"
 TRAINING_PROGRESS_HTML = "training_progress.html"
 TRAINING_PROGRESS_PNG = "training_progress.png"
-LOSS_FILE = f"{OUTPUT}loss_data.csv"
+LOSS_FILE = os.path.join(OUTPUT, "loss_data.csv")
+os.makedirs(OUTPUT, exist_ok=True)
+
+
 
 class MazeBaseModel(nn.Module):
     def __init__(self):
         super(MazeBaseModel, self).__init__()
+        self.model_name = "MazeBaseModel"  # Define the model name
 
     def forward(self, x):
         """
@@ -23,7 +28,7 @@ class MazeBaseModel(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
 
-    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001, device='cpu',writer=None):
+    def train_model(self, dataloader, num_epochs=20, learning_rate=0.001, training_samples=100, weight_decay=0.001, device='cpu', tensorboard_writer=None):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.
 
@@ -36,88 +41,61 @@ class MazeBaseModel(nn.Module):
         Returns:
             self: The trained model.
         """
-        # Move the model to the specified device ('cpu' or 'cuda').
         self.to(device)
+        patience = 5
+        trigger_times = 0
 
-        # Define the optimizer as Adam and set the learning rate.
-        optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-
-        # Define a learning rate scheduler (Reduce LR when loss plateaus)
-        #Step Decay (Reduce LR every 10 epochs)
-        #scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
-        #Reduce LR if No Improvement
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
-
-        # Define the loss function as cross-entropy loss.
+        optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=patience)
         criterion = nn.CrossEntropyLoss()
 
-        # Set the model to training mode.
         self.train()
-
-        #Display of training rate
         train_losses = []
 
-        summary_writer = SummaryWriter(log_dir=f"{OUTPUT}{self.__class__.__name__}_{TRAINING_PROGRESS_HTML}")
-
-        # Loop over the specified number of epochs.
         for epoch in range(num_epochs):
-            running_loss = 0.0  # Accumulate loss for the current epoch
+            running_loss = 0.0
 
-            # Iterate through batches of inputs and targets from the dataloader.
-            for inputs, targets in dataloader:
-                # Add a sequence length dimension to inputs and move to the specified device.
-                inputs = inputs.unsqueeze(1).to(device).float()
+            for iteration, (local_context, target_action, steps_number) in enumerate(dataloader):
+                local_context = torch.tensor(local_context).to(device).float()
+                steps_number = steps_number.to(device).unsqueeze(1).float()  # Shape: [batch_size, 1]
+                inputs = torch.cat((local_context, steps_number), dim=1)
+                inputs = inputs.unsqueeze(1)
 
-                # Move targets to the specified device.
-                targets = targets.to(device)
+                assert inputs.shape[-1] == 5, f"Expected input features to be 5, but got {inputs.shape[-1]}"
+                assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
 
-                # Reset the gradients of model parameters.
-                optimizer.zero_grad()
-
-                # Perform a forward pass through the model to get the outputs.
                 outputs = self.forward(inputs)
+                loss = criterion(outputs, target_action.to(device))
 
-                # Compute the loss between the outputs and the targets.
-                loss = criterion(outputs, targets)
-
-                # Backpropagate the loss to compute gradients.
+                optimizer.zero_grad()
                 loss.backward()
-
-                # Update the model parameters using the optimizer.
                 optimizer.step()
 
-                # Accumulate the loss scaled by the batch size.
                 running_loss += loss.item() * inputs.size(0)
 
-            # Calculate the average loss for the current epoch.
+                if iteration >= training_samples:
+                    break
+
             epoch_loss = running_loss / len(dataloader.dataset)
+            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
 
-            # Print the epoch number and the corresponding loss.
-            logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
-
-            # Update learning rate
             scheduler.step(epoch_loss)
-
-            #Visualise training rate
-            summary_writer.add_scalar('Loss/train', epoch_loss, epoch)
-            summary_writer.add_scalar(
-                'Accuracy/train',
-                100.0 * torch.sum(torch.argmax(outputs, dim=1) == targets) / len(targets),
-                epoch
-            )
-            #logging.info(
-            #    f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
-            summary_writer.add_scalar('LearningRate/train', scheduler.get_last_lr()[0], epoch)
-
-            # Append loss value to CSV file
             with open(LOSS_FILE, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([self.model_name, epoch + 1, epoch_loss])
 
             train_losses.append(epoch_loss)
+            if tensorboard_writer:
+                tensorboard_writer.add_scalar("Loss/epoch", epoch_loss, epoch)
 
+            if epoch_loss < min(train_losses):
+                trigger_times = 0
+            else:
+                trigger_times += 1
+                if trigger_times >= patience:
+                    logging.info(f"Early Stopping Triggered at Epoch {epoch + 1}")
+                    break
 
-        summary_writer.close()
-        last_loss = train_losses[-1] if train_losses else None  # Save the last loss value
-
+        last_loss = train_losses[-1] if train_losses else None
+        logging.info(f"Training Complete for {self._get_name()}. Final Loss: {last_loss}")
         return last_loss

@@ -11,12 +11,10 @@ from utils import (
     save_movie,
     display_all_mazes,
     save_mazes_as_pdf,
-    load_mazes)
-
-
+    load_mazes,
+    setup_logging)
 
 OUTPUT_MOVIE_FILE = "output/maze_animation.mp4"
-logging.basicConfig(level=logging.WARN)
 
 
 def solve_all_mazes(mazes, solver_class):
@@ -99,4 +97,9 @@ def main():
 
 
 if __name__ == "__main__":
+    #setup logging
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    logger.debug("Logging is configured.")
+
     main()

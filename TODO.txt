@@ -1,0 +1,6 @@
+- Fix csv generation
+- Better charts: traning activations
+- Google side processing
+- Fix loss function
+- LLM apprach
+- Genetic avolotiv learning

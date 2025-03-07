@@ -10,6 +10,32 @@ import traceback
 import pickle
 from multiprocessing import Process
 
+OUTPUT_DIR = "output"
+
+def setup_logging():
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)  # Capture all levels of logs
+
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Console handler for INFO level and above
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # File handler for DEBUG level and above
+    file_handler = logging.FileHandler(os.path.join(OUTPUT_DIR, 'debug.log'))
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.WARNING)
+    log.disabled = True
+
+
 # Define a custom PDF class (optional, for adding a header)
 class PDF(FPDF):
     def header(self):
