@@ -44,9 +44,12 @@ class MazeTrainingDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        local_context, target_action, step_number = self.data[idx]
+        local_context, relative_position, target_action, step_number = self.data[idx]
         step_number_normalized = step_number / self.max_steps
-        return np.array(local_context, dtype=np.float32), target_action, step_number_normalized
+        return (np.array(local_context, dtype=np.float32),
+                np.array(relative_position, dtype=np.float32),
+                target_action,
+                step_number_normalized)
 
 class ValidationDataset(MazeTrainingDataset):
     """
@@ -70,11 +73,12 @@ class ValidationDataset(MazeTrainingDataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        local_context, target_action, step_number = self.data[idx]
+        local_context, relative_position, target_action, step_number = self.data[idx]
         step_number_normalized = step_number / self.max_steps if self.max_steps != 0 else 0
-        return np.array(local_context, dtype=np.float32), target_action, step_number_normalized
-
-
+        return (np.array(local_context, dtype=np.float32),
+                np.array(relative_position, dtype=np.float32),
+                target_action,
+                step_number_normalized)
 
 # -------------------------------
 # Training Utilities (Imitation Learning Setup)
@@ -141,14 +145,18 @@ class RNN2MazeTrainer:
         dataset = []
         for maze in self.training_mazes:
             solution = maze.get_solution()
+            start_position = maze.start_position
             for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
                 steps_number = i
                 local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
+                # Calculate relative position as (dx, dy)
+                relative_position = (current_pos[0] - start_position[0], current_pos[1] - start_position[1])
                 move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
                 if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
                 target_action = DIRECTION_TO_ACTION[move_delta]
-                dataset.append((local_context, target_action, steps_number))
+                # Append the tuple with the additional relative_position information
+                dataset.append((local_context, relative_position, target_action, steps_number))
 
         validation_dataset = []
         for maze in self.validation_mazes:
@@ -156,11 +164,12 @@ class RNN2MazeTrainer:
             for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
                 steps_number = i
                 local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
+                relative_position = (current_pos[0] - start_position[0], current_pos[1] - start_position[1])
                 move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
                 if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
                 target_action = DIRECTION_TO_ACTION[move_delta]
-                validation_dataset.append((local_context, target_action, steps_number))
+                validation_dataset.append((local_context, relative_position, target_action, steps_number))
 
         return dataset, validation_dataset
 
@@ -210,7 +219,7 @@ def train_models(device="cpu", batch_size=32):
     config = ConfigParser()
     config.read("config.properties")
 
-    #Delete previpus tensorboard files.
+    #Delete previous tensorboard files.
     try:
         with open(LOSS_FILE, "w", newline="") as f:
             loss_writer = csv.writer(f)
@@ -237,7 +246,7 @@ def train_models(device="cpu", batch_size=32):
     # RNN Model Training
     rnn_model = MazeRecurrentModel(
         mode_type="RNN",
-        input_size=config.getint("RNN", "input_size", fallback=5),
+        input_size=config.getint("RNN", "input_size", fallback=7),
         hidden_size=config.getint("RNN", "hidden_size"),
         num_layers=config.getint("RNN", "num_layers"),
         output_size=config.getint("RNN", "output_size", fallback=4),
@@ -270,7 +279,7 @@ def train_models(device="cpu", batch_size=32):
     # GRU Model Training
     gru_model = MazeRecurrentModel(
         mode_type="GRU",
-        input_size=config.getint("GRU", "input_size", fallback=5),
+        input_size=config.getint("GRU", "input_size", fallback=7),
         hidden_size=config.getint("GRU", "hidden_size"),
         num_layers=config.getint("GRU", "num_layers"),
         output_size=config.getint("GRU", "output_size", fallback=4),
@@ -302,7 +311,7 @@ def train_models(device="cpu", batch_size=32):
     # LSTM Model Training
     lstm_model = MazeRecurrentModel(
         mode_type="LSTM",
-        input_size=config.getint("LSTM", "input_size", fallback=5),
+        input_size=config.getint("LSTM", "input_size", fallback=7),
         hidden_size=config.getint("LSTM", "hidden_size"),
         num_layers=config.getint("LSTM", "num_layers"),
         output_size=config.getint("LSTM", "output_size", fallback=4),

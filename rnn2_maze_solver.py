@@ -36,6 +36,8 @@ OUTPUT_PDF = f"{OUTPUT}solved_mazes.pdf"
 SECRETS = "secrets.properties"
 TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
 
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
 # -------------------------------
 # RNN2MazeSolver Class (Inference)
 # -------------------------------
@@ -65,15 +67,25 @@ class RNN2MazeSolver(MazeSolver):
             activation_tensor = output
         self.activations['recurrent'] = activation_tensor.detach().cpu().numpy()
 
-    def solve(self, max_steps=25) -> List[Tuple[int, int]]:
+    def solve(self, max_steps=25):
         current_pos = self.maze.start_position
         path = [current_pos]
         step_number = 0
+        config = ConfigParser()
+        config.read("config.properties")
+        max_steps = config.getint("DEFAULT", "max_steps")
         while self.maze.exit != current_pos and len(path) < max_steps:
             step_number += 1
             step_number_normalized = step_number / max_steps
             local_context = self._compute_local_context(current_pos, self.DIRECTIONS)
-            input_features = np.append(local_context, step_number_normalized).astype(np.float32)
+            # Compute the relative position as the offset from the starting point
+            relative_position = (
+                current_pos[0] - self.maze.start_position[0],
+                current_pos[1] - self.maze.start_position[1]
+            )
+            # Create input feature vector: local_context (4 values) + relative_position (2 values) + normalized step (1 value)
+            input_features = np.array(local_context + list(relative_position) + [step_number_normalized],
+                                      dtype=np.float32)
             input_tensor = torch.tensor(input_features).unsqueeze(0).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 output = self.model(input_tensor)
@@ -151,7 +163,7 @@ def main():
 
     dashboard_process = subprocess.Popen(["python", "dashboard.py"])
     # Launch TensorBoard directly
-    #tensorboard_process = subprocess.Popen(["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
+    tensorboard_process = subprocess.Popen(["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
 
     tensorboard_url = "http://localhost:6006/"
     dash_dashboard_url = "http://127.0.0.1:8050/"
@@ -176,7 +188,7 @@ def main():
     save_latest_loss_chart(models,LOSS_PLOT_FILE)
     dashboard_process.terminate()
     wandb.finish()
-    #tensorboard_process.terminate()
+    tensorboard_process.terminate()
 
 if __name__ == "__main__":
     setup_logging()

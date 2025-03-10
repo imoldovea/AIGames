@@ -8,7 +8,7 @@ from base_model import MazeBaseModel
 
 
 class MazeRecurrentModel(MazeBaseModel):
-    def __init__(self, mode_type="RNN", input_size=5, hidden_size=128, num_layers=2, output_size=4):
+    def __init__(self, mode_type="RNN", input_size=7, hidden_size=128, num_layers=2, output_size=4):
         """
         Initializes the MazeRecurrentModel.
 

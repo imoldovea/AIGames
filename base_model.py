@@ -70,14 +70,17 @@ class MazeBaseModel(nn.Module):
             running_loss = 0.0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
-            for iteration, (local_context, target_action, steps_number) in enumerate(dataloader):
+            for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(dataloader):
                 target_action = target_action.to(device).long()
                 # Convert local_context to PyTorch tensor and ensure it's at least 2D
                 local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
+                relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
 
                 # If local_context is 1D, convert it to 2D (batch_size, num_features)
                 if local_context.dim() == 1:
                     local_context = local_context.unsqueeze(0)  # Convert shape (num_features,) → (1, num_features)
+                if relative_position.dim() == 1:
+                    relative_position = relative_position.unsqueeze(0)
 
                 # Convert steps_number to PyTorch tensor and ensure it's at least 2D
                 steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
@@ -93,13 +96,13 @@ class MazeBaseModel(nn.Module):
                 assert local_context.dim() == 2, f"local_context has wrong shape: {local_context.shape}"
                 assert steps_number.dim() == 2, f"steps_number has wrong shape: {steps_number.shape}"
 
-                # Concatenate along the feature dimension
-                inputs = torch.cat((local_context, steps_number), dim=1)
+                # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
+                inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
 
                 # Add sequence dimension for RNN input
                 inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
 
-                assert inputs.shape[-1] == 5, f"Expected input features to be 5, but got {inputs.shape[-1]}"
+                assert inputs.shape[-1] == 7, f"Expected input features to be 5, but got {inputs.shape[-1]}"
                 assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
 
                 # Forward pass
@@ -194,7 +197,7 @@ class MazeBaseModel(nn.Module):
 
             with torch.no_grad():
                 for batch in val_loader:
-                    local_context, target_action, steps_number = batch
+                    local_context, relative_position, target_action, steps_number = batch
 
                     # Convert target_action to a tensor ensuring it has a batch dimension
                     if isinstance(target_action, (list, tuple)):
@@ -207,6 +210,11 @@ class MazeBaseModel(nn.Module):
                         local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
                     if local_context.ndim == 1:
                         local_context = local_context.unsqueeze(0)
+                    # Convert relative_position to a tensor if needed
+                    if not isinstance(relative_position, torch.Tensor):
+                        relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
+                    if relative_position.ndim == 1:
+                        relative_position = relative_position.unsqueeze(0)
 
                     # Ensure steps_number is a tensor with shape (batch_size, 1)
                     if not isinstance(steps_number, torch.Tensor):
@@ -216,8 +224,8 @@ class MazeBaseModel(nn.Module):
                     if steps_number.ndim == 1:
                         steps_number = steps_number.unsqueeze(1)
 
-                    # Concatenate local_context and steps_number along the feature dimension
-                    inputs = torch.cat((local_context, steps_number), dim=1)
+                    # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
+                    inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
                     # Add a sequence dimension for RNN input: (batch_size, sequence_length, num_features)
                     inputs = inputs.unsqueeze(1)
 
