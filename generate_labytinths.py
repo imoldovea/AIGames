@@ -7,8 +7,6 @@ import logging
 from utils import setup_logging
 
 
-IMG_SIZE = 26
-MIN_SIZE = 5
 PATH = 0
 WALL = 1
 START = 3
@@ -198,14 +196,18 @@ def plot_maze(maze):
     plt.show()
 
 def main():
-    NUM_MAZES = 1000
+    NUM_MAZES = 10000
     OUTPUT_FOLDER = 'input'
     MAZES_FILENAME = 'validation_mazes.pkl'
 
+    config = ConfigParser()
+    config.read("config.properties")
+    min_size = config.getint("MAZE", "min_size")
+    max_size = config.getint("MAZE", "max_size")
     mazes = []
     for i in range(NUM_MAZES):
         logging.debug(f"Generating maze {i + 1}...")
-        width, height = random.choice(range(MIN_SIZE, IMG_SIZE, 2)), random.choice(range(MIN_SIZE, IMG_SIZE, 2))
+        width, height = random.choice(range(min_size, max_size, 2)), random.choice(range(min_size, max_size, 2))
         maze = generate_maze(width, height)
         mazes.append(maze)
         # display_maze(maze)

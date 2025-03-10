@@ -7,13 +7,11 @@ from backtrack_maze_solver import BacktrackingMazeSolver
 from torch.utils.data import Dataset
 import logging
 from maze import Maze
-import os, csv, subprocess, traceback
-import torch
+import os, csv
 import wandb
 from torch.utils.data import DataLoader
-import pickle
 from torch.utils.tensorboard import SummaryWriter
-import os
+import torch
 from configparser import ConfigParser
 # Import the unified model
 from model import MazeRecurrentModel
@@ -23,7 +21,8 @@ WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
 
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
 
 # -------------------------------
 # Custom Dataset for Training Samples
@@ -72,7 +71,7 @@ class ValidationDataset(MazeTrainingDataset):
 
     def __getitem__(self, idx):
         local_context, target_action, step_number = self.data[idx]
-        step_number_normalized = step_number / self.max_steps
+        step_number_normalized = step_number / self.max_steps if self.max_steps != 0 else 0
         return np.array(local_context, dtype=np.float32), target_action, step_number_normalized
 
 
@@ -92,7 +91,7 @@ class RNN2MazeTrainer:
         training_samples = config.getint("DEFAULT", "training_samples")
 
         self.training_mazes = self._load_and_process_training_mazes(training_file_path,training_samples)
-        self.validation_mazes = self._load_and_process_training_mazes(validation_file_path,training_samples/10)
+        self.validation_mazes = self._load_and_process_training_mazes(validation_file_path,training_samples//10)
 
     def _load_and_process_training_mazes(self, path, training_samples):
         """
@@ -210,16 +209,17 @@ def train_models(device="cpu", batch_size=32):
 
     config = ConfigParser()
     config.read("config.properties")
-    retrain_model = config.getboolean("DEFAULT", "retrain_model", fallback=False)
 
+    #Delete previpus tensorboard files.
     try:
         with open(LOSS_FILE, "w", newline="") as f:
             loss_writer = csv.writer(f)
-            loss_writer.writerow(["model", "epoch", "loss"])
+            loss_writer.writerow(["model", "epoch", "loss", "validation_loss"])
     except Exception as e:
         logging.error(f"Error setting up loss file: {e}")
 
-    writer = SummaryWriter(log_dir="output/maze_training")
+    tensorboard_data_sever = SummaryWriter(log_dir=f"{OUTPUT}tensorboard_data")
+
     trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE, VALIDATION_MAZES_FILE)
     dataset, validation_dataset= trainer.create_dataset()
     logging.info(f"Created {len(dataset)} training samples.")
@@ -230,7 +230,6 @@ def train_models(device="cpu", batch_size=32):
 
     config = ConfigParser()
     config.read("config.properties")
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device: {device}')
 
     models = []
@@ -244,26 +243,28 @@ def train_models(device="cpu", batch_size=32):
         output_size=config.getint("RNN", "output_size", fallback=4),
     )
     rnn_model.to(device)
+    retrain_model = config.getboolean("RNN", "retrain_model", fallback=False)
     wandb.watch(rnn_model, log="all", log_freq=10)
     if not retrain_model and os.path.exists(RNN_MODEL_PATH):
         load_model_state(rnn_model, RNN_MODEL_PATH, "rnn.", "recurrent.")
         logging.info("RNN model loaded from file")
     else:
         logging.info("Training RNN model")
-        rnn_model, loss = rnn_model.train_model(
+        rnn_model = rnn_model.train_model(
             dataloader = dataloader,
-            val_loder=validation_ds,
+            val_loader=validation_ds,
             num_epochs=config.getint("RNN", "num_epochs"),
             learning_rate=config.getfloat("RNN", "learning_rate"),
             weight_decay=config.getfloat("RNN", "weight_decay"),
             device=device,
-            tensorboard_writer=writer
+            tensorboard_writer=tensorboard_data_sever
         )
+        loss = rnn_model.last_loss
         logging.info(f"Done training RNN model. Loss {loss:.4f}")
         torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
         logging.info("Saved RNN model")
         wandb.log({"RNN_final_loss": loss})
-        writer.add_scalar("Loss/RNN_final_loss", loss)
+        tensorboard_data_sever.add_scalar("Loss/RNN_final_loss", loss)
     models.append(("RNN", rnn_model))
 
     # GRU Model Training
@@ -275,25 +276,27 @@ def train_models(device="cpu", batch_size=32):
         output_size=config.getint("GRU", "output_size", fallback=4),
     )
     gru_model.to(device)
+    retrain_model = config.getboolean("GRU", "retrain_model", fallback=False)
     wandb.watch(gru_model, log="all", log_freq=10)
     if not retrain_model and os.path.exists(GRU_MODEL_PATH):
         load_model_state(gru_model, GRU_MODEL_PATH, "gru.", "recurrent.")
         logging.debug("GRU model loaded from file.")
     else:
         logging.info("Training GRU model")
-        gru_model, loss = gru_model.train_model(
+        gru_model = gru_model.train_model(
             dataloader = dataloader,
-            val_loder=validation_ds,
+            val_loader=validation_ds,
             num_epochs=config.getint("GRU", "num_epochs"),
             learning_rate=config.getfloat("GRU", "learning_rate"),
             weight_decay=config.getfloat("GRU", "weight_decay"),
             device=device,
-            tensorboard_writer=writer
+            tensorboard_writer=tensorboard_data_sever
         )
+        loss = gru_model.last_loss
         torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
         logging.info(f"Done training GRU model. Loss {loss:.4f}")
         wandb.log({"GRU_final_loss": loss})
-        writer.add_scalar("Loss/GRU_final_loss", loss)
+        tensorboard_data_sever.add_scalar("Loss/GRU_final_loss", loss)
     models.append(("GRU", gru_model))
 
     # LSTM Model Training
@@ -305,26 +308,28 @@ def train_models(device="cpu", batch_size=32):
         output_size=config.getint("LSTM", "output_size", fallback=4),
     )
     lstm_model.to(device)
+    retrain_model = config.getboolean("LSTM", "retrain_model", fallback=False)
     wandb.watch(lstm_model, log="all", log_freq=10)
     if not retrain_model and os.path.exists(LSTM_MODEL_PATH):
         load_model_state(lstm_model, LSTM_MODEL_PATH, "lstm.", "recurrent.")
         logging.info("LSTM model loaded from file.")
     else:
         logging.info("Training LSTM model")
-        lstm_model, loss = lstm_model.train_model(
+        lstm_model = lstm_model.train_model(
             dataloader = dataloader,
-            val_loder=validation_ds,
+            val_loader=validation_ds,
             num_epochs=config.getint("LSTM", "num_epochs"),
             learning_rate=config.getfloat("LSTM", "learning_rate"),
             weight_decay=config.getfloat("LSTM", "weight_decay"),
             device=device,
-            tensorboard_writer=writer
+            tensorboard_writer=tensorboard_data_sever
         )
+        loss = lstm_model.last_loss
         torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
         logging.info(f"Done training LSTM model. Loss {loss:.4f}")
         wandb.log({"LSTM_final_loss": loss})
-        writer.add_scalar("Loss/LSTM_final_loss", loss)
+        tensorboard_data_sever.add_scalar("Loss/LSTM_final_loss", loss)
     models.append(("LSTM", lstm_model))
-    writer.close()
+    tensorboard_data_sever.close()
     logging.info("Training complete.")
     return models

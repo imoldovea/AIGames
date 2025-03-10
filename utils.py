@@ -17,7 +17,7 @@ def setup_logging():
     logger.setLevel(logging.INFO)  # Capture all levels of logs
 
     werkzeug_logger = logging.getLogger('werkzeug')
-    werkzeug_logger.setLevel(logging.WARNING)
+    werkzeug_logger.setLevel(logging.ERROR)
     werkzeug_logger.disabled = True
 
     wandb_logger = logging.getLogger('wandb')
@@ -153,7 +153,6 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
     """
     try:
         fps = 10
-        fourcc = cv2.VideoWriter_fourcc(*'H', '2', '6', '4')  # Custom FourCC for H.264 NVENC
         width, height = 800, 600  # Desired resolution for the final video
         title_frames_count = 10  # Number of frames to show the title screen
 

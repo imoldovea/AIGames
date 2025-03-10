@@ -4,15 +4,14 @@
 import numpy as np
 import torch
 import logging
-from utils import setup_logging
-import os, subprocess, traceback, sys
+import os, subprocess, traceback
 import matplotlib.pyplot as plt
 from configparser import ConfigParser
 import wandb
 from maze_solver import MazeSolver
 from maze import Maze  # Assumes maze.py exists
-from utils import load_mazes, save_mazes_as_pdf
-from chart_utility import save_neural_network_diagram
+from utils import load_mazes, save_mazes_as_pdf, setup_logging
+from chart_utility import save_neural_network_diagram, save_latest_loss_chart
 from maze_trainer import train_models  # Training function from maze_trainer.py
 
 # -------------------------------
@@ -31,7 +30,6 @@ INPUT = "input/"
 RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
 GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
 LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
-LOSS_FILE = f"{OUTPUT}loss_data.csv"
 LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
 MODELS_DIAGRAM = f"{OUTPUT}models_diagram.pdf"
 OUTPUT_PDF = f"{OUTPUT}solved_mazes.pdf"
@@ -67,7 +65,7 @@ class RNN2MazeSolver(MazeSolver):
             activation_tensor = output
         self.activations['recurrent'] = activation_tensor.detach().cpu().numpy()
 
-    def solve(self, max_steps=25):
+    def solve(self, max_steps=25) -> List[Tuple[int, int]]:
         current_pos = self.maze.start_position
         path = [current_pos]
         step_number = 0
@@ -138,24 +136,36 @@ def rnn2_solver(models, device="cpu"):
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = ConfigParser()
-    os.environ['WANDB_MODE'] = 'online'
-    config.read(SECRETS)
-
-    #Monitoring
-    wandb.login(key=config.get("WandB", "api_key"))
-    dashboard_process = subprocess.Popen(["python", "dashboard.py"])
-    tensorboard_process = subprocess.Popen([sys.executable, '-m', 'tensorboard', '--logdir=runs'])
-    logging.info(f"Dashboard and Tensorboard processes started on url: http://localhost:6006/ and http://localhost:6007/, respectively. Waiting for models to be trained.")
-
-
-    #training
-    logging.info("Training models...")
     config.read("config.properties")
     batch_size = config.getint("DEFAULT", "batch_size")
+
+    #Setup Monitoring
+    os.environ['WANDB_MODE'] = 'online'
+    config.read(SECRETS)
+    wandb.login(key=config.get("WandB", "api_key"))
     wandb.init(project="maze_solver_training", config={
         "batch_size": batch_size,
         "device": str(device),
     })
+    wandb_run_url = wandb.run.get_url()
+
+    dashboard_process = subprocess.Popen(["python", "dashboard.py"])
+    # Launch TensorBoard directly
+    #tensorboard_process = subprocess.Popen(["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
+
+    tensorboard_url = "http://localhost:6006/"
+    dash_dashboard_url = "http://127.0.0.1:8050/"
+    # Log the URLs
+    logging.info(
+        f"WandB dashboard: {wandb_run_url}, "
+        f"TensorBoard: {tensorboard_url}, "
+        f"Dash Dashboard: {dash_dashboard_url}. "
+        "Waiting for models to be trained."
+    )
+
+    #training
+    logging.info("Training models...")
+
     models = train_models(device=device, batch_size=batch_size)
     try:
         save_neural_network_diagram(models, "output/")
@@ -163,15 +173,13 @@ def main():
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
     rnn2_solver(models, device)
 
+    save_latest_loss_chart(models,LOSS_PLOT_FILE)
     dashboard_process.terminate()
     wandb.finish()
-    tensorboard_process.terminate()
-
+    #tensorboard_process.terminate()
 
 if __name__ == "__main__":
-    #setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
-    logger.debug("Logging is configured.")
 
     main()
