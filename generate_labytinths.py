@@ -5,12 +5,19 @@ import pickle
 import matplotlib.pyplot as plt
 import logging
 from utils import setup_logging
+from configparser import ConfigParser
+import tqdm
 
 
 PATH = 0
 WALL = 1
 START = 3
 
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+INPUT = config.get("FILES", "INPUT", fallback="input/")
 
 def generate_maze(width: int, height: int) -> np.ndarray:
     """
@@ -139,7 +146,7 @@ def ensure_all_paths_connected(maze: np.ndarray) -> None:
                     maze[y, x] = PATH  # Connect to the main component
 
 
-def add_loops(maze, loop_probability=0.02):
+def add_loops(maze):
     """
     Introduce loops in a perfect maze by removing additional walls.
 
@@ -151,7 +158,7 @@ def add_loops(maze, loop_probability=0.02):
         numpy.ndarray: Maze with additional loops.
     """
     height, width = maze.shape
-
+    loop_probability = config.getfloat("MAZE", "loop_probability")
     for y in range(1, height - 1):
         for x in range(1, width - 1):
             # Check if current cell is a wall that might separate two different paths.
@@ -200,12 +207,11 @@ def main():
     OUTPUT_FOLDER = 'input'
     MAZES_FILENAME = 'validation_mazes.pkl'
 
-    config = ConfigParser()
-    config.read("config.properties")
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
     mazes = []
-    for i in range(NUM_MAZES):
+
+    for i in tqdm.tqdm(range(NUM_MAZES), desc="Generating mazes"):
         logging.debug(f"Generating maze {i + 1}...")
         width, height = random.choice(range(min_size, max_size, 2)), random.choice(range(min_size, max_size, 2))
         maze = generate_maze(width, height)
@@ -214,6 +220,7 @@ def main():
         # plot_maze(maze)
 
     save_mazes(OUTPUT_FOLDER, MAZES_FILENAME, mazes)
+    logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{MAZES_FILENAME}")
 
 if __name__ == "__main__":
     #setup logging

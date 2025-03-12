@@ -4,20 +4,25 @@
 import torch.nn as nn
 import torch
 from torch import optim
-import logging
 import torch.optim.lr_scheduler as lr_scheduler
 import csv
 import os
 from torch.utils.data import DataLoader
+import logging
+import tqdm
+from configparser import ConfigParser
 
 
-OUTPUT = "output/"
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+INPUT = config.get("FILES", "INPUT", fallback="input/")
+
 TRAINING_PROGRESS_HTML = "training_progress.html"
 TRAINING_PROGRESS_PNG = "training_progress.png"
 LOSS_FILE = os.path.join(OUTPUT, "loss_data.csv")
 
-os.makedirs(OUTPUT, exist_ok=True)
-logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 class MazeBaseModel(nn.Module):
     """
@@ -53,6 +58,8 @@ class MazeBaseModel(nn.Module):
         Returns:
             self: The trained model or its final loss after training.
         """
+        logging.debug(f"Training {self._get_name()} for {num_epochs} epochs on {device}...")
+
         self.to(device)
         # Set up early stopping patience to monitor overfitting
         patience = 5
@@ -70,50 +77,56 @@ class MazeBaseModel(nn.Module):
             running_loss = 0.0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
-            for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(dataloader):
-                target_action = target_action.to(device).long()
-                # Convert local_context to PyTorch tensor and ensure it's at least 2D
-                local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
-                relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
+            from tqdm import tqdm
+            for epoch in tqdm(range(num_epochs), desc="Epoch Progress"):
+                running_loss = 0.0
+                self.train()  # Put the model in training mode
+                # Loop through batches from the data loader
+                for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(
+                        tqdm(dataloader, desc="Training Progress", leave=False)):
+                    target_action = target_action.to(device).long()
+                    # Convert local_context to PyTorch tensor and ensure it's at least 2D
+                    local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
+                    relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
 
-                # If local_context is 1D, convert it to 2D (batch_size, num_features)
-                if local_context.dim() == 1:
-                    local_context = local_context.unsqueeze(0)  # Convert shape (num_features,) → (1, num_features)
-                if relative_position.dim() == 1:
-                    relative_position = relative_position.unsqueeze(0)
+                    # If local_context is 1D, convert it to 2D (batch_size, num_features)
+                    if local_context.dim() == 1:
+                        local_context = local_context.unsqueeze(0)  # Convert shape (num_features,) → (1, num_features)
+                    if relative_position.dim() == 1:
+                        relative_position = relative_position.unsqueeze(0)
 
-                # Convert steps_number to PyTorch tensor and ensure it's at least 2D
-                steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
+                    # Convert steps_number to PyTorch tensor and ensure it's at least 2D
+                    steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
 
-                # If steps_number is 0D (a single scalar), make it 1D
-                if steps_number.dim() == 0:
-                    steps_number = steps_number.unsqueeze(0)  # Convert scalar to (1,)
+                    # If steps_number is 0D (a single scalar), make it 1D
+                    if steps_number.dim() == 0:
+                        steps_number = steps_number.unsqueeze(0)  # Convert scalar to (1,)
 
-                # Make sure steps_number is (batch_size, 1)
-                steps_number = steps_number.unsqueeze(1)  # Convert shape (1,) → (1, 1)
+                    # Make sure steps_number is (batch_size, 1)
+                    steps_number = steps_number.unsqueeze(1)  # Convert shape (1,) → (1, 1)
 
-                # Ensure both tensors are now 2D before concatenation
-                assert local_context.dim() == 2, f"local_context has wrong shape: {local_context.shape}"
-                assert steps_number.dim() == 2, f"steps_number has wrong shape: {steps_number.shape}"
+                    # Ensure both tensors are now 2D before concatenation
+                    assert local_context.dim() == 2, f"local_context has wrong shape: {local_context.shape}"
+                    assert steps_number.dim() == 2, f"steps_number has wrong shape: {steps_number.shape}"
 
-                # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
-                inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
+                    # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
+                    inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
 
-                # Add sequence dimension for RNN input
-                inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
+                    # Add sequence dimension for RNN input
+                    inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
 
-                assert inputs.shape[-1] == 7, f"Expected input features to be 5, but got {inputs.shape[-1]}"
-                assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
-
-                # Forward pass
-                outputs = self.forward(inputs)  # Pass input through the model
-                loss = criterion(outputs, target_action)  # Compute cross-entropy loss
-
-                optimizer.zero_grad()  # Clear previous gradients
-                loss.backward()  # Backpropagate loss to calculate gradients
-                optimizer.step()  # Update model weights
-
-                running_loss += loss.item() * inputs.size(0)
+                    assert inputs.shape[-1] == 7, f"Expected input features to be 5, but got {inputs.shape[-1]}"
+                    assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
+            
+                    # Forward pass
+                    outputs = self.forward(inputs)  # Pass input through the model
+                    loss = criterion(outputs, target_action)  # Compute cross-entropy loss
+            
+                    optimizer.zero_grad()  # Clear previous gradients
+                    loss.backward()  # Backpropagate loss to calculate gradients
+                    optimizer.step()  # Update model weights
+            
+                    running_loss += loss.item() * inputs.size(0)
 
             epoch_loss = running_loss / len(dataloader.dataset)
 

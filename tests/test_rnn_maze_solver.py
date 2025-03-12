@@ -5,7 +5,12 @@ from maze import Maze
 import torch
 from configparser import ConfigParser
 
-INPUT = "input/"
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+INPUT = config.get("FILES", "INPUT", fallback="input/")
+
 LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
 
 # Load the model state dictionary once

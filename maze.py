@@ -2,11 +2,21 @@ import numpy as np
 import json
 import logging
 import traceback
+
+from tensorflow.python.distribute.strategy_combinations import set_virtual_cpus_to_at_least
+
 from utils import (load_mazes)
 import matplotlib.pyplot as plt
+from configparser import ConfigParser
+from PIL import Image, ImageDraw, ImageFont
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+INPUT = config.get("FILES", "INPUT", fallback="input/")
+
 class Maze:
     WALL = 1
     CORRIDOR = 0
@@ -26,7 +36,7 @@ class Maze:
             The constructor finds the starting marker, records its coordinates, replaces it with 0,
             and initializes the path with the starting position.
             """
-        self._solution = []  # To hold the maze solution as a list of coordinates
+        self._solution = [] # To hold the maze solution as a list of coordinates
         self.grid = np.array(grid, copy=True)
         self.rows, self.cols = self.grid.shape
         self.logger = logging.getLogger(__name__)
@@ -36,11 +46,11 @@ class Maze:
         self.save_movie = False
         self.raw_movie = []
         self.algorithm = None
+        self.valid_solution = False
 
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(handler)
-        self.logger.debug("Maze initialized with dimensions (%d, %d)", self.rows, self.cols)
 
         # Locate the starting position using the provided start_marker
         start_positions = np.argwhere(self.grid == self.START)
@@ -49,12 +59,10 @@ class Maze:
             raise ValueError(f"Starting marker not found in maze matrix.")
         self.start_position = tuple(start_positions[0])
         self.current_position = self.start_position
-        self.logger.debug("Starting position located at %s", self.start_position)
         self.current_position = self.start_position
 
         # Replace the starting marker with a corridor (0)
         self.grid[self.start_position] = 0
-        self.logger.debug("Starting marker replaced with corridor at %s", self.start_position)
 
         # Initialize the path with the starting position
         self.path = [self.start_position]
@@ -73,7 +81,6 @@ class Maze:
             for c in range(self.cols):
                 if (r == 0 or r == self.rows - 1 or c == 0 or c == self.cols - 1) and self.grid[r, c] == 0:
                     self.exit = (r, c)
-                    self.logger.debug("Exit automatically set at position %s", self.exit)
                     return
         self.logger.error("No valid exit found on the maze border.")
         raise ValueError("No valid exit found on the maze border.")
@@ -108,16 +115,13 @@ class Maze:
             Updates the current position and records the move in the path.
             Returns True if the move was successful, False otherwise.
             """
+        self.valid_solution = False #Assume that solving maze is still in progress
         if self.is_valid_move(position):
             self.current_position = position
             self.path.append(position)
-            #self.logger.debug("Moved to position %s", position)
 
             if backtrack:
-                #logging.debug("Backtracking to position %s", position)
                 self.path.pop()
-                #logging.debug(
-                #    f"Backtrack complete. Current position is {self.current_position}, Path length: {len(self.path)}")
                 if position not in self.visited_cells:
                     self.visited_cells.append(position)
 
@@ -210,6 +214,7 @@ class Maze:
         #     logging.error("Solution is invalid. No solution set.")
         else:
             self._solution = solution
+            self.valid_solution = self.test_solution()
 
     def self_test(self) -> bool:
         """
@@ -253,7 +258,6 @@ class Maze:
 
 
         # Explicit log for successful validation
-        self.logger.debug("Maze self-test passed successfully.")
         return True
 
     def test_solution(self) -> bool:
@@ -261,25 +265,31 @@ class Maze:
         """
             Validates if the provided solution navigates through valid positions, starts at
             the start position, ends at the exit, and avoids walls.
-
             Returns:
                 bool: True if the solution is valid, False otherwise.
             """
+        if self.valid_solution:
+            return self.valid_solution
+
+        self.valid_solution = False
         if self._solution is None:
             self.logger.error("No solution provided.")
+            self.valid_solution = False
             return False
 
         # Check if the solution length is greater than 1
-        if self._solution and len(self._solution) <= 1:
-            self.logger.debug("Solution length is less than 2.")
+        if len(self._solution) <= 1:
+            self.logger.warning("Solution length is less than 2.")
+            self.valid_solution = False
             return False
 
-        if not self._solution or self._solution[0] != self.start_position:
-            self.logger.debug("Solution does not start at the start position.")
+        if self._solution[0] != self.start_position:
+            self.logger.warning("Solution does not start at the start position.")
+            self.valid_solution = False
             return False
 
         if self.exit is None or self._solution[-1] != self.exit:
-            self.logger.debug("Solution does not end at the exit position.")
+            self.logger.warning("Solution does not end at the exit position.")
             return False
 
         # Validate that the path is contiguous and avoids walls.
@@ -287,12 +297,14 @@ class Maze:
             current, next_pos = self._solution[i - 1], self._solution[i]
             if next_pos not in self.get_neighbors(current):
                 self.logger.error("Solution contains invalid moves between %s and %s.", current, next_pos)
+                self.valid_solution = False
                 return False
             if self.is_wall(next_pos):
                 self.logger.error("Solution tries to move through a wall at %s.", next_pos)
+                self.valid_solution = False
                 return False
 
-        self.logger.debug("Solution is valid.")
+        self.valid_solution = True
         return True
 
     def at_exit(self):
@@ -330,22 +342,44 @@ class Maze:
         })
         return data
 
-    def create_padded_image(self, image_data, width=25, height=25):
-        # Define the desired padding color (e.g., white)
-        padding_color = (255, 255, 255)  # Change as needed
+    import numpy as np
 
-        # Initialize the resized_image with the padding color
-        resized_image = np.full((25, 25, 3), padding_color, dtype=np.uint8)
+    def create_padded_image(self, image_data, width=25, height=25):
+        """
+        Adds padding to the provided image data and overlays the solution validity.
+    
+        Args:
+            image_data (np.ndarray): The maze image data as a NumPy array.
+            width (int): The target width of the padded image.
+            height (int): The target height of the padded image.
+    
+        Returns:
+            np.ndarray: A new padded image with solution validity overlaid as text.
+        """
+        # Define the desired padding color (white in this case)
+        padding_color = (255, 255, 255)
+
+        # Initialize the resized image with the padding color
+        resized_image = np.full((height, width, 3), padding_color, dtype=np.uint8)
 
         # Calculate starting indices to center the image_data
-        start_row = (width - self.rows) // 2
-        start_col = (height - self.cols) // 2
+        start_row = (height - self.rows) // 2
+        start_col = (width - self.cols) // 2
 
         # Place the image_data into the resized_image
         resized_image[start_row:start_row + self.rows, start_col:start_col + self.cols] = image_data
 
-        return resized_image
+        # Convert the numpy array to a PIL Image for easier text drawing
+        pil_image = Image.fromarray(resized_image)
+        draw = ImageDraw.Draw(pil_image)
 
+        # Use the default font; you can customize by loading a specific font if desired
+        font = ImageFont.load_default()
+
+        # Convert back to a numpy array
+        resized_image = np.array(pil_image)
+
+        return resized_image
 
     def get_maze_as_png(self, show_path=False, show_solution=True, show_position=False) -> np.ndarray:
         """
@@ -400,28 +434,23 @@ class Maze:
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         image_data[r, c] = [128, 128, 128]
 
-        # Add a block in the top-left corner based on solution status
-        block_size = min(self.rows, self.cols) // 10  # Define block size relative to the maze size
-        status_color = [128, 128, 128]  # Default to gray (no solution set)
-
-        if self._solution:
-            status_color = [0, 255, 0] if self.test_solution() else [255, 0, 0]  # Green if valid, red if invalid
-
-        # Overlay the status block on the maze image
-        image_data[:block_size, :block_size] = status_color
-
         resized_image = self.create_padded_image(image_data, self.IMG_SIZE, self.IMG_SIZE)
         return resized_image
 
     def get_maze_as_text(self) -> str:
-
         """
-            Return the maze as an ASCII string, showing the maze as a matrix with:
-            "1" - Walls
-            "0" - Path
-            "X" - Starting point
-            "O" - Exit point
-            """
+        Returns the maze in an ASCII art-like format, with indicators for walls,
+        corridors, the start position, and the exit.
+    
+        Representations:
+          - "1": Wall
+          - "0": Corridor
+          - "X": Starting position
+          - "O": Exit position
+    
+        Returns:
+            str: The maze displayed as an ASCII matrix.
+        """
         # Initialize a list for ASCII rows
         ascii_maze = []
 
@@ -440,19 +469,41 @@ class Maze:
         # Join rows with newline to create final ASCII maze
         return '\n'.join(ascii_maze)
 
-
     def plot_maze(self, show_path=True, show_solution=True, show_position=False):
         """
-        Plots the current maze configuration on the screen.
-
-        Parameters:
-          - show_path: if True, the path taken is overlaid on the maze.
+        Plots the current maze configuration as a visual representation.
+    
+        Args:
+            show_path (bool): If True, overlays the current path as a gradient on the maze.
+            show_solution (bool): If True, highlights the solution path on the maze.
+            show_position (bool): If True, marks the current position in the maze.
+    
+        Returns:
+            None
         """
-        imgage_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution, show_position=show_position)
+        imgage_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution,
+                                           show_position=show_position)
         plt.imshow(imgage_data, interpolation='none')
-        plt.title(f"{self.algorithm} Maze Visualization")
+
+        # Get the result of the solution test
+        valid_solution = self.test_solution()
+
+        # Determine the text color based on the test_solution result
+
+        if valid_solution is True:
+            text_color = "green"  # green
+        elif valid_solution is False:
+            text_color = "red"  # red
+        else:
+            text_color = "black"  # black
+
+        # Prepare the overlay text
+        text = f"Valid Solution = {valid_solution}"
+
+        plt.title(f"{self.algorithm} Maze Visualization\n{text}", color=text_color)
         plt.axis("off")
         plt.show()
+
 
 def run_maze():
     """
@@ -461,7 +512,7 @@ def run_maze():
     """
     try:
         # Load mazes
-        load_path = "input/mazes.pkl"
+        load_path = f"{INPUT}/mazes.pkl"
         mazes = load_mazes(load_path)
         # with open('input/mazes.pkl', 'rb') as f:
         #     mazes = pickle.load(f)

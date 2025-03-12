@@ -9,41 +9,61 @@ import logging
 import traceback
 import pickle
 from multiprocessing import Process
+from configparser import ConfigParser
 
-OUTPUT_DIR = "output"
+
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+
+
+class CustomLogFilter(logging.Filter):
+    def __init__(self, forbidden_substrings=None):
+        super().__init__()
+        # forbidden_substrings is a list of strings that, if found in a log message,
+        # will cause the message to be filtered out.
+        self.forbidden_substrings = forbidden_substrings or []
+
+    def filter(self, record):
+        message = record.getMessage().lower()
+        # Return False (filter out) if any forbidden substring is found in the log message.
+        for substring in self.forbidden_substrings:
+            if substring.lower() in message:
+                return False
+        return True
+
 
 def setup_logging():
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)  # Capture all levels of logs
+
+    # Remove any existing handlers to prevent duplication
+    if logger.hasHandlers():
+        logger.handlers.clear()
 
     werkzeug_logger = logging.getLogger('werkzeug')
     werkzeug_logger.setLevel(logging.ERROR)
-    werkzeug_logger.disabled = True
+    werkzeug_logger.propagate = False
 
-    wandb_logger = logging.getLogger('wandb')
-    wandb_logger.setLevel(logging.WARNING)
-    wandb_logger.disabled = True
-    os.environ["WANDB_SILENT"] = "true"
-
-    #avoid log propagation
-    if logger.hasHandlers():  # Check if handlers are already attached
-        return
+    logger.setLevel(logging.DEBUG)  # Capture all levels of logs
 
     # Create formatter
     formatter = logging.Formatter('%(asctime)s - %(filename)s - %(levelname)s - %(message)s')
+    forbidden_logs = ["findfont", "werkzeug","werkzeug:_internal.py"]  # Add more substrings as needed
 
     # Console handler for INFO level and above
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
+    console_handler.addFilter(CustomLogFilter(forbidden_logs))
     logger.addHandler(console_handler)
 
     # File handler for DEBUG level and above
-    file_handler = logging.FileHandler(os.path.join(OUTPUT_DIR, 'debug.log'))
+    file_handler = logging.FileHandler(f"{OUTPUT}debug.log")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(CustomLogFilter(forbidden_logs))
     logger.addHandler(file_handler)
-
 
 # Define a custom PDF class (optional, for adding a header)
 class PDF(FPDF):
@@ -112,7 +132,7 @@ def save_mazes_as_pdf(solved_mazes: list[str], output_filename: str = "maze_solu
 
         # Save the PDF to the specified file
         pdf.output(output_filename)
-        logging.info(f"Mazes saved as PDF: {output_filename}")
+        logging.debug(f"Mazes saved as PDF: {output_filename}")
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 

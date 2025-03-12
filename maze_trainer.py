@@ -21,8 +21,19 @@ WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
 
-logging.getLogger('werkzeug').setLevel(logging.ERROR)
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+INPUT = config.get("FILES", "INPUT", fallback="input/")
 
+RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
+GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
+LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
+LOSS_FILE = f"{OUTPUT}loss_data.csv"
+
+TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
+VALIDATION_MAZES_FILE = f"{INPUT}validation_mazes.pkl"
 
 # -------------------------------
 # Custom Dataset for Training Samples
@@ -205,16 +216,7 @@ def train_models(device="cpu", batch_size=32):
     Returns:
         list: Tuples of model name and trained model.
     """
-
-    OUTPUT = "output/"
-    INPUT = "input/"
-    RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
-    GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
-    LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
-    LOSS_FILE = f"{OUTPUT}loss_data.csv"
-
-    TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
-    VALIDATION_MAZES_FILE = f"{INPUT}validation_mazes.pkl"
+    logging.debug("Starting training.")
 
     config = ConfigParser()
     config.read("config.properties")

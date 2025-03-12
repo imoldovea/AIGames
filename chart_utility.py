@@ -2,21 +2,25 @@ import logging
 import pandas as pd
 import plotly.graph_objs as go
 import plotly.io as pio
-import plotly.express as px
 from plotly.subplots import make_subplots
 from configparser import ConfigParser
-import os
 import torch
 from torchviz import make_dot
 import traceback
 from torch.utils.tensorboard import SummaryWriter
 import torch.onnx
+from utils import encode_video
+
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 
-OUTPUT = "output/"
-
-logging.basicConfig(level=logging.INFO)
-
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 
 def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
     """
@@ -26,6 +30,8 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
     - loss_file_path (str): Path to the CSV file containing loss data.
     - loss_chart (str): Path where the HTML file will be saved.
     """
+    logging.debug("Generating latest loss chart...")
+
     try:
         # Read the loss data from CSV
         df = pd.read_csv(loss_file_path)
@@ -91,14 +97,14 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         directory = os.path.dirname(html_chart)
         if directory and not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
-            logging.info(f"Created directory: {directory}")
+            logging.debug(f"Created directory: {directory}")
 
         try:
             # Save the figure as an HTML file
             fig.write_html(html_chart)
 
             # Display the graph in Plots tab (for supported IDEs)
-            pio.show(fig)
+            #pio.show(fig)
             fig.show()
 
             # Save as PNG image
@@ -111,6 +117,19 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
     except Exception as e:
         logging.error(f"Error saving latest loss chart: {e}", exc_info=True)
         logging.error(traceback.format_exc())
+
+
+# python
+import io
+import os
+import torch
+import logging
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from configparser import ConfigParser
+from torchviz import make_dot
+from PIL import Image
+from torch.utils.tensorboard import SummaryWriter
 
 
 def save_neural_network_diagram(models, output_dir="output/"):
@@ -126,82 +145,182 @@ def save_neural_network_diagram(models, output_dir="output/"):
     - ValueError: If `models` is empty or not a list.
     - RuntimeError: If graph generation, export, or file writing fails.
     """
+    logging.debug("Generating neural network diagrams...")
+
     if not models or not isinstance(models, list):
         raise ValueError("The 'models' parameter must be a non-empty list of neural network models.")
 
-    os.makedirs(output_dir, exist_ok=True)
     config = ConfigParser()
     config.read("config.properties")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    for idx, (_, model) in enumerate(models):
-        model.eval()  # Set model to evaluation mode
-        logging.debug(model)
+    pdf_path = os.path.join(output_dir, "neural_network_diagrams.pdf")
 
-        input_size = config.getint("DEFAULT", "input_size", fallback=5)
-        seq_length = config.getint("DEFAULT", "max_steps", fallback=5)
-        batch_size = config.getint("DEFAULT", "batch_size", fallback=5)
-        dummy_input = torch.randn(batch_size, seq_length, input_size).to(device)  # Fixed batch size of 1
-        output = model(dummy_input)
+    with PdfPages(pdf_path) as pdf:
+        for idx, (_, model) in enumerate(models):
+            model.eval()  # Set model to evaluation mode
+            logging.debug(f"Processing model: {model}")
 
-        ## 1. Torchviz: Generate a PDF of the computational graph.
-        try:
-            dot = make_dot(output, params=dict(model.named_parameters()))
-            torchviz_path = f"{OUTPUT}model_{idx}_torchviz.pdf"
-            dot.format = "pdf"
-            dot.render(torchviz_path, cleanup=True)
-        except Exception as e:
-            logging.error(f"Torchviz graph generation failed: {e}")
-            raise RuntimeError(f"Torchviz graph generation failed: {e}")
+            input_size = config.getint("DEFAULT", "input_size", fallback=7)
+            seq_length = config.getint("DEFAULT", "max_steps", fallback=7)
+            batch_size = config.getint("DEFAULT", "batch_size", fallback=7)
+            dummy_input = torch.randn(batch_size, seq_length, input_size).to(device)
+            output = model(dummy_input)
 
-        ## 2. ONNX: Export the model to ONNX format for Netron visualization.
-        try:
-            onnx_path = os.path.join(output_dir, f"model_{idx}.onnx")
-            torch.onnx.export(
-                model,
-                dummy_input,
-                onnx_path,
-                export_params=True,
-                opset_version=11,
-                do_constant_folding=True,
-                input_names=['input'],
-                output_names=['output'],
-                dynamic_axes={
-                    'input': {0: 'batch_size', 1: 'sequence_length'},
-                    'output': {0: 'batch_size'}
-                }
-            )
-            # Open the ONNX file in Netron (manually or via netron.start(onnx_path) for interactive visualization)
-        except Exception as e:
-            logging.error(f"ONNX export for Netron visualization failed: {e}")
-            raise RuntimeError(f"ONNX export for Netron visualization failed: {e}")
+            # Generate the computational graph using Torchviz and display it using PIL to decode PNG data.
+            try:
+                dot = make_dot(output, params=dict(model.named_parameters()))
 
-        ## 3. TensorBoard: Log the model graph for visualization.
-        try:
-            tb_log_dir = os.path.join(output_dir, f"model_{idx}_tensorboard")
-            writer = SummaryWriter(log_dir=tb_log_dir)
-            writer.add_graph(model, dummy_input)
-            writer.close()
-            # To view the graph, run: tensorboard --logdir={tb_log_dir} in your terminal.
-        except Exception as e:
-            logging.error(f"TensorBoard graph logging failed: {e}")
-            raise RuntimeError(f"TensorBoard graph logging failed: {e}")
+                # Draw the graph and add it as a page in the PDF
+                figure = plt.figure(figsize=(12, 8))
+                plt.title(f"Model: {getattr(model, 'name', f'Model_{idx}')}")
+                plt.axis("off")
+                png_data = dot.pipe(format="png")
+                pipe_buffer = io.BytesIO(png_data)
+                image = Image.open(pipe_buffer)
+                plt.imshow(image, aspect="auto")
+                pdf.savefig(figure)
+                plt.close(figure)
+
+            except Exception as e:
+                logging.error(f"Torchviz graph generation failed: {e}")
+                raise RuntimeError(f"Torchviz graph generation failed: {e}")
+
+            # Generate ONNX export for the model for Netron visualization.
+            try:
+                onnx_path = os.path.join(output_dir, f"model_{idx}.onnx")
+                torch.onnx.export(
+                    model,
+                    dummy_input,
+                    onnx_path,
+                    export_params=True,
+                    opset_version=11,
+                    do_constant_folding=True,
+                    input_names=['input'],
+                    output_names=['output'],
+                    dynamic_axes={
+                        'input': {0: 'batch_size', 1: 'sequence_length'},
+                        'output': {0: 'batch_size'}
+                    }
+                )
+            except Exception as e:
+                logging.error(f"ONNX export for Netron visualization failed: {e}")
+                raise RuntimeError(f"ONNX export for Netron visualization failed: {e}")
+
+            # Log the model graph for TensorBoard visualization
+            try:
+                tb_log_dir = os.path.join(output_dir, f"model_{idx}_tensorboard")
+                writer = SummaryWriter(log_dir=tb_log_dir)
+                writer.add_graph(model, dummy_input)
+                writer.close()
+            except Exception as e:
+                logging.error(f"TensorBoard graph logging failed: {e}")
+                raise RuntimeError(f"TensorBoard graph logging failed: {e}")
 
 
-def visualize_model_weights(models):
+def visualize_model_weights(models, output_folder=OUTPUT, base_title="Model Diagram", cmap="viridis", **kwargs):
     """
-    Plots a histogram of the weights for each trainable parameter in the model.
-    Each parameter's weight distribution is displayed in its own Plotly figure.
-    """
-    for idx, (_, model) in enumerate(models):
-        model.eval()  # Set model to evaluation mode
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                # Flatten the weights into a 1D array
-                weights = param.detach().cpu().numpy().flatten()
+    Visualizes the model weights as a diagram for each model and saves all diagrams in a single PDF.
+    Each page includes the model name within the title.
 
-                # Create a histogram of the weights
-                fig = px.histogram(weights, nbins=30, title=f"Weights Distribution: {name}")
-                fig.update_layout(xaxis_title="Weight Value", yaxis_title="Frequency")
-                fig.show()
-                fig.write_image(f"{OUTPUT}model_{name}_weights_{name}.png")
+    Args:
+        models: A list of model objects. Each model is assumed to have a 'get_weights' method and
+                optionally a 'name' attribute.
+        output_folder: The directory where the PDF file will be saved.
+        base_title: Base title string that will be appended to each plot title.
+        cmap: The colormap used for visualization.
+        **kwargs: Additional keyword arguments for further customization.
+    """
+    logging.debug("Visualizing model weights...")
+    pdf_filename = os.path.join(output_folder, "model_diagrams.pdf")
+
+    with PdfPages(pdf_filename) as pdf:
+        for idx, model in enumerate(models):
+            # Retrieve the model name; fallback if not available.
+            model_name = getattr(model, "name", f"Model_{idx}")
+
+            # Retrieve the model's weights.
+            if hasattr(model, "get_weights"):
+                weights = model.get_weights()
+            else:
+                print(f"Skipping {model_name}: no get_weights method found.")
+                continue
+
+            # Here we create a simple diagram for the model.
+            # In this example, we visualize the first weight array.
+            # Adjust this part if you need a different or more comprehensive diagram.
+            if weights:
+                weight_array = weights[0]
+                # Convert the weight array into a 2D representation
+                if weight_array.ndim >= 2:
+                    data = np.mean(weight_array, axis=0) if weight_array.ndim > 2 else weight_array
+                else:
+                    data = weight_array.reshape(1, -1)
+            else:
+                # If the model has no weights, create a blank placeholder.
+                data = np.zeros((10, 10))
+
+            plt.figure(figsize=(8, 6))
+            plt.imshow(data, cmap=cmap)
+            plt.title(f"{model_name} - {base_title}")
+            plt.colorbar(label="Weight Value")
+            plt.xlabel("Dimension 1")
+            plt.ylabel("Dimension 0")
+
+            # Save the current figure as a page in the PDF
+            pdf.savefig()
+            plt.close()
+
+    logging.info(f"Saved model diagrams to: {pdf_filename}")
+
+
+def visualize_model_activations(activations, output_folder="OUTPUT", video_filename="activations_movie.mp4",
+                                model_name="Model", cmap="viridis",
+                                fps=5, **kwargs):
+    """
+    Saves a movie with all the activation frames.
+
+    Instead of displaying each activation frame using plt.show(), this function
+    collects all the frames (each annotated with a title) and then creates a video
+    using the encode_video function.
+
+    Args:
+        activations: An iterable of full activation vectors or arrays (each activation
+                     corresponds to one step of the solution).
+        output_folder: The directory where the video file will be saved.
+        video_filename: The name of the output video file.
+        model_name: The name of the model for annotation in titles and file naming.
+        cmap: The colormap to use for visualization (used for 2D data).
+        fps: Frames per second for the generated video.
+        **kwargs: Additional keyword arguments for further customization.
+    """
+    logging.debug("Visualizing model activations...")
+    os.makedirs(output_folder, exist_ok=True)
+    frames = []
+
+    for idx, activation in enumerate(activations):
+        fig, ax = plt.subplots(figsize=(8, 6))
+        # If the activation is a full vector (1D) plot it as a line plot.
+        if np.ndim(activation) == 1:
+            ax.plot(activation, marker='o')
+            ax.set_title(f"{model_name} - Activation Vector at Step {idx}")
+            ax.set_xlabel("Neuron Index")
+            ax.set_ylabel("Activation Value")
+        else:
+            # Otherwise, assume activation is a 2D array and use imshow.
+            im = ax.imshow(activation, aspect='auto', cmap=cmap)
+            ax.set_title(f"{model_name} - Activation Frame {idx}")
+            plt.colorbar(im, ax=ax, label="Activation Value")
+
+        # Convert the current figure to an image (frame)
+        fig.canvas.draw()
+        frame = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        frames.append(frame)
+        plt.close(fig)
+
+    # Adjust the video file name to include the model name.
+    video_file_with_model_name = video_filename.replace(".mp4", f"_{model_name}.mp4")
+    video_path = os.path.join(output_folder, video_file_with_model_name)
+    encode_video(frames, video_path, fps=fps)
+    logging.info(f"Saved activation movie to: {video_path}")
