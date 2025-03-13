@@ -326,9 +326,19 @@ def main():
         logging.info(f"Model success rates: {model_success_rates}")
 
     finally:
-        dashboard_process.terminate()
-        wandb.finish()
-        tensorboard_process.terminate()
+        try:
+            dashboard_process.terminate()
+        except Exception as e:
+            logging.error(f"Error finalizing Dash: {e}")
+        try:
+            wandb.finish()
+        except Exception as e:
+            logging.error(f"Error finalizing WandB: {e}")
+        try:
+            tensorboard_process.terminate()
+        except Exception as e:
+            logging.error(f"Error finalizing Tensorboard: {e}")
+
 
 if __name__ == "__main__":
     main()
