@@ -279,17 +279,17 @@ class Maze:
 
         # Check if the solution length is greater than 1
         if len(self._solution) <= 1:
-            self.logger.warning("Solution length is less than 2.")
+            self.logger.debug("Solution length is less than 2.")
             self.valid_solution = False
             return False
 
         if self._solution[0] != self.start_position:
-            self.logger.warning("Solution does not start at the start position.")
+            self.logger.debug("Solution does not start at the start position.")
             self.valid_solution = False
             return False
 
         if self.exit is None or self._solution[-1] != self.exit:
-            self.logger.warning("Solution does not end at the exit position.")
+            self.logger.debug("Solution does not end at the exit position.")
             return False
 
         # Validate that the path is contiguous and avoids walls.
@@ -500,10 +500,10 @@ class Maze:
         # Prepare the overlay text
         text = f"Valid Solution = {valid_solution}"
 
-        plt.title(f"{self.algorithm} Maze Visualization\n{text}\nSolution steps: {len(self.path)}", color=text_color)
+        plt.title(f"{self.algorithm} - Maze Visualization\n{text}\nSolution steps: {len(self.path) - 1}",
+                  color=text_color, pad=-60)
         plt.axis("off")
         plt.show()
-
 
 def run_maze():
     """

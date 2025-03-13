@@ -13,6 +13,7 @@ from maze_solver import MazeSolver
 from maze import Maze  # Assumes maze.py exists
 from utils import load_mazes, save_mazes_as_pdf, setup_logging
 from chart_utility import save_neural_network_diagram, save_latest_loss_chart, visualize_model_weights, visualize_model_activations
+from utils import save_movie
 from maze_trainer import train_models  # Training function from maze_trainer.py
 
 # -------------------------------
@@ -60,6 +61,8 @@ class RNN2MazeSolver(MazeSolver):
         self.activations = {}
         self.fig, self.ax = plt.subplots()
         self.img = None
+        # Initialize the "recurrent" activations as an empty list
+        self.activations = {'recurrent': []}
         recurrent = getattr(self.model, 'recurrent', None)
         if isinstance(recurrent, torch.nn.Module):
             recurrent.register_forward_hook(self.save_activation)
@@ -69,7 +72,8 @@ class RNN2MazeSolver(MazeSolver):
             activation_tensor = output[0]
         else:
             activation_tensor = output
-        self.activations['recurrent'] = activation_tensor.detach().cpu().numpy()
+        self.activations['recurrent'].append(activation_tensor.detach().cpu().numpy())
+
 
     def solve(self):
         """
@@ -137,13 +141,17 @@ class RNN2MazeSolver(MazeSolver):
                 path.append(next_pos)
                 current_pos = next_pos
 
-            # save the activations at each step
-            if 'recurrent' in self.activations:
-                # Obtain the activation, then append it to the list
-                act = self.compute_current_activation()  # hypothetical function or direct access
-                self.activations['recurrent'].append(act)
+                # Save the activations at each step if available
+                if 'recurrent' in self.activations:
+                    # Compute the current activation and append it to the list.
+                    act = self._compute_current_activation(
+                        current_pos=current_pos,
+                        relative_position=relative_position,
+                        step_number_normalized=step_number_normalized,
+                    )
+                    self.activations['recurrent'].append(act.cpu().numpy())
 
-            self.maze.move(current_pos)
+                self.maze.move(current_pos)
         else:
             if self.maze.exit != current_pos:
                 logging.warning(f"Reached max steps ({max_steps}) without finding a solution.")
@@ -151,13 +159,47 @@ class RNN2MazeSolver(MazeSolver):
         if self.activations['recurrent']:
             visualize_model_activations(
                 activations=self.activations['recurrent'],
-                output_folder=self.OUTPUT,
-                model_name=self.model.get_name(),
+                output_folder= OUTPUT,
+                model_name=self.model.__class__.__name__,
                 video_filename="recurrent_activations_movie.mp4",
-                fps=5
+                fps=25
             )
 
         return path
+
+    def _compute_current_activation(self, current_pos = None, relative_position = None, step_number_normalized = None):
+        """
+        Computes the current activation of the model based on the local context.
+
+        This method:
+        1. Retrieves the local context of the maze (e.g., surroundings of the current position)
+           by calling _compute_local_context().
+        2. Converts the local context (assumed to be a NumPy array) into a PyTorch tensor.
+        3. Passes the tensor through the model (which is assumed to be a neural network) in evaluation mode.
+        4. Appends the resulting activation (converted to numpy array) to the activations list.
+        5. Returns the computed activation.
+        """
+
+        # Step 1: Get the local context as a NumPy array.
+        local_context = self._compute_local_context(current_pos, self.DIRECTIONS)
+        logging.debug(
+            f"Current position: {current_pos}, Local context: {local_context}"
+        )
+
+        # Step 2: Preprocess the local context to match the model's expected input format.
+        # We add a batch dimension (unsqueeze(0)) and convert to a FloatTensor.
+        # It is assumed that self.device holds the target device (e.g., 'cpu' or 'cuda').
+        input_features = np.array(local_context + list(relative_position) + [step_number_normalized],
+                                  dtype=np.float32)
+        input_tensor = torch.tensor(input_features).unsqueeze(0).unsqueeze(0).to(self.device)
+
+        # Step 3: Set the model into evaluation mode and compute the activation.
+        self.model.eval()
+        with torch.no_grad():
+            current_activation = self.model(input_tensor)
+
+        # Step 5: Return the computed activation.
+        return current_activation
 
     def _compute_local_context(self, position, directions):
         r, c = position
@@ -171,7 +213,7 @@ class RNN2MazeSolver(MazeSolver):
 # -------------------------------
 # Integration Functions
 # -------------------------------
-def rnn2_solver(models, device="cpu"):
+def rnn2_solver(models, mazes, device="cpu"):
     """
     Applies trained models to test data, solves mazes, and evaluates performance.
 
@@ -202,9 +244,6 @@ def rnn2_solver(models, device="cpu"):
     8. Return the success rates of all models.
     """
     logging.debug("Applying models to test data...")
-
-    # Step 1: Load test mazes
-    mazes = load_mazes(TEST_MAZES_FILE)
 
     # Step 2: Initialize list for solved mazes
     solved_mazes = []
@@ -262,7 +301,7 @@ def rnn2_solver(models, device="cpu"):
     save_mazes_as_pdf(solved_mazes, OUTPUT_PDF)
 
     # Step 8: Return success rates
-    return model_success_rates
+    return solved_mazes, model_success_rates
 
 def is_port_in_use(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -312,7 +351,7 @@ def main():
 
         models = train_models(device=device, batch_size=batch_size)
         try:
-            save_neural_network_diagram(models, OUTPUT)
+            #save_neural_network_diagram(models, OUTPUT)
             if not os.path.isfile(LOSS_PLOT_FILE):
                 logging.error(f"Loss file {LOSS_PLOT_FILE} is missing. Skipping loss chart generation.")
             else:
@@ -321,8 +360,11 @@ def main():
             logging.error(f"An error occurred: {e}\n\n{traceback.format_exc()}")
         visualize_model_weights(models)
 
+        mazes = load_mazes(TEST_MAZES_FILE)
+
         # Apply the model to the test data.
-        model_success_rates = rnn2_solver(models, device)
+        solved_mazes, model_success_rates = rnn2_solver(models, mazes, device)
+        save_movie(solved_mazes, output_mp4)
         logging.info(f"Model success rates: {model_success_rates}")
 
     finally:

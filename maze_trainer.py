@@ -48,7 +48,8 @@ class MazeTrainingDataset(Dataset):
                 - step_number (int): Step number in the solution path.
         """
         self.data = data
-        max_steps = max(sample[2] for sample in data)
+        #max_steps = max(sample[2] for sample in data)
+        max_steps = config.getint("DEFAULT", "max_steps")
         self.max_steps = max_steps
 
     def __len__(self):

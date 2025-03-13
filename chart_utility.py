@@ -1,21 +1,23 @@
-import logging
+
 import pandas as pd
 import plotly.graph_objs as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
-from configparser import ConfigParser
-import torch
-from torchviz import make_dot
 import traceback
-from torch.utils.tensorboard import SummaryWriter
 import torch.onnx
-from utils import encode_video
-
+import io
+import torch
+from matplotlib.backends.backend_pdf import PdfPages
+from configparser import ConfigParser
+from torchviz import make_dot
+from PIL import Image
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib
+import logging
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-
+import cv2
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -118,20 +120,6 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         logging.error(f"Error saving latest loss chart: {e}", exc_info=True)
         logging.error(traceback.format_exc())
 
-
-# python
-import io
-import os
-import torch
-import logging
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from configparser import ConfigParser
-from torchviz import make_dot
-from PIL import Image
-from torch.utils.tensorboard import SummaryWriter
-
-
 def save_neural_network_diagram(models, output_dir="output/"):
     """
     Draws and saves neural network diagrams using Torchviz,
@@ -155,6 +143,8 @@ def save_neural_network_diagram(models, output_dir="output/"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     pdf_path = os.path.join(output_dir, "neural_network_diagrams.pdf")
+
+    matplotlib.use("Agg")
 
     with PdfPages(pdf_path) as pdf:
         for idx, (_, model) in enumerate(models):
@@ -274,53 +264,69 @@ def visualize_model_weights(models, output_folder=OUTPUT, base_title="Model Diag
     logging.info(f"Saved model diagrams to: {pdf_filename}")
 
 
-def visualize_model_activations(activations, output_folder="OUTPUT", video_filename="activations_movie.mp4",
-                                model_name="Model", cmap="viridis",
-                                fps=5, **kwargs):
+def visualize_model_activations(activations, output_folder = OUTPUT, model_name = "Mode Name", video_filename = "recurrent_activations_movie", fps = 25):
     """
-    Saves a movie with all the activation frames.
-
-    Instead of displaying each activation frame using plt.show(), this function
-    collects all the frames (each annotated with a title) and then creates a video
-    using the encode_video function.
+    Generates a video showing model activations over time.
 
     Args:
-        activations: An iterable of full activation vectors or arrays (each activation
-                     corresponds to one step of the solution).
-        output_folder: The directory where the video file will be saved.
-        video_filename: The name of the output video file.
-        model_name: The name of the model for annotation in titles and file naming.
-        cmap: The colormap to use for visualization (used for 2D data).
-        fps: Frames per second for the generated video.
-        **kwargs: Additional keyword arguments for further customization.
+        activations (list): A list of numpy arrays representing model activations.
+        output_folder (str): Directory where the video will be saved.
+        model_name (str): Name of the model (used for labeling output).
+        video_filename (str): Name of the output video file.
+        fps (int): Frames per second for the video.
     """
-    logging.debug("Visualizing model activations...")
-    os.makedirs(output_folder, exist_ok=True)
+    # Ensure the output directory exists.
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    # Prepare the matplotlib figure.
+    fig, ax = plt.subplots()
     frames = []
 
-    for idx, activation in enumerate(activations):
-        fig, ax = plt.subplots(figsize=(8, 6))
-        # If the activation is a full vector (1D) plot it as a line plot.
-        if np.ndim(activation) == 1:
-            ax.plot(activation, marker='o')
-            ax.set_title(f"{model_name} - Activation Vector at Step {idx}")
-            ax.set_xlabel("Neuron Index")
-            ax.set_ylabel("Activation Value")
-        else:
-            # Otherwise, assume activation is a 2D array and use imshow.
-            im = ax.imshow(activation, aspect='auto', cmap=cmap)
-            ax.set_title(f"{model_name} - Activation Frame {idx}")
-            plt.colorbar(im, ax=ax, label="Activation Value")
+    # Loop over activations to generate frames.
+    for act in activations:
+        # Clear the previous image.
+        ax.clear()
 
-        # Convert the current figure to an image (frame)
+        # Squeeze extra dimensions.
+        act = np.squeeze(act)
+
+        # If activation is still one-dimensional, reshape to 2D.
+        if act.ndim == 1:
+            # Option 1: Show as a 1xN heatmap.
+            act = act.reshape(1, -1)
+            # Option 2: Alternatively, if a square shape is preferred (if possible),
+            # you can use:
+            # size = int(np.sqrt(act.size))
+            # act = act.reshape(size, size)  # ensure the size is valid
+        elif act.ndim != 2:
+            raise ValueError(f"Activation array has invalid number of dimensions: {act.shape}")
+
+        # Display the activation as a heatmap.
+        ax.imshow(act, cmap='viridis')
+        ax.set_title(f'{model_name} Activation')
+        ax.axis('off')
+
+        # Draw the canvas to update the figure.
         fig.canvas.draw()
-        frame = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-        frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        frames.append(frame)
-        plt.close(fig)
+        w, h = fig.canvas.get_width_height()
 
-    # Adjust the video file name to include the model name.
-    video_file_with_model_name = video_filename.replace(".mp4", f"_{model_name}.mp4")
-    video_path = os.path.join(output_folder, video_file_with_model_name)
-    encode_video(frames, video_path, fps=fps)
-    logging.info(f"Saved activation movie to: {video_path}")
+        # Retrieve the ARGB buffer and convert it to RGB.
+        buf = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8).reshape(h, w, 4)
+        frame = buf[:, :, 1:4].copy()
+        frames.append(frame)
+
+    plt.close(fig)
+
+    # Write the frames to a video.
+    video_path = os.path.join(output_folder, video_filename)
+    height, width, _ = frames[0].shape
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video_writer = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
+
+    for frame in frames:
+        for _ in range(fps * 5):  # Duplicate each frame for 5 seconds
+            video_writer.write(frame)
+
+    video_writer.release()
+    print(f"Video saved to {video_path}")
