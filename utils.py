@@ -10,11 +10,13 @@ import traceback
 import pickle
 from multiprocessing import Process
 from configparser import ConfigParser
+import shutil
 
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
+
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 
 
@@ -65,6 +67,11 @@ def setup_logging():
     file_handler.addFilter(CustomLogFilter(forbidden_logs))
     logger.addHandler(file_handler)
 
+    #Delete all OUTPUT folder content
+    shutil.rmtree(OUTPUT, ignore_errors=True)
+    os.makedirs(OUTPUT, exist_ok=True)
+    logging.info(f"{OUTPUT}cleared...")
+
 # Define a custom PDF class (optional, for adding a header)
 class PDF(FPDF):
     def header(self):
@@ -75,7 +82,7 @@ class PDF(FPDF):
 
 def save_mazes_as_pdf(solved_mazes: list[str], output_filename: str = "maze_solutions.pdf") -> None:
     """
-      Save a collection of maze strings to a PDF file.
+      Save a collection of maze strings to a PDF file`.
 
       Parameters:
           mazes (list of str): The list of maze representations.
@@ -106,6 +113,12 @@ def save_mazes_as_pdf(solved_mazes: list[str], output_filename: str = "maze_solu
         # Iterate over each maze in the list
         for index, maze_obj in enumerate(solved_mazes, start=1):
             try:
+                valid_solution = maze_obj.test_solution()
+                # Retrieve the list of solution steps
+                solution_steps = maze_obj.get_solution()
+                # Calculate the number of steps in the solution
+                number_of_steps = len(solution_steps)
+
                 # Get the maze image as a numpy array
                 image_array = maze_obj.get_maze_as_png(show_path=True, show_solution=True)
 
@@ -118,14 +131,24 @@ def save_mazes_as_pdf(solved_mazes: list[str], output_filename: str = "maze_solu
                 # Optionally add a title for each maze
                 pdf.set_font("Arial", "B", 16)
                 algorithm = maze_obj.algorithm
+
+                if valid_solution:
+                    pdf.set_text_color(0, 128, 0)  # Green for valid solution
+                else:
+                    pdf.set_text_color(255, 0, 0)  # Red for invalid solution
+
                 pdf.cell(0, 5, f"Algorithm: {algorithm}", ln=True, align='C')
+                pdf.set_text_color(0, 0, 0)  # Reset text color to black after
                 pdf.ln(5)
-                pdf.cell(0, 10, f"Maze {index}", ln=True, align='C')
+                pdf.cell(0, 10, f"Maze: {index}", ln=True, align='C')
                 pdf.ln(5)
-                pdf.cell(0, 15, f"Correct Solution: {maze_obj.test_solution()}", ln=True, align='C')
+                pdf.cell(0, 15, f"Correct Solution: {valid_solution}", ln=True, align='C')
+                pdf.ln(5)
+                pdf.cell(0, 15, f"Solution Steps: {number_of_steps}", ln=True, align='C')
                 pdf.ln(5)
                 # Use multi_cell to allow for multi-line maze text
-                pdf.image(temp_image_path, x=10, y=30, w=pdf.w - 20)
+                pdf.image(temp_image_path, x=10, y=pdf.get_y(), w=pdf.w - 20)
+
                 os.remove(temp_image_path)
             except Exception as e:
                 logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
@@ -166,11 +189,12 @@ def encode_video(frame_list, filename, fps_val, w, h):
     logging.info(f"Video saved as: {filename}")
 
 
-def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
+def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
     """
     Generates and saves a video of all mazes and their solutions using OpenCV,
     with a title screen before each maze and non-overlapping text.
     """
+    logging.info("Generating solution video...")
     try:
         fps = 10
         width, height = 800, 600  # Desired resolution for the final video
@@ -210,7 +234,9 @@ def save_movie(solved_mazes, output_filename="maze_solutions.mp4"):
             # 2. ADD MAZE FRAMES WITH A TOP MARGIN FOR TEXT
             margin_height = 60  # pixels reserved at the top for text
 
+            logging.info(f"Processing maze #{maze_count} frame...")
             for img in images:
+                logging.info(f"Processing frame #{len(frames) + 1}...")
                 # Resize img to fit the frame height minus the margin
                 desired_height = height - margin_height
                 aspect_ratio = img.shape[1] / img.shape[0]
