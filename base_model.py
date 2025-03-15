@@ -41,6 +41,14 @@ class MazeBaseModel(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
 
+    def get_weights(self):
+        weights = []
+        for name, param in self.named_parameters():
+            # Consider only parameters with gradients and at least 2 dimensions (e.g., weight matrices)
+            if param.requires_grad and param.ndim >= 2:
+                weights.append((name, param.detach().cpu().numpy()))
+        return weights
+
     def train_model(self, dataloader, val_loader, num_epochs=20, learning_rate=0.001, weight_decay=0.001,
                     device='cpu', tensorboard_writer=None):
         """

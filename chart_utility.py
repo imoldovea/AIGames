@@ -38,6 +38,11 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         # Read the loss data from CSV
         df = pd.read_csv(loss_file_path)
 
+        # Break if the dataset is empty
+        if df.empty:
+            logging.warning("Dataset is empty. Exiting function.")
+            return
+
         # Validate required columns
         required_columns = {'model', 'epoch', 'loss', 'validation_loss'}
         if not required_columns.issubset(df.columns):
@@ -209,62 +214,43 @@ def save_neural_network_diagram(models, output_dir="output/"):
 
 
 def visualize_model_weights(models, output_folder=OUTPUT, base_title="Model Diagram", cmap="viridis", **kwargs):
-    """
-    Visualizes the model weights as a diagram for each model and saves all diagrams in a single PDF.
-    Each page includes the model name within the title.
-
-    Args:
-        models: A list of model objects. Each model is assumed to have a 'get_weights' method and
-                optionally a 'name' attribute.
-        output_folder: The directory where the PDF file will be saved.
-        base_title: Base title string that will be appended to each plot title.
-        cmap: The colormap used for visualization.
-        **kwargs: Additional keyword arguments for further customization.
-    """
     logging.debug("Visualizing model weights...")
-    pdf_filename = os.path.join(output_folder, "model_diagrams.pdf")
+    pdf_filename = f"{output_folder}model_weights_diagrams.pdf"
 
     with PdfPages(pdf_filename) as pdf:
-        for idx, model in enumerate(models):
-            # Retrieve the model name; fallback if not available.
-            model_name = getattr(model, "name", f"Model_{idx}")
-
-            # Retrieve the model's weights.
-            if hasattr(model, "get_weights"):
-                weights = model.get_weights()
+        for idx, item in enumerate(models):
+            # Extract model name and object if item is a tuple, else assume it's the model object.
+            if isinstance(item, tuple):
+                model_name, model_obj = item
             else:
-                print(f"Skipping {model_name}: no get_weights method found.")
-                continue
+                model_obj = item
+                model_name = getattr(model_obj, "name", f"Model_{idx}")
 
-            # Here we create a simple diagram for the model.
-            # In this example, we visualize the first weight array.
-            # Adjust this part if you need a different or more comprehensive diagram.
+            weights = model_obj.get_weights()
             if weights:
-                weight_array = weights[0]
-                # Convert the weight array into a 2D representation
+                # Unpack the first tuple: (parameter_name, parameter_value)
+                _, weight_array = weights[0]
+                weight_array = np.array(weight_array)  # Convert to NumPy array
                 if weight_array.ndim >= 2:
-                    data = np.mean(weight_array, axis=0) if weight_array.ndim > 2 else weight_array
+                    scaled_array = np.repeat(weight_array, repeats=50, axis=1)  # Scale dimension 2 (x-axis) by 50
+                    data = np.mean(scaled_array, axis=0) if scaled_array.ndim > 2 else scaled_array
                 else:
-                    data = weight_array.reshape(1, -1)
-            else:
-                # If the model has no weights, create a blank placeholder.
-                data = np.zeros((10, 10))
+                    data = np.repeat(weight_array, repeats=50, axis=0).reshape(1,
+                                                                               -1)  # Scale dimension 1 (x-axis) by 50 and reshape
 
             plt.figure(figsize=(8, 6))
             plt.imshow(data, cmap=cmap)
             plt.title(f"{model_name} - {base_title}")
             plt.colorbar(label="Weight Value")
-            plt.xlabel("Dimension 1")
-            plt.ylabel("Dimension 0")
+            plt.xlabel("Output Neurons")
+            plt.ylabel("Input Neurons")
 
-            # Save the current figure as a page in the PDF
             pdf.savefig()
             plt.close()
 
     logging.info(f"Saved model diagrams to: {pdf_filename}")
 
-
-def visualize_model_activations(activations, output_folder = OUTPUT, model_name = "Mode Name", video_filename = "recurrent_activations_movie", fps = 25):
+def visualize_model_activations(all_activations, output_folder = OUTPUT, model_name = "Mode Name", video_filename = "recurrent_activations_movie.mp4", fps = 25):
     """
     Generates a video showing model activations over time.
 
@@ -283,50 +269,55 @@ def visualize_model_activations(activations, output_folder = OUTPUT, model_name 
     fig, ax = plt.subplots()
     frames = []
 
-    # Loop over activations to generate frames.
-    for act in activations:
-        # Clear the previous image.
-        ax.clear()
+    for activations in all_activations: #loop in activations for all mazes
+        # Loop over activations to generate frames.
+        for act in activations:
+            # Clear the previous image.
+            ax.clear()
 
-        # Squeeze extra dimensions.
-        act = np.squeeze(act)
+            # Squeeze extra dimensions.
+            act = np.squeeze(act)
 
-        # If activation is still one-dimensional, reshape to 2D.
-        if act.ndim == 1:
-            # Option 1: Show as a 1xN heatmap.
-            act = act.reshape(1, -1)
-            # Option 2: Alternatively, if a square shape is preferred (if possible),
-            # you can use:
-            # size = int(np.sqrt(act.size))
-            # act = act.reshape(size, size)  # ensure the size is valid
-        elif act.ndim != 2:
-            raise ValueError(f"Activation array has invalid number of dimensions: {act.shape}")
+            # If activation is still one-dimensional, reshape to 2D.
+            if act.ndim == 1:
+                # Option 1: Show as a 1xN heatmap.
+                act = act.reshape(1, -1)
+                # Option 2: Alternatively, if a square shape is preferred (if possible),
+                # you can use:
+                # size = int(np.sqrt(act.size))
+                # act = act.reshape(size, size)  # ensure the size is valid
+            elif act.ndim != 2:
+                raise ValueError(f"Activation array has invalid number of dimensions: {act.shape}")
 
-        # Display the activation as a heatmap.
-        ax.imshow(act, cmap='viridis')
-        ax.set_title(f'{model_name} Activation')
-        ax.axis('off')
+            # Display the activation as a heatmap.
+            ax.imshow(act, cmap='viridis')
+            ax.set_title(f'{model_name} Activation')
+            ax.axis('off')
 
-        # Draw the canvas to update the figure.
-        fig.canvas.draw()
-        w, h = fig.canvas.get_width_height()
+            # Draw the canvas to update the figure.
+            fig.canvas.draw()
+            w, h = fig.canvas.get_width_height()
 
-        # Retrieve the ARGB buffer and convert it to RGB.
-        buf = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8).reshape(h, w, 4)
-        frame = buf[:, :, 1:4].copy()
-        frames.append(frame)
+            # Retrieve the ARGB buffer and convert it to RGB.
+            buf = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8).reshape(h, w, 4)
+            frame = buf[:, :, 1:4].copy()
+            frames.append(frame)
 
     plt.close(fig)
 
     # Write the frames to a video.
-    video_path = os.path.join(output_folder, video_filename)
+    activations_path = f"{OUTPUT}activations/"
+    os.makedirs(activations_path, exist_ok=True)
+    video_path = f"{activations_path}{video_filename}"
     height, width, _ = frames[0].shape
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     video_writer = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
 
     for frame in frames:
-        for _ in range(fps * 5):  # Duplicate each frame for 5 seconds
+        for _ in range(fps * 2):  # Duplicate each frame for 2 seconds
             video_writer.write(frame)
 
     video_writer.release()
-    print(f"Video saved to {video_path}")
+    plt.close('all')
+    logging.info(f"Activations Video saved to: {video_path}")
+

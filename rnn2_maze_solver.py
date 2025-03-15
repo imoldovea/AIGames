@@ -36,6 +36,7 @@ RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
 GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
 LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
 LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
+LOSS_FILE = f"{OUTPUT}loss_data.csv"
 MODELS_DIAGRAM = f"{OUTPUT}models_diagram.pdf"
 OUTPUT_PDF = f"{OUTPUT}solved_mazes.pdf"
 SECRETS = "secrets.properties"
@@ -55,6 +56,7 @@ class RNN2MazeSolver(MazeSolver):
         self.maze = maze
         self.device = torch.device(device)
         self.model = model
+        self.model_type = model.mode_type
         maze.set_algorithm(self.__class__.__name__)
         model.to(self.device)
         model.eval()
@@ -156,16 +158,10 @@ class RNN2MazeSolver(MazeSolver):
             if self.maze.exit != current_pos:
                 logging.warning(f"Reached max steps ({max_steps}) without finding a solution.")
 
-        if self.activations['recurrent']:
-            visualize_model_activations(
-                activations=self.activations['recurrent'],
-                output_folder= OUTPUT,
-                model_name=self.model.__class__.__name__,
-                video_filename="recurrent_activations_movie.mp4",
-                fps=25
-            )
-
         return path
+
+    def get_recurrent_activations(self):
+        return self.activations.get('recurrent')
 
     def _compute_current_activation(self, current_pos = None, relative_position = None, step_number_normalized = None):
         """
@@ -260,20 +256,25 @@ def rnn2_solver(models, mazes, device="cpu"):
     for model_name, model_obj in models:
         successful_solutions = 0  # Successful solution counter
         total_mazes = len(mazes)  # Total mazes to solve
-
+        all_model_acivations = []
         # Step 5.b: Iterate through each maze
         for i, maze_data in enumerate(mazes):
             # Step 5.b.i: Create a Maze object
             maze = Maze(maze_data)
 
+            if config.getboolean("MONITORING", "save_solution_movie", fallback=False):
+                maze.set_save_movie(True)
+
             # Step 5.b.ii: Create a solver instance
-            solver = RNN2MazeSolver(maze, model_obj, device=device)
+            solver = RNN2MazeSolver(maze=maze, model=model_obj,  device=device)
 
             # Step 5.b.iii: Set the algorithm name for the maze
             maze.set_algorithm(model_name)
 
             # Step 5.b.iv: Solve the maze
             solution_path = solver.solve()
+            activations = solver.get_recurrent_activations()
+            all_model_acivations.append(activations)
 
             # Step 5.b.v: Set the solution and test its validity
             maze.set_solution(solution_path)
@@ -293,13 +294,14 @@ def rnn2_solver(models, mazes, device="cpu"):
             f"{model_name} Total mazes: {total_mazes}, Successful solutions: {successful_solutions}, Success rate: {success_rate:.2f}%"
         )
 
-    # Step 6: Plot failed or incomplete mazes
-    for maze in solved_mazes:
-        maze.plot_maze(show_path=True, show_solution=False, show_position=False)
-
-    # Step 7: Save solved mazes to a PDF
-    save_mazes_as_pdf(solved_mazes, OUTPUT_PDF)
-
+        if config.getboolean("MONITORING", "generate_activations", fallback=False):
+            visualize_model_activations(
+                all_activations=all_model_acivations,
+                output_folder=OUTPUT,
+                model_name=model_name,
+                video_filename=f"recurrent_activations_movie_{model_name}.mp4",
+                fps=25
+            )
     # Step 8: Return success rates
     return solved_mazes, model_success_rates
 
@@ -317,55 +319,69 @@ def main():
     batch_size = config.getint("DEFAULT", "batch_size")
 
     # Setup Monitoring
-    os.environ['WANDB_MODE'] = 'online'
-    config_secrets = ConfigParser()
-    config_secrets.read(SECRETS)
-    wandb.login(key=config_secrets.get("WandB", "api_key"))
-    wandb.init(project="maze_solver_training", config={
-        "batch_size": batch_size,
-        "device": str(device),
-    }, reinit=True)
-
-    wandb_run_url = wandb.run.get_url()
-
     try:
-        if is_port_in_use(6006):
-            logging.warning("TensorBoard is already running on port 6006. Skipping startup.")
-        else:
-            dashboard_process = subprocess.Popen(["python", "dashboard.py"])
-            tensorboard_process = subprocess.Popen(
-                ["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
+        if config.getboolean("MONITORING", "wandb",fallback=True):
+            os.environ['WANDB_MODE'] = 'online'
+            config_secrets = ConfigParser()
+            config_secrets.read(SECRETS)
+            wandb.login(key=config_secrets.get("WandB", "api_key"))
+            wandb.init(project="maze_solver_training", config={
+                "batch_size": batch_size,
+                "device": str(device),
+            }, reinit=True)
 
-        tensorboard_url = "http://localhost:6006/"
-        dash_dashboard_url = "http://127.0.0.1:8050/"
-        # Log the URLs
-        logging.info(
-            f"WandB dashboard: {wandb_run_url}, "
-            f"TensorBoard: {tensorboard_url}, "
-            f"Dash Dashboard: {dash_dashboard_url}. "
-            "Waiting for models to be trained."
-        )
+            wandb_run_url = wandb.run.get_url()
+
+        if config.getboolean("MONITORING", "tensorboard", fallback=True):
+            if is_port_in_use(6006):
+                logging.warning("TensorBoard is already running on port 6006. Skipping startup.")
+            else:
+                dashboard_process = subprocess.Popen(["python", "dashboard.py"])
+                tensorboard_process = subprocess.Popen(
+                    ["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
+
+            tensorboard_url = "http://localhost:6006/"
+            dash_dashboard_url = "http://127.0.0.1:8050/"
+            # Log the URLs
+            logging.info(
+                f"WandB dashboard: {wandb_run_url}, "
+                f"TensorBoard: {tensorboard_url}, "
+                f"Dash Dashboard: {dash_dashboard_url}. "
+                "Waiting for models to be trained."
+            )
 
         # training
         logging.debug("Training models...")
 
         models = train_models(device=device, batch_size=batch_size)
         try:
-            #save_neural_network_diagram(models, OUTPUT)
-            if not os.path.isfile(LOSS_PLOT_FILE):
-                logging.error(f"Loss file {LOSS_PLOT_FILE} is missing. Skipping loss chart generation.")
-            else:
-                save_latest_loss_chart(models, LOSS_PLOT_FILE)
+            if config.getboolean("MONITORING", "save_neural_network_diagram", fallback=True):
+                save_neural_network_diagram(models, OUTPUT)
+            if config.getboolean("MONITORING", "latest_loss_chatrt", fallback=True):
+                if os.path.isfile(LOSS_FILE):
+                     save_latest_loss_chart(LOSS_FILE, LOSS_PLOT_FILE)
+                else:
+                    logging.warning(f"Loss file {LOSS_PLOT_FILE} is missing. Skipping loss chart generation.")
         except Exception as e:
             logging.error(f"An error occurred: {e}\n\n{traceback.format_exc()}")
-        visualize_model_weights(models)
+
+        if config.getboolean("MONITORING", "generate_weights", fallback=True):
+            visualize_model_weights(models)
 
         mazes = load_mazes(TEST_MAZES_FILE)
 
         # Apply the model to the test data.
-        solved_mazes, model_success_rates = rnn2_solver(models, mazes, device)
-        save_movie(solved_mazes, output_mp4)
+        solved_mazes, model_success_rates = rnn2_solver(models = models, mazes = mazes, device = device)
         logging.info(f"Model success rates: {model_success_rates}")
+
+        #Plot mazes
+        if config.getboolean("MONITORING", "save_mazes_as_pdf", fallback=True):
+            save_mazes_as_pdf(solved_mazes, OUTPUT_PDF)
+        if config.getboolean("MONITORING", "print_mazes", fallback=True):
+            for maze in solved_mazes:
+                maze.plot_maze(show_path=True, show_solution=False, show_position=False)
+        if config.getboolean("MONITORING", "save_solution_movie", fallback=True):
+            save_movie(solved_mazes, f"{OUTPUT}solved_mazes_rnn.mp4")
 
     finally:
         try:
@@ -380,7 +396,6 @@ def main():
             tensorboard_process.terminate()
         except Exception as e:
             logging.error(f"Error finalizing Tensorboard: {e}")
-
 
 if __name__ == "__main__":
     main()
