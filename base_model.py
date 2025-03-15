@@ -90,9 +90,10 @@ class MazeBaseModel(nn.Module):
                 self.train()  # Put the model in training mode
                 # Loop through batches from the data loader
                 for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(
-                        tqdm(dataloader, desc=f"{self.model_name}Training Progress", leave=False)):
+                        tqdm(dataloader, desc="Training Progress", leave=False)):
                     target_action = target_action.to(device).long()
                     # Convert local_context to PyTorch tensor and ensure it's at least 2D
+                    local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
                     local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
                     relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
 
