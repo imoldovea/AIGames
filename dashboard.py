@@ -143,8 +143,9 @@ def validate_loss_file():
 
         # Check if the file has at least one record
         if df.empty:
-            logging.warning(f"Error: File '{LOSS_FILE}' is empty.")
-            exit(1)
+            logging.warning(f"Warning: File '{LOSS_FILE}' is currently empty. Waiting for new training data...")
+            return  # Allow the process to continue without exiting
+
 
     except Exception as e:
         logging.warning(f"Error validating the loss file: {e}")

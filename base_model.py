@@ -12,7 +12,6 @@ import logging
 import tqdm
 from configparser import ConfigParser
 
-
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
@@ -85,13 +84,13 @@ class MazeBaseModel(nn.Module):
             running_loss = 0.0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
-            from tqdm import tqdm
+
             for epoch in tqdm(range(num_epochs), desc="Epoch Progress"):
                 running_loss = 0.0
                 self.train()  # Put the model in training mode
                 # Loop through batches from the data loader
                 for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(
-                        tqdm(dataloader, desc="Training Progress", leave=False)):
+                        tqdm(dataloader, desc=f"{self.model_name}Training Progress", leave=False)):
                     target_action = target_action.to(device).long()
                     # Convert local_context to PyTorch tensor and ensure it's at least 2D
                     local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
@@ -182,8 +181,8 @@ class MazeBaseModel(nn.Module):
             validation_loss (float): Validation loss for the current epoch.
             tensorboard_writer: Optional TensorBoard writer for logging.
         """
-        logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
-        logging.info(f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {epoch_loss:.4f}")
+        logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+        logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {epoch_loss:.4f}")
 
         scheduler.step(epoch_loss)
         with open(LOSS_FILE, "a", newline="") as f:

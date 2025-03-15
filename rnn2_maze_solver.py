@@ -344,9 +344,9 @@ def main():
             dash_dashboard_url = "http://127.0.0.1:8050/"
             # Log the URLs
             logging.info(
-                f"WandB dashboard: {wandb_run_url}, "
-                f"TensorBoard: {tensorboard_url}, "
-                f"Dash Dashboard: {dash_dashboard_url}. "
+                f"WandB dashboard: {wandb_run_url}, \n"
+                f"TensorBoard: {tensorboard_url}, \n"
+                f"Dash Dashboard: {dash_dashboard_url}.\n "
                 "Waiting for models to be trained."
             )
 
