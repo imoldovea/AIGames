@@ -1,7 +1,6 @@
-- add parmeters:
-   - already vusited cell
-   - ve: Encode as a relative position from the start (e.g., delta X, delta Y).
-- Better charts: traning activations
+-Update patience
+- fix network diagram
+- why stop before max step
 - Google side processing
 - Fix loss function
 
