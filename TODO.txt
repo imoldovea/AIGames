@@ -1,3 +1,4 @@
+-Train selected models?
 -Update patience
 - fix network diagram
 - why stop before max step
