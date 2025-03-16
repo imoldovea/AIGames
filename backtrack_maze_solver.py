@@ -8,8 +8,6 @@ import logging
 import traceback
 
 
-logging.basicConfig(level=logging.INFO)
-
 class BacktrackingMazeSolver(MazeSolver):
     def __init__(self, maze):
         """

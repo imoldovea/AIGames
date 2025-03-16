@@ -9,8 +9,10 @@ import csv
 import os
 from torch.utils.data import DataLoader
 import logging
-import tqdm
+from tqdm import tqdm
 from configparser import ConfigParser
+import time
+
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -67,9 +69,15 @@ class MazeBaseModel(nn.Module):
         """
         logging.debug(f"Training {self._get_name()} for {num_epochs} epochs on {device}...")
 
+        # Record the start time
+        start_time = time.time()
+
         self.to(device)
         # Set up early stopping patience to monitor overfitting
-        patience = 5
+        patience = config.getint("DEFAULT", "patience", fallback=5)
+        logging.info(
+            f"Early stopping patience set to {patience} epochs. Training will stop after {patience} epochs without improvement on training loss or validation loss."
+        )
         loss_trigger_times = 0
         validation_loss_trigger_times = 0
 
@@ -80,61 +88,60 @@ class MazeBaseModel(nn.Module):
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
 
-        for epoch in range(num_epochs):
+        #setup progrss bar
+        use_progress_bar = config.getboolean("DEFAULT", "use_progress_bar", fallback=True)
+        epoch_iterator = tqdm(range(num_epochs), desc="Epoch Progress") if use_progress_bar else range(num_epochs)
+
+        for epoch in epoch_iterator:
             running_loss = 0.0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
+            desc = f"{self._get_name()} Training Progress"
+            for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(
+                    tqdm(dataloader, desc=desc, leave=False)):
+                target_action = target_action.to(device).long()
+                # Convert local_context to PyTorch tensor and ensure it's at least 2D
+                local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
+                relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
 
-            for epoch in tqdm(range(num_epochs), desc="Epoch Progress"):
-                running_loss = 0.0
-                self.train()  # Put the model in training mode
-                # Loop through batches from the data loader
-                for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(
-                        tqdm(dataloader, desc="Training Progress", leave=False)):
-                    target_action = target_action.to(device).long()
-                    # Convert local_context to PyTorch tensor and ensure it's at least 2D
-                    local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
-                    local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
-                    relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
+                # If local_context is 1D, convert it to 2D (batch_size, num_features)
+                if local_context.dim() == 1:
+                    local_context = local_context.unsqueeze(0)  # Convert shape (num_features,) → (1, num_features)
+                if relative_position.dim() == 1:
+                    relative_position = relative_position.unsqueeze(0)
 
-                    # If local_context is 1D, convert it to 2D (batch_size, num_features)
-                    if local_context.dim() == 1:
-                        local_context = local_context.unsqueeze(0)  # Convert shape (num_features,) → (1, num_features)
-                    if relative_position.dim() == 1:
-                        relative_position = relative_position.unsqueeze(0)
+                # Convert steps_number to PyTorch tensor and ensure it's at least 2D
+                steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
 
-                    # Convert steps_number to PyTorch tensor and ensure it's at least 2D
-                    steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
+                # If steps_number is 0D (a single scalar), make it 1D
+                if steps_number.dim() == 0:
+                    steps_number = steps_number.unsqueeze(0)  # Convert scalar to (1,)
 
-                    # If steps_number is 0D (a single scalar), make it 1D
-                    if steps_number.dim() == 0:
-                        steps_number = steps_number.unsqueeze(0)  # Convert scalar to (1,)
+                # Make sure steps_number is (batch_size, 1)
+                steps_number = steps_number.unsqueeze(1)  # Convert shape (1,) → (1, 1)
 
-                    # Make sure steps_number is (batch_size, 1)
-                    steps_number = steps_number.unsqueeze(1)  # Convert shape (1,) → (1, 1)
+                # Ensure both tensors are now 2D before concatenation
+                assert local_context.dim() == 2, f"local_context has wrong shape: {local_context.shape}"
+                assert steps_number.dim() == 2, f"steps_number has wrong shape: {steps_number.shape}"
 
-                    # Ensure both tensors are now 2D before concatenation
-                    assert local_context.dim() == 2, f"local_context has wrong shape: {local_context.shape}"
-                    assert steps_number.dim() == 2, f"steps_number has wrong shape: {steps_number.shape}"
+                # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
+                inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
 
-                    # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
-                    inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
+                # Add sequence dimension for RNN input
+                inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
 
-                    # Add sequence dimension for RNN input
-                    inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
+                assert inputs.shape[-1] == 7, f"Expected input features to be 5, but got {inputs.shape[-1]}"
+                assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
 
-                    assert inputs.shape[-1] == 7, f"Expected input features to be 5, but got {inputs.shape[-1]}"
-                    assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
-            
-                    # Forward pass
-                    outputs = self.forward(inputs)  # Pass input through the model
-                    loss = criterion(outputs, target_action)  # Compute cross-entropy loss
-            
-                    optimizer.zero_grad()  # Clear previous gradients
-                    loss.backward()  # Backpropagate loss to calculate gradients
-                    optimizer.step()  # Update model weights
-            
-                    running_loss += loss.item() * inputs.size(0)
+                # Forward pass
+                outputs = self.forward(inputs)  # Pass input through the model
+                loss = criterion(outputs, target_action)  # Compute cross-entropy loss
+
+                optimizer.zero_grad()  # Clear previous gradients
+                loss.backward()  # Backpropagate loss to calculate gradients
+                optimizer.step()  # Update model weights
+
+                running_loss += loss.item() * inputs.size(0)
 
             epoch_loss = running_loss / len(dataloader.dataset)
 
@@ -144,27 +151,35 @@ class MazeBaseModel(nn.Module):
             train_losses["validation"].append(validation_loss)
             #Stop is no improvement on loss function
 
-            STOP_ON_LOSS = False
+            # Moitoring
+            self._monitor_training(epoch, num_epochs, epoch_loss, scheduler, validation_loss, tensorboard_writer)
+
+            # Early stopping based on training loss
+            STOP_ON_LOSS = False  # Set to True to disable early stopping on training loss
             if epoch_loss < min(train_losses["train"]) or STOP_ON_LOSS:
                 loss_trigger_times = 0
             else:
                 loss_trigger_times += 1
-                if loss_trigger_times >= patience:
+                if loss_trigger_times >= patience and not STOP_ON_LOSS:
                     logging.info(f"Early Stopping Loss Triggered at Epoch {epoch + 1}")
                     break
 
-            #Stop if no improvement on validation loss.
-            STOP_ON_VALIDATION_LOSS = True
+            # Early stopping based on validation loss
+            STOP_ON_VALIDATION_LOSS = True  # Set to True to disable early stopping on validation loss
             if validation_loss < min(train_losses["validation"]) or STOP_ON_VALIDATION_LOSS:
                 validation_loss_trigger_times = 0
             else:
                 validation_loss_trigger_times += 1
-                if validation_loss_trigger_times >= patience:
+                if validation_loss_trigger_times >= patience and not STOP_ON_VALIDATION_LOSS:
                     logging.info(f"Early Stopping Validation Loss Triggered at Epoch {epoch + 1}")
                     break
 
-            # Moitoring
-            self._monitor_training(epoch, num_epochs, epoch_loss, scheduler, validation_loss, tensorboard_writer)
+        # After training is complete, record the end time and compute the duration
+        training_duration = time.time() - start_time
+
+        # Log the training duration. This uses the logging module, so make sure your logging is configured as desired.
+        logging.info(f"Training time for model {self.model_name}: {training_duration:.2f} seconds")
+
 
         self.last_loss = train_losses["train"][-1] if train_losses["train"] else None
         logging.info(f"Training Complete for {self._get_name()}. Final Loss: {self.last_loss}")
@@ -183,12 +198,12 @@ class MazeBaseModel(nn.Module):
             tensorboard_writer: Optional TensorBoard writer for logging.
         """
         logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
-        logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {epoch_loss:.4f}")
+        logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {validation_loss:.4f}")
 
         scheduler.step(epoch_loss)
         with open(LOSS_FILE, "a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss])
+            writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss, time.time()])
 
         if tensorboard_writer:
             tensorboard_writer.add_scalar("Loss/epoch", epoch_loss, epoch)

@@ -178,9 +178,6 @@ class RNN2MazeSolver(MazeSolver):
 
         # Step 1: Get the local context as a NumPy array.
         local_context = self._compute_local_context(current_pos, self.DIRECTIONS)
-        logging.debug(
-            f"Current position: {current_pos}, Local context: {local_context}"
-        )
 
         # Step 2: Preprocess the local context to match the model's expected input format.
         # We add a batch dimension (unsqueeze(0)) and convert to a FloatTensor.
@@ -332,11 +329,13 @@ def main():
 
             wandb_run_url = wandb.run.get_url()
 
+        if config.getboolean("MONITORING", "plotly", fallback=True):
+            dashboard_process = subprocess.Popen(["python", "dashboard.py"])
+
         if config.getboolean("MONITORING", "tensorboard", fallback=True):
             if is_port_in_use(6006):
                 logging.warning("TensorBoard is already running on port 6006. Skipping startup.")
             else:
-                dashboard_process = subprocess.Popen(["python", "dashboard.py"])
                 tensorboard_process = subprocess.Popen(
                     ["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
 

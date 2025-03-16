@@ -30,7 +30,6 @@ app.layout = html.Div([
     )
 ])
 
-# Callback function to update the graph
 @app.callback(
     Output("loss-graph", "figure"),
     [Input("interval-component", "n_intervals")]
@@ -53,11 +52,23 @@ def update_graph(n_intervals):
             model_df["epoch_diff"] = model_df["epoch"].diff()
             model_df.loc[model_df["epoch_diff"] > 1, "loss"] = np.nan  # Introduce NaN for breaks
 
+            # Sort by epoch to ensure correct order
+            model_df = model_df.sort_values(by="epoch")
+            # Compute duration as the difference between consecutive timestamps
+            model_df["duration"] = model_df["time"].diff()
+            # For the first epoch, fill NaN with the average duration of the subsequent epochs
+            avg_duration = model_df["duration"].mean()
+            model_df["duration"].fillna(avg_duration, inplace=True)
+            # Create text annotations using the computed duration (in minutes)
+            time_text = [f"{float(t) / 60:.2f} min" if pd.notnull(t) else "N/A" for t in model_df["duration"]]
+
             fig.add_trace(go.Scatter(
                 x=model_df["epoch"],
                 y=model_df["loss"],
                 mode="lines+markers",
-                name=model  # Use the model name for the legend
+                name=model,  # Use the model name for the legend
+                text=time_text,
+                hovertemplate="Epoch: %{x}<br>Loss: %{y}<br>Training time: %{text}<extra></extra>"
             ))
 
         fig.update_layout(
@@ -71,7 +82,7 @@ def update_graph(n_intervals):
         return fig
 
     except Exception as e:
-        print(f"Error reading the loss data: {e}")
+        logging.error(f"Error reading the loss data: {e}")
         return go.Figure()
 
 
@@ -135,7 +146,7 @@ def validate_loss_file():
         df = pd.read_csv(LOSS_FILE)
 
         # Check for required columns
-        required_columns = {'model', 'epoch', 'loss', 'validation_loss'}
+        required_columns = {'model', 'epoch', 'loss', 'validation_loss', 'time'}
         if not required_columns.issubset(df.columns):
             logging.warning(f"Error: File '{LOSS_FILE}' is missing required columns. "
                   f"Expected columns: {required_columns}.")
@@ -155,4 +166,4 @@ def validate_loss_file():
 # Run the Dash app
 if __name__ == "__main__":
     validate_loss_file()  # Validate the loss file before starting the app
-    app.run_server(debug=False)
+    app.run_server(debug=False, dev_tools_ui=False, dev_tools_hot_reload=False)
