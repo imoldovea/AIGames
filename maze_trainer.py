@@ -244,8 +244,46 @@ def train_models(device="cpu", batch_size=32):
     config.read("config.properties")
     logging.info(f'Using device: {device}')
 
-    models = []
+    # Read the allowed models from the config file. Expected format: "GRU, LSTM, RNN"
+    models_config = config.get("DEFAULT", "models", fallback="GRU,LSTM,RNN")
+    allowed_models = [model.strip().upper() for model in models_config.split(",")]
 
+    trained_models = []
+
+    for model_name in allowed_models:
+        if model_name == "GRU":
+            gru_model = _train_gru_model(
+                device=device,
+                dataloader=dataloader,
+                validation_ds=validation_ds,
+                tensorboard_data_sever=tensorboard_data_sever
+            )
+            trained_models.append(("GRU", gru_model))
+        elif model_name == "LSTM":
+            lstm_model = _train_lstm_model(
+                device=device,
+                dataloader=dataloader,
+                validation_ds=validation_ds,
+                tensorboard_data_sever=tensorboard_data_sever
+            )
+            trained_models.append(("LSTM", lstm_model))
+        elif model_name == "RNN":
+            rnn_model = _train_rnn_model(
+                device=device,
+                dataloader=dataloader,
+                validation_ds=validation_ds,
+                tensorboard_data_sever=tensorboard_data_sever
+            )
+            trained_models.append(("RNN", rnn_model))
+        else:
+            print(f"Model {model_name} is not recognized and will be skipped.")
+
+    tensorboard_data_sever.close()
+    logging.info("Training complete.")
+
+    return trained_models
+
+def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever) -> MazeRecurrentModel:
     # RNN Model Training
     rnn_model = MazeRecurrentModel(
         mode_type="RNN",
@@ -277,9 +315,11 @@ def train_models(device="cpu", batch_size=32):
         logging.info("Saved RNN model")
         wandb.log({"RNN_final_loss": loss})
         tensorboard_data_sever.add_scalar("Loss/RNN_final_loss", loss)
-    models.append(("RNN", rnn_model))
 
-    # GRU Model Training
+    return rnn_model
+
+def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever) -> MazeRecurrentModel:
+    #GRU model training
     gru_model = MazeRecurrentModel(
         mode_type="GRU",
         input_size=config.getint("GRU", "input_size", fallback=7),
@@ -296,7 +336,7 @@ def train_models(device="cpu", batch_size=32):
     else:
         logging.info("Training GRU model")
         gru_model = gru_model.train_model(
-            dataloader = dataloader,
+            dataloader=dataloader,
             val_loader=validation_ds,
             num_epochs=config.getint("GRU", "num_epochs"),
             learning_rate=config.getfloat("GRU", "learning_rate"),
@@ -309,9 +349,10 @@ def train_models(device="cpu", batch_size=32):
         logging.info(f"Done training GRU model. Loss {loss:.4f}")
         wandb.log({"GRU_final_loss": loss})
         tensorboard_data_sever.add_scalar("Loss/GRU_final_loss", loss)
-    models.append(("GRU", gru_model))
+    return gru_model
 
-    # LSTM Model Training
+def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever) -> MazeRecurrentModel:
+    #LSTM Model training
     lstm_model = MazeRecurrentModel(
         mode_type="LSTM",
         input_size=config.getint("LSTM", "input_size", fallback=7),
@@ -341,7 +382,5 @@ def train_models(device="cpu", batch_size=32):
         logging.info(f"Done training LSTM model. Loss {loss:.4f}")
         wandb.log({"LSTM_final_loss": loss})
         tensorboard_data_sever.add_scalar("Loss/LSTM_final_loss", loss)
-    models.append(("LSTM", lstm_model))
-    tensorboard_data_sever.close()
-    logging.info("Training complete.")
-    return models
+
+    return lstm_model

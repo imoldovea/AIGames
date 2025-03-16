@@ -58,7 +58,7 @@ def update_graph(n_intervals):
             model_df["duration"] = model_df["time"].diff()
             # For the first epoch, fill NaN with the average duration of the subsequent epochs
             avg_duration = model_df["duration"].mean()
-            model_df["duration"].fillna(avg_duration, inplace=True)
+            model_df["duration"] = model_df["duration"].fillna(avg_duration)
             # Create text annotations using the computed duration (in minutes)
             time_text = [f"{float(t) / 60:.2f} min" if pd.notnull(t) else "N/A" for t in model_df["duration"]]
 

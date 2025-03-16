@@ -88,17 +88,19 @@ class MazeBaseModel(nn.Module):
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
 
-        #setup progrss bar
-        use_progress_bar = config.getboolean("DEFAULT", "use_progress_bar", fallback=True)
-        epoch_iterator = tqdm(range(num_epochs), desc="Epoch Progress") if use_progress_bar else range(num_epochs)
+
+        #setup progress bar
+        progress_bar = config.getboolean("DEFAULT", "progress_bar", fallback=True)
+        epoch_iterator = tqdm(range(num_epochs), desc="Epoch Progress") if progress_bar else range(num_epochs)
 
         for epoch in epoch_iterator:
             running_loss = 0.0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
             desc = f"{self._get_name()} Training Progress"
-            for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(
-                    tqdm(dataloader, desc=desc, leave=False)):
+            use_progress_bar = False
+            iterator = tqdm(dataloader, desc=desc, leave=False) if not use_progress_bar else dataloader
+            for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(iterator):
                 target_action = target_action.to(device).long()
                 # Convert local_context to PyTorch tensor and ensure it's at least 2D
                 local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
@@ -151,13 +153,19 @@ class MazeBaseModel(nn.Module):
             train_losses["validation"].append(validation_loss)
             #Stop is no improvement on loss function
 
-            # Moitoring
+            # Monitoring
             self._monitor_training(epoch, num_epochs, epoch_loss, scheduler, validation_loss, tensorboard_writer)
+
+            improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
 
             # Early stopping based on training loss
             STOP_ON_LOSS = False  # Set to True to disable early stopping on training loss
-            if epoch_loss < min(train_losses["train"]) or STOP_ON_LOSS:
+            best_train_loss = min(train_losses["train"]) if train_losses["train"] else float("inf")
+
+            if epoch_loss < best_train_loss * (1 - improvement_threshold) or STOP_ON_LOSS:
                 loss_trigger_times = 0
+                # Update best_train_loss if improvement is achieved
+                best_train_loss = epoch_loss
             else:
                 loss_trigger_times += 1
                 if loss_trigger_times >= patience and not STOP_ON_LOSS:
@@ -166,8 +174,12 @@ class MazeBaseModel(nn.Module):
 
             # Early stopping based on validation loss
             STOP_ON_VALIDATION_LOSS = True  # Set to True to disable early stopping on validation loss
-            if validation_loss < min(train_losses["validation"]) or STOP_ON_VALIDATION_LOSS:
+            best_validation_loss = min(train_losses["validation"]) if train_losses["validation"] else float("inf")
+
+            if validation_loss < best_validation_loss * (1 - improvement_threshold) or STOP_ON_VALIDATION_LOSS:
                 validation_loss_trigger_times = 0
+                # Update best_validation_loss if improvement is achieved
+                best_validation_loss = validation_loss
             else:
                 validation_loss_trigger_times += 1
                 if validation_loss_trigger_times >= patience and not STOP_ON_VALIDATION_LOSS:
