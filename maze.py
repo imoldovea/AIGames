@@ -48,10 +48,6 @@ class Maze:
         self.algorithm = None
         self.valid_solution = False
 
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        self.logger.addHandler(handler)
-
         # Locate the starting position using the provided start_marker
         start_positions = np.argwhere(self.grid == self.START)
         if start_positions.size == 0:

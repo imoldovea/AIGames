@@ -163,6 +163,8 @@ def validate_loss_file():
         exit(1)
 
 
+
+
 # Run the Dash app
 if __name__ == "__main__":
     validate_loss_file()  # Validate the loss file before starting the app

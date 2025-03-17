@@ -84,22 +84,24 @@ class MazeBaseModel(nn.Module):
         # Define optimizer, learning rate scheduler, and loss function
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=patience)
+        self.lr_scheduler = scheduler
+
         criterion = nn.CrossEntropyLoss()
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
 
 
         #setup progress bar
-        progress_bar = config.getboolean("DEFAULT", "progress_bar", fallback=True)
-        epoch_iterator = tqdm(range(num_epochs), desc="Epoch Progress") if progress_bar else range(num_epochs)
+        use_progress_bar = config.getboolean("DEFAULT", "progress_bar", fallback=False)
+        epoch_iterator = tqdm(range(num_epochs), desc="Epoch Progress") if use_progress_bar else range(num_epochs)
 
         for epoch in epoch_iterator:
             running_loss = 0.0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
             desc = f"{self._get_name()} Training Progress"
-            use_progress_bar = False
-            iterator = tqdm(dataloader, desc=desc, leave=False) if not use_progress_bar else dataloader
+            use_progress_bar = config.getboolean("DEFAULT", "progress_bar", fallback=False)
+            iterator = tqdm(dataloader, desc=desc, leave=False) if  use_progress_bar else dataloader
             for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(iterator):
                 target_action = target_action.to(device).long()
                 # Convert local_context to PyTorch tensor and ensure it's at least 2D
@@ -145,18 +147,20 @@ class MazeBaseModel(nn.Module):
 
                 running_loss += loss.item() * inputs.size(0)
 
+            #Back Epoch loop
             epoch_loss = running_loss / len(dataloader.dataset)
 
             # After finishing the training epoch and recording epoch_loss, do validation:
             validation_loss=self._validate_model(val_loader = val_loader,criterion =  criterion, device = device, epoch = epoch)
             train_losses["train"].append(epoch_loss)
             train_losses["validation"].append(validation_loss)
-            #Stop is no improvement on loss function
 
             # Monitoring
-            self._monitor_training(epoch, num_epochs, epoch_loss, scheduler, validation_loss, tensorboard_writer)
+            self._monitor_training(epoch = epoch, num_epochs= num_epochs, epoch_loss = epoch_loss, scheduler = scheduler, validation_loss = validation_loss, tensorboard_writer= tensorboard_writer)
 
+            # Stop is no improvement on loss function
             improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
+            current_lr = self.lr_scheduler.get_last_lr()[0]  # Get the current learning rate
 
             # Early stopping based on training loss
             STOP_ON_LOSS = False  # Set to True to disable early stopping on training loss
@@ -164,25 +168,31 @@ class MazeBaseModel(nn.Module):
 
             if epoch_loss < best_train_loss * (1 - improvement_threshold) or STOP_ON_LOSS:
                 loss_trigger_times = 0
-                # Update best_train_loss if improvement is achieved
-                best_train_loss = epoch_loss
+                best_train_loss = epoch_loss  # Update best_train_loss if improvement is achieved
             else:
                 loss_trigger_times += 1
-                if loss_trigger_times >= patience and not STOP_ON_LOSS:
+                # Only trigger early stopping if the learning rate is also below the threshold.
+                if loss_trigger_times >= patience and not STOP_ON_LOSS and current_lr < improvement_threshold:
                     logging.info(f"Early Stopping Loss Triggered at Epoch {epoch + 1}")
                     break
 
             # Early stopping based on validation loss
             STOP_ON_VALIDATION_LOSS = True  # Set to True to disable early stopping on validation loss
-            best_validation_loss = min(train_losses["validation"]) if train_losses["validation"] else float("inf")
+            best_validation_loss = (
+                min(train_losses["validation"]) if train_losses["validation"] else float("inf")
+            )
 
             if validation_loss < best_validation_loss * (1 - improvement_threshold) or STOP_ON_VALIDATION_LOSS:
                 validation_loss_trigger_times = 0
-                # Update best_validation_loss if improvement is achieved
-                best_validation_loss = validation_loss
+                best_validation_loss = validation_loss  # Update best_validation_loss if improvement is achieved
             else:
                 validation_loss_trigger_times += 1
-                if validation_loss_trigger_times >= patience and not STOP_ON_VALIDATION_LOSS:
+                # Only trigger early stopping if the learning rate is also below the threshold.
+                if (
+                        validation_loss_trigger_times >= patience
+                        and not STOP_ON_VALIDATION_LOSS
+                        and current_lr < improvement_threshold
+                ):
                     logging.info(f"Early Stopping Validation Loss Triggered at Epoch {epoch + 1}")
                     break
 

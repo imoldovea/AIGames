@@ -382,6 +382,9 @@ def main():
         if config.getboolean("MONITORING", "save_solution_movie", fallback=True):
             save_movie(solved_mazes, f"{OUTPUT}solved_mazes_rnn.mp4")
 
+        # if config.getboolean("MONITORING", "plotly", fallback=True):
+        #     dashboard_process = subprocess.Popen(["python", "dashboard.py"])
+
     finally:
         try:
             dashboard_process.terminate()
