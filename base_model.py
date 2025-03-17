@@ -84,7 +84,8 @@ class MazeBaseModel(nn.Module):
 
         # Define optimizer, learning rate scheduler, and loss function
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=patience)
+        lr_factor = config.getfloat("DEFAULT", "lr_factor", fallback=0.7)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=patience)
         self.lr_scheduler = scheduler
         criterion = nn.CrossEntropyLoss()
 
