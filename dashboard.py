@@ -7,6 +7,10 @@ import pandas as pd
 import plotly.graph_objs as go
 import numpy as np  # Import NumPy for NaN handling
 import os  # Import os module for file operations
+import traceback
+import plotly.io as pio
+
+
 
 # File where training script logs loss values
 OUTPUT = "output/"
@@ -17,6 +21,7 @@ LOSS_FILE = f"{OUTPUT}loss_data.csv"
 app = dash.Dash(__name__)
 app.logger.setLevel(logging.ERROR)
 app.logger.disabled = True
+
 
 # Layout of the web application
 app.layout = html.Div([
@@ -37,15 +42,13 @@ app.layout = html.Div([
 def update_graph(n_intervals):
     try:
         # Read the loss data from CSV
-        df = pd.read_csv("loss_data.csv")
+        df = pd.read_csv(LOSS_FILE)
 
         # Verify that the required columns are present
         required_columns = {'model', 'epoch', 'loss', 'validation_loss', 'time'}
         if not required_columns.issubset(df.columns):
             raise ValueError(f"CSV file must contain columns: {required_columns}")
 
-        # No averaging is needed. The training time for the first epoch is directly used.
-        # Convert the training times from microseconds to minutes using the conversion factor.
         df["time_minutes"] = df["time"] / 6e7
 
         # Initialize the graph
@@ -55,7 +58,8 @@ def update_graph(n_intervals):
         models = df['model'].unique()
         for model in models:
             model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
+            training_time = df["time_minutes"] = df["time"] / 6e7
+            hover_text = [f"Epoch time: {t:.2f} min" for t in model_df["time_minutes"]]
 
             # Training loss trace
             fig.add_trace(

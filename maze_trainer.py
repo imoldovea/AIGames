@@ -2,6 +2,9 @@
 # MazeTrainingDataset and RNN2MazeTrainer
 
 import numpy as np
+from numpy.f2py.auxfuncs import throw_error
+from sympy.physics.units.definitions.dimension_definitions import information
+
 import utils
 from backtrack_maze_solver import BacktrackingMazeSolver
 from torch.utils.data import Dataset
@@ -78,8 +81,12 @@ class ValidationDataset(MazeTrainingDataset):
                 - step_number (int): Step number in the solution path.
         """
         self.data = data
-        max_steps = max(sample[2] for sample in data)
-        self.max_steps = max_steps
+        if len(data) == 0:
+            self.max_steps = 0  # or raise a custom error if an empty dataset is not acceptable
+            raise ValueError("Validation dataset is empty.")
+        else:
+            max_steps = max(sample[2] for sample in data)
+            self.max_steps = max_steps
 
     def __len__(self):
         return len(self.data)
@@ -104,7 +111,13 @@ class RNN2MazeTrainer:
         self.validation_file_path = validation_file_path
         config = ConfigParser()
         config.read("config.properties")
-        training_samples = config.getint("DEFAULT", "training_samples")
+        training_samples = config.getint("DEFAULT", "training_samples", fallback=100000)
+
+        if training_samples < 10:
+            logging.error("Training samples must be at least 10.")
+            throw_error(
+                "Training samples must be at least 10.",
+                "Please adjust the training_samples parameter in the config file.")
 
         self.training_mazes = self._load_and_process_training_mazes(training_file_path,training_samples)
         self.validation_mazes = self._load_and_process_training_mazes(validation_file_path,training_samples//10)
@@ -237,11 +250,29 @@ def train_models(device="cpu", batch_size=32):
     logging.info(f"Created {len(dataset)} training samples.")
     train_ds = MazeTrainingDataset(dataset)
     validation_ds = ValidationDataset(validation_dataset)
-    num_workers = 16 if device == "cuda" else 2
+
+    #compute the number of workers.
+    #workers = config.getint("DEFAULT", "num_workers")
+    #num_workers = workers * 8 if device == "cuda" else workers
+
+    # Get number of CPU cores
+    num_cores = os.cpu_count() or 1
+    # Get number of GPUs available
+    if torch.cuda.is_available():
+        # Get properties of the first CUDA device
+        gpu_props = torch.cuda.get_device_properties(0)
+        multiproc_count = gpu_props.multi_processor_count
+        logging.info(f"GPU Name: {gpu_props.name}, Multiprocessor Count: {multiproc_count}")
+
+        # Distribute CPU cores among GPU multiprocessors, ensuring at least one worker per multiprocessor
+        num_workers = max(1, num_cores // multiproc_count)
+    else:
+        num_workers = num_cores
+
+    # Assuming train_ds and batch_size are defined elsewhere
     dataloader = DataLoader(train_ds, batch_size, shuffle=True, num_workers=num_workers)
 
-    config = ConfigParser()
-    config.read("config.properties")
+    logging.info(f"Number of CPU cores: {num_cores}, Number of workers: {num_workers}")
     logging.info(f'Using device: {device}')
 
     # Read the allowed models from the config file. Expected format: "GRU, LSTM, RNN"

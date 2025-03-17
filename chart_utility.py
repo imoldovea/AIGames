@@ -18,7 +18,6 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-import time
 
 
 PARAMETERS_FILE = "config.properties"
@@ -43,6 +42,8 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
     try:
         # Read the loss data from CSV
         df = pd.read_csv(loss_file_path)
+        hover_texts = []
+
         df = df.copy()
         # Break if the dataset is empty
         if df.empty:
@@ -61,10 +62,6 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
             # Determine the first epoch for the current model
             first_epoch = df.loc[model_mask, "epoch"].min()
             first_epoch_mask = model_mask & (df["epoch"] == first_epoch)
-            # Compute average training time from epochs other than the first
-            avg_time = df.loc[model_mask & (df["epoch"] != first_epoch), "time"].mean()
-            # Fill missing training time for the first epoch with the average (if it's missing)
-            df.loc[first_epoch_mask & df["time"].isna(), "time"] = avg_time
 
         # Initialize subplots: 2 rows (training loss and validation loss), 1 column
         fig = make_subplots(
@@ -76,7 +73,7 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         # Plot training loss for each unique model with per-epoch training time (converted from microseconds to minutes)
         for model in models:
             model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t/6e7:.2f} min" for t in model_df["time"]]
+            hover_text = [f"Epoch time: {t/w6e7:.2f} min" for t in model_df["time"]]
             fig.add_trace(
                 go.Scatter(
                     x=model_df["epoch"],
@@ -151,7 +148,7 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
             # Save the figure as an HTML file
             fig.write_html(html_chart)
             # Optionally display the graph
-            fig.show(block=False)
+            #fig.show(block=False)
             # Save as PNG image
             image_path = os.path.join(OUTPUT, "loss_chart.png")
             fig.write_image(image_path)

@@ -212,8 +212,6 @@ def generate(filename, number)
         width, height = random.choice(range(min_size, max_size, 2)), random.choice(range(min_size, max_size, 2))
         maze = generate_maze(width, height)
         mazes.append(maze)
-        # display_maze(maze)
-        # plot_maze(maze)
     save_mazes(OUTPUT_FOLDER, filename, mazes)
     logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
 def main():
@@ -221,7 +219,6 @@ def main():
     generate(filename="validation_mazes.pkl",number= 1000)
     generate(filename="training_mazes.pkl", number=100000)
     generate(filename="mazes.pkl", number=10)
-
 
 if __name__ == "__main__":
     #setup logging
