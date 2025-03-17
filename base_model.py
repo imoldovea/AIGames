@@ -75,8 +75,10 @@ class MazeBaseModel(nn.Module):
         self.to(device)
         # Set up early stopping patience to monitor overfitting
         patience = config.getint("DEFAULT", "patience", fallback=5)
+        improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
         logging.info(
-            f"Early stopping patience set to {patience} epochs. Training will stop after {patience}"
+            f"Early stopping patience set to {patience} epochs. Training will stop after {patience} "
+            f"if no improvement over {improvement_threshold}"
             f" epochs without improvement on training loss or validation loss."
         )
         loss_trigger_times = 0
@@ -164,7 +166,6 @@ class MazeBaseModel(nn.Module):
                                    tensorboard_writer= tensorboard_writer)
 
             # Stop is no improvement on loss function
-            improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
             current_lr = self.lr_scheduler.get_last_lr()[0]  # Get the current learning rate
 
             if validation_loss < best_validation_loss * (1 - improvement_threshold):

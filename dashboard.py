@@ -36,54 +36,67 @@ app.layout = html.Div([
 )
 def update_graph(n_intervals):
     try:
-        # Read the loss file
-        df = pd.read_csv(LOSS_FILE)
+        # Read the loss data from CSV
+        df = pd.read_csv("loss_data.csv")
 
-        # Get unique models
-        models = df['model'].unique()
+        # Verify that the required columns are present
+        required_columns = {'model', 'epoch', 'loss', 'validation_loss', 'time'}
+        if not required_columns.issubset(df.columns):
+            raise ValueError(f"CSV file must contain columns: {required_columns}")
 
+        # No averaging is needed. The training time for the first epoch is directly used.
+        # Convert the training times from microseconds to minutes using the conversion factor.
+        df["time_minutes"] = df["time"] / 6e7
+
+        # Initialize the graph
         fig = go.Figure()
 
-        # Add a trace for each model with breaks
+        # For each unique model in the data, add traces for training and validation loss.
+        models = df['model'].unique()
         for model in models:
-            model_df = df[df['model'] == model].copy()
+            model_df = df[df['model'] == model]
+            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
 
-            # Ensure gaps between independent runs
-            model_df["epoch_diff"] = model_df["epoch"].diff()
-            model_df.loc[model_df["epoch_diff"] > 1, "loss"] = np.nan  # Introduce NaN for breaks
+            # Training loss trace
+            fig.add_trace(
+                go.Scatter(
+                    x=model_df["epoch"],
+                    y=model_df["loss"],
+                    mode="lines+markers",
+                    name=f"{model} - Loss",
+                    text=hover_text,
+                    hovertemplate="Epoch: %{x}<br>Loss: %{y}<br>%{text}<extra></extra>"
+                )
+            )
 
-            # Sort by epoch to ensure correct order
-            model_df = model_df.sort_values(by="epoch")
-            # Compute duration as the difference between consecutive timestamps
-            model_df["duration"] = model_df["time"].diff()
-            # For the first epoch, fill NaN with the average duration of the subsequent epochs
-            avg_duration = model_df["duration"].mean()
-            model_df["duration"] = model_df["duration"].fillna(avg_duration)
-            # Create text annotations using the computed duration (in minutes)
-            time_text = [f"{float(t) / 60:.2f} min" if pd.notnull(t) else "N/A" for t in model_df["duration"]]
+            # Validation loss trace
+            fig.add_trace(
+                go.Scatter(
+                    x=model_df["epoch"],
+                    y=model_df["validation_loss"],
+                    mode="lines+markers",
+                    name=f"{model} - Validation Loss",
+                    text=hover_text,
+                    hovertemplate="Epoch: %{x}<br>Validation Loss: %{y}<br>%{text}<extra></extra>"
+                )
+            )
 
-            fig.add_trace(go.Scatter(
-                x=model_df["epoch"],
-                y=model_df["loss"],
-                mode="lines+markers",
-                name=model,  # Use the model name for the legend
-                text=time_text,
-                hovertemplate="Epoch: %{x}<br>Loss: %{y}<br>Training time: %{text}<extra></extra>"
-            ))
-
+        # Update the layout for better visualization
         fig.update_layout(
-            title="Training Loss Over Time",
+            title="Training and Validation Loss Over Time",
             xaxis_title="Epoch",
             yaxis_title="Loss",
-            template="plotly_dark",
-            legend_title="Models"  # Add a title to the legend
+            template=pio.templates.default,
+            legend_title="Models"
         )
 
+        # Return the updated figure so it can be rendered
         return fig
 
     except Exception as e:
-        logging.error(f"Error reading the loss data: {e}")
-        return go.Figure()
+        logging.error("Error updating graph:")
+        logging.error(traceback.format_exc())
+        return None
 
 
 # Callback function to update the validation loss graph

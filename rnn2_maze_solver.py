@@ -361,8 +361,10 @@ def main():
         models = train_models(device=device, batch_size=batch_size)
         try:
             if config.getboolean("MONITORING", "save_neural_network_diagram", fallback=True):
+                logging.info("Saving neural network diagram...")
                 save_neural_network_diagram(models, OUTPUT)
-            if config.getboolean("MONITORING", "latest_loss_chatrt", fallback=True):
+            if config.getboolean("MONITORING", "save_last_loss_chart", fallback=True):
+                logging.info("Generating latest loss chart...")
                 if os.path.isfile(LOSS_FILE):
                      save_latest_loss_chart(LOSS_FILE, LOSS_PLOT_FILE)
                 else:
