@@ -56,8 +56,8 @@ def setup_logging():
 
     # Create formatter
     formatter = logging.Formatter('%(asctime)s - %(filename)s - %(levelname)s - %(message)s')
-    forbidden_logs = ["findfont", "werkzeug","werkzeug:_internal.py","dash-update-component","internal.py"]  # Add more substrings as needed
-
+    # Add more substrings as needed
+    forbidden_logs = ["findfont", "werkzeug","werkzeug:_internal.py","dash-update-component","internal.py"]
     # Console handler for INFO level and above
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)

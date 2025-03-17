@@ -76,7 +76,8 @@ class MazeBaseModel(nn.Module):
         # Set up early stopping patience to monitor overfitting
         patience = config.getint("DEFAULT", "patience", fallback=5)
         logging.info(
-            f"Early stopping patience set to {patience} epochs. Training will stop after {patience} epochs without improvement on training loss or validation loss."
+            f"Early stopping patience set to {patience} epochs. Training will stop after {patience}"
+            f" epochs without improvement on training loss or validation loss."
         )
         loss_trigger_times = 0
         validation_loss_trigger_times = 0
@@ -135,7 +136,8 @@ class MazeBaseModel(nn.Module):
                 inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
 
                 assert inputs.shape[-1] == 7, f"Expected input features to be 7, but got {inputs.shape[-1]}"
-                assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
+                assert target_action.dim() == 1, (f"Expected target labels to be 1-dimensional, but got "
+                                                  f"{target_action.dim()} dimensions")
 
                 # Forward pass
                 outputs = self.forward(inputs)  # Pass input through the model
@@ -156,7 +158,9 @@ class MazeBaseModel(nn.Module):
             train_losses["validation"].append(validation_loss)
 
             # Monitoring
-            self._monitor_training(epoch = epoch, num_epochs= num_epochs, epoch_loss = epoch_loss, scheduler = scheduler, validation_loss = validation_loss, tensorboard_writer= tensorboard_writer)
+            self._monitor_training(epoch = epoch, num_epochs= num_epochs, epoch_loss = epoch_loss,
+                                   scheduler = scheduler, validation_loss = validation_loss,
+                                   tensorboard_writer= tensorboard_writer)
 
             # Stop is no improvement on loss function
             improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)

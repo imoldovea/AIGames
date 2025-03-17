@@ -12,7 +12,8 @@ import wandb
 from maze_solver import MazeSolver
 from maze import Maze  # Assumes maze.py exists
 from utils import load_mazes, save_mazes_as_pdf, setup_logging
-from chart_utility import save_neural_network_diagram, save_latest_loss_chart, visualize_model_weights, visualize_model_activations
+from chart_utility import (save_neural_network_diagram, save_latest_loss_chart, visualize_model_weights,
+                           visualize_model_activations)
 from utils import save_movie
 from maze_trainer import train_models  # Training function from maze_trainer.py
 
@@ -163,7 +164,8 @@ class RNN2MazeSolver(MazeSolver):
     def get_recurrent_activations(self):
         return self.activations.get('recurrent')
 
-    def _compute_current_activation(self, current_pos = None, relative_position = None, step_number_normalized = None):
+    def _compute_current_activation(self, current_pos = None, relative_position = None,
+                                    step_number_normalized = None):
         """
         Computes the current activation of the model based on the local context.
 
@@ -288,7 +290,8 @@ def rnn2_solver(models, mazes, device="cpu"):
         success_rate = successful_solutions / total_mazes * 100
         model_success_rates.append((model_name, success_rate))
         logging.info(
-            f"{model_name} Total mazes: {total_mazes}, Successful solutions: {successful_solutions}, Success rate: {success_rate:.2f}%"
+            f"{model_name} Total mazes: {total_mazes}, Successful solutions: {successful_solutions}, "
+            f"Success rate: {success_rate:.2f}%"
         )
 
         if config.getboolean("MONITORING", "generate_activations", fallback=False):
@@ -368,6 +371,7 @@ def main():
             logging.error(f"An error occurred: {e}\n\n{traceback.format_exc()}")
 
         if config.getboolean("MONITORING", "generate_weights", fallback=True):
+            logging.info("Generating model weights...")
             visualize_model_weights(models)
 
         mazes = load_mazes(TEST_MAZES_FILE)
@@ -378,15 +382,18 @@ def main():
 
         #Plot mazes
         if config.getboolean("MONITORING", "save_mazes_as_pdf", fallback=True):
+            logging.info("Saving mazes as PDF...")
             save_mazes_as_pdf(solved_mazes, OUTPUT_PDF)
         if config.getboolean("MONITORING", "print_mazes", fallback=True):
+            logging.info("Printing mazes...")
             for maze in solved_mazes:
                 maze.plot_maze(show_path=True, show_solution=False, show_position=False)
         if config.getboolean("MONITORING", "save_solution_movie", fallback=True):
             save_movie(solved_mazes, f"{OUTPUT}solved_mazes_rnn.mp4")
 
-        # if config.getboolean("MONITORING", "plotly", fallback=True):
-        #     dashboard_process = subprocess.Popen(["python", "dashboard.py"])
+        if config.getboolean("MONITORING", "plotly", fallback=True):
+            logging.info("Closing Dash Dashboard...")
+            dashboard_process = subprocess.Popen(["python", "dashboard.py"])
 
     finally:
         try:
