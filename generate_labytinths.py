@@ -13,6 +13,7 @@ PATH = 0
 WALL = 1
 START = 3
 
+OUTPUT_FOLDER = 'input'
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
@@ -202,25 +203,25 @@ def plot_maze(maze):
     plt.axis('off')  # Hides axes for better visualization
     plt.show()
 
-def main():
-    NUM_MAZES = 10000
-    OUTPUT_FOLDER = 'input'
-    MAZES_FILENAME = 'validation_mazes.pkl'
-
+def generate(filename, number)
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
-    mazes = []
 
-    for i in tqdm.tqdm(range(NUM_MAZES), desc="Generating mazes"):
-        logging.debug(f"Generating maze {i + 1}...")
+    for i in tqdm.tqdm(range(number), desc="Generating mazes"):
+        mazes = []
         width, height = random.choice(range(min_size, max_size, 2)), random.choice(range(min_size, max_size, 2))
         maze = generate_maze(width, height)
         mazes.append(maze)
         # display_maze(maze)
         # plot_maze(maze)
+    save_mazes(OUTPUT_FOLDER, filename, mazes)
+    logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
+def main():
 
-    save_mazes(OUTPUT_FOLDER, MAZES_FILENAME, mazes)
-    logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{MAZES_FILENAME}")
+    generate(filename="validation_mazes.pkl",number= 1000)
+    generate(filename="training_mazes.pkl", number=100000)
+    generate(filename="mazes.pkl", number=10)
+
 
 if __name__ == "__main__":
     #setup logging
