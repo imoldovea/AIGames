@@ -67,7 +67,7 @@ class MazeBaseModel(nn.Module):
         Returns:
             self: The trained model or its final loss after training.
         """
-        logging.debug(f"Training {self._get_name()} for {num_epochs} epochs on {device}...")
+        logging.debug(f"Training {self.model_name} for {num_epochs} epochs on {device}...")
 
         # Record the start time
         start_time = time.time()
@@ -85,11 +85,13 @@ class MazeBaseModel(nn.Module):
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=patience)
         self.lr_scheduler = scheduler
-
         criterion = nn.CrossEntropyLoss()
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
 
+        # Set up a counter and best loss value for early stopping
+        best_validation_loss = float("inf")
+        early_stopping_counter = 0
 
         #setup progress bar
         use_progress_bar = config.getboolean("DEFAULT", "progress_bar", fallback=False)
@@ -100,7 +102,6 @@ class MazeBaseModel(nn.Module):
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
             desc = f"{self._get_name()} Training Progress"
-            use_progress_bar = config.getboolean("DEFAULT", "progress_bar", fallback=False)
             iterator = tqdm(dataloader, desc=desc, leave=False) if  use_progress_bar else dataloader
             for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(iterator):
                 target_action = target_action.to(device).long()
@@ -130,11 +131,10 @@ class MazeBaseModel(nn.Module):
 
                 # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
                 inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
-
                 # Add sequence dimension for RNN input
                 inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
 
-                assert inputs.shape[-1] == 7, f"Expected input features to be 5, but got {inputs.shape[-1]}"
+                assert inputs.shape[-1] == 7, f"Expected input features to be 7, but got {inputs.shape[-1]}"
                 assert target_action.dim() == 1, f"Expected target labels to be 1-dimensional, but got {target_action.dim()} dimensions"
 
                 # Forward pass
@@ -162,39 +162,21 @@ class MazeBaseModel(nn.Module):
             improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
             current_lr = self.lr_scheduler.get_last_lr()[0]  # Get the current learning rate
 
-            # Early stopping based on training loss
-            STOP_ON_LOSS = False  # Set to True to disable early stopping on training loss
-            best_train_loss = min(train_losses["train"]) if train_losses["train"] else float("inf")
-
-            if epoch_loss < best_train_loss * (1 - improvement_threshold) or STOP_ON_LOSS:
-                loss_trigger_times = 0
-                best_train_loss = epoch_loss  # Update best_train_loss if improvement is achieved
+            if validation_loss < best_validation_loss * (1 - improvement_threshold):
+                best_validation_loss = validation_loss
+                early_stopping_counter = 0  # Reset if improvement is achieved
             else:
-                loss_trigger_times += 1
-                # Only trigger early stopping if the learning rate is also below the threshold.
-                if loss_trigger_times >= patience and not STOP_ON_LOSS and current_lr < improvement_threshold:
-                    logging.info(f"Early Stopping Loss Triggered at Epoch {epoch + 1}")
-                    break
+                early_stopping_counter += 1
 
-            # Early stopping based on validation loss
-            STOP_ON_VALIDATION_LOSS = True  # Set to True to disable early stopping on validation loss
-            best_validation_loss = (
-                min(train_losses["validation"]) if train_losses["validation"] else float("inf")
-            )
+            logging.info(
+                f"Epoch {epoch + 1}: Train Loss = {epoch_loss:.4f} | Validation Loss = {validation_loss:.4f} | "
+                f"Early Stopping Counter = {early_stopping_counter}")
 
-            if validation_loss < best_validation_loss * (1 - improvement_threshold) or STOP_ON_VALIDATION_LOSS:
-                validation_loss_trigger_times = 0
-                best_validation_loss = validation_loss  # Update best_validation_loss if improvement is achieved
-            else:
-                validation_loss_trigger_times += 1
-                # Only trigger early stopping if the learning rate is also below the threshold.
-                if (
-                        validation_loss_trigger_times >= patience
-                        and not STOP_ON_VALIDATION_LOSS
-                        and current_lr < improvement_threshold
-                ):
-                    logging.info(f"Early Stopping Validation Loss Triggered at Epoch {epoch + 1}")
-                    break
+            # Trigger early stopping if no improvement within set patience and the learning rate is sufficiently low.
+            if early_stopping_counter >= patience and current_lr < improvement_threshold:
+                logging.info(
+                    f"Early Stopping triggered at Epoch {epoch + 1} due to lack of validation loss improvement")
+                break
 
         # After training is complete, record the end time and compute the duration
         training_duration = time.time() - start_time
@@ -205,6 +187,7 @@ class MazeBaseModel(nn.Module):
 
         self.last_loss = train_losses["train"][-1] if train_losses["train"] else None
         logging.info(f"Training Complete for {self._get_name()}. Final Loss: {self.last_loss}")
+
         return self
 
     def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss, tensorboard_writer):

@@ -332,6 +332,9 @@ def main():
         if config.getboolean("MONITORING", "plotly", fallback=True):
             dashboard_process = subprocess.Popen(["python", "dashboard.py"])
 
+        for handler in logging.getLogger('werkzeug').handlers:
+            logging.getLogger('werkzeug').removeHandler(handler)
+
         if config.getboolean("MONITORING", "tensorboard", fallback=True):
             if is_port_in_use(6006):
                 logging.warning("TensorBoard is already running on port 6006. Skipping startup.")

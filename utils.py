@@ -11,6 +11,7 @@ import pickle
 from multiprocessing import Process
 from configparser import ConfigParser
 import shutil
+import flask.cli
 
 
 PARAMETERS_FILE = "config.properties"
@@ -44,8 +45,12 @@ def setup_logging():
         logger.handlers.clear()
 
     werkzeug_logger = logging.getLogger('werkzeug')
-    werkzeug_logger.setLevel(logging.ERROR)
+    werkzeug_logger.setLevel(logging.CRITICAL)
+    werkzeug_logger.disabled = True
     werkzeug_logger.propagate = False
+
+    flask.cli.show_server_banner = lambda *args, **kwargs: None  # Suppress Flask's startup messages
+    logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
 
     logger.setLevel(logging.DEBUG)  # Capture all levels of logs
 
