@@ -2,9 +2,6 @@ import numpy as np
 import json
 import logging
 import traceback
-
-from tensorflow.python.distribute.strategy_combinations import set_virtual_cpus_to_at_least
-
 from utils import (load_mazes)
 import matplotlib.pyplot as plt
 from configparser import ConfigParser
