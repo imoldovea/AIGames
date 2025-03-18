@@ -332,7 +332,7 @@ def main():
 
             wandb_run_url = wandb.run.get_url()
 
-        if config.getboolean("MONITORING", "plotly", fallback=True):
+        if config.getboolean("MONITORING", "dashboard", fallback=True):
             dashboard_process = subprocess.Popen(["python", "dashboard.py"])
 
         for handler in logging.getLogger('werkzeug').handlers:

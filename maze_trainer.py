@@ -111,7 +111,11 @@ class RNN2MazeTrainer:
         self.validation_file_path = validation_file_path
         config = ConfigParser()
         config.read("config.properties")
-        training_samples = config.getint("DEFAULT", "training_samples", fallback=100000)
+        if config.getboolean("DEFAULT", "development_mode", fallback=False):
+            logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
+            training_samples = 10
+        else:
+            training_samples = config.getint("DEFAULT", "training_samples", fallback=100000)
 
         if training_samples < 10:
             logging.error("Training samples must be at least 10.")

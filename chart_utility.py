@@ -73,7 +73,7 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         # Plot training loss for each unique model with per-epoch training time (converted from microseconds to minutes)
         for model in models:
             model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t/w6e7:.2f} min" for t in model_df["time"]]
+            hover_text = [f"Epoch time: {t/6e7:.2f} min" for t in model_df["time"]]
             fig.add_trace(
                 go.Scatter(
                     x=model_df["epoch"],
@@ -89,7 +89,7 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         # Plot validation loss for each unique model with per-epoch training time (converted from microseconds to minutes)
         for model in models:
             model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t/6e7:.2f} min" for t in model_df["time"]]
+            hover_text = [f"Epoch time: {t/6e9:.2f} min" for t in model_df["time"]]
             fig.add_trace(
                 go.Scatter(
                     x=model_df["epoch"],
@@ -106,7 +106,7 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         total_time_texts = []
         for model in models:
             total_time = df[df['model'] == model]["time"].sum()
-            total_time_minutes = total_time / 6e7
+            total_time_minutes = total_time / 6e9
             total_time_texts.append(f"{model}: {total_time_minutes:.2f} min")
         total_training_time_annotation = "Total Training Time per Model - " + ", ".join(total_time_texts)
 

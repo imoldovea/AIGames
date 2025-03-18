@@ -1,0 +1,12 @@
+opencv-python
+dash
+matplotlib
+numpy
+pandas
+Pillow
+plotly
+torch
+torchviz
+tqdm
+wandb
+tensorflow

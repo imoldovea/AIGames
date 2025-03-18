@@ -210,6 +210,9 @@ class MazeBaseModel(nn.Module):
         """
         logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
         logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {validation_loss:.4f}")
+        if config.getboolean("DEFAULT", "development_mode", fallback=False):
+            logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
+            num_epochs = 2
 
         scheduler.step(epoch_loss)
         with open(LOSS_FILE, "a", newline="") as f:

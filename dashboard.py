@@ -8,9 +8,6 @@ import plotly.graph_objs as go
 import numpy as np  # Import NumPy for NaN handling
 import os  # Import os module for file operations
 import traceback
-import plotly.io as pio
-
-
 
 # File where training script logs loss values
 OUTPUT = "output/"
@@ -49,7 +46,7 @@ def update_graph(n_intervals):
         if not required_columns.issubset(df.columns):
             raise ValueError(f"CSV file must contain columns: {required_columns}")
 
-        df["time_minutes"] = df["time"] / 6e7
+        df["time_minutes"] = df["time"] / 6e9
 
         # Initialize the graph
         fig = go.Figure()
@@ -58,7 +55,7 @@ def update_graph(n_intervals):
         models = df['model'].unique()
         for model in models:
             model_df = df[df['model'] == model]
-            training_time = df["time_minutes"] = df["time"] / 6e7
+            training_time = df["time_minutes"] = df["time"] / 6e9
             hover_text = [f"Epoch time: {t:.2f} min" for t in model_df["time_minutes"]]
 
             # Training loss trace
@@ -90,7 +87,7 @@ def update_graph(n_intervals):
             title="Training and Validation Loss Over Time",
             xaxis_title="Epoch",
             yaxis_title="Loss",
-            template=pio.templates.default,
+            template="plotly_dark",
             legend_title="Models"
         )
 
