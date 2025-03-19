@@ -1,24 +1,25 @@
 
+import io
+import logging
+import os
+import subprocess
+import traceback
+from configparser import ConfigParser
+
+import cv2
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 import plotly.io as pio
-from plotly.subplots import make_subplots
-import traceback
-import torch.onnx
-import io
 import torch
-from matplotlib.backends.backend_pdf import PdfPages
-from configparser import ConfigParser
-from torchviz import make_dot
+import torch.onnx
 from PIL import Image
+from matplotlib.backends.backend_pdf import PdfPages
+from plotly.subplots import make_subplots
 from torch.utils.tensorboard import SummaryWriter
-import matplotlib
-import logging
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-import cv2
-
+from torchviz import make_dot
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -151,7 +152,42 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
             #fig.show(block=False)
             # Save as PNG image
             image_path = os.path.join(OUTPUT, "loss_chart.png")
-            fig.write_image(image_path)
+            pio.renderers.default = "png"
+
+            # Try to save as PNG
+            try:
+                image_path = os.path.join(OUTPUT, "loss_chart.png")
+                fig.write_image(image_path)
+                logging.info(f"Latest loss chart saved as {html_chart} and {image_path}")
+            except Exception as img_error:
+                # Fallback to matplotlib
+                import matplotlib.pyplot as plt
+
+                # Create a simple matplotlib version
+                plt.figure(figsize=(12, 8))
+
+                # Training loss subplot
+                plt.subplot(2, 1, 1)
+                plt.title("Training Loss")
+                for model in models:
+                    model_df = df[df['model'] == model]
+                    plt.plot(model_df["epoch"], model_df["loss"], marker='o', label=f"{model}")
+                plt.legend()
+
+                # Validation loss subplot
+                plt.subplot(2, 1, 2)
+                plt.title("Validation Loss")
+                for model in models:
+                    model_df = df[df['model'] == model]
+                    plt.plot(model_df["epoch"], model_df["validation_loss"], marker='o', label=f"{model}")
+                plt.xlabel("Epoch")
+                plt.legend()
+
+                # Save the matplotlib figure
+                image_path = os.path.join(OUTPUT, "loss_chart.png")
+                plt.tight_layout()
+                plt.savefig(image_path)
+                plt.close()
             logging.info(f"Latest loss chart saved as {html_chart} and {image_path}")
         except Exception as e:
             logging.error("Error saving loss chart:")
@@ -205,12 +241,33 @@ def save_neural_network_diagram(models, output_dir="output/"):
                 figure = plt.figure(figsize=(12, 8))
                 plt.title(f"Model: {getattr(model, 'name', f'Model_{idx}')}")
                 plt.axis("off")
-                png_data = dot.pipe(format="png")
+                # png_data = dot.pipe(format="png")
+
+                try:
+                    temp_dot_file = os.path.join(output_dir, f"temp_model_{idx}.dot")
+                    temp_png_file = os.path.join(output_dir, f"temp_model_{idx}.png")
+
+                    dot.save(temp_dot_file)
+                    # Use subprocess to call dot directly
+                    subprocess.run(["dot", "-Tpng", temp_dot_file, "-o", temp_png_file],
+                                   check=True, timeout=60)
+
+                    # Read the PNG file back
+                    with open(temp_png_file, 'rb') as f:
+                        png_data = f.read()
+
+                    # Clean up temp files
+                    os.remove(temp_dot_file)
+                    os.remove(temp_png_file)
+
                 pipe_buffer = io.BytesIO(png_data)
                 image = Image.open(pipe_buffer)
                 plt.imshow(image, aspect="auto")
                 pdf.savefig(figure)
                 plt.close(figure)
+            except Exception as e:
+                logging.error(f"Torchviz graph generation failed: {e}")
+                raise RuntimeError(f"Torchviz graph generation failed: {e}")
 
             except Exception as e:
                 logging.error(f"Torchviz graph generation failed: {e}")

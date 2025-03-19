@@ -13,4 +13,3 @@ tensorflow
 fpdf
 pytest
 kaleido
-
