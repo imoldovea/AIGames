@@ -1,18 +1,18 @@
 # base_model.py
 # MazeBaseModel
 
-import torch.nn as nn
-import torch
-from torch import optim
-import torch.optim.lr_scheduler as lr_scheduler
 import csv
-import os
-from torch.utils.data import DataLoader
 import logging
-from tqdm import tqdm
-from configparser import ConfigParser
+import os
 import time
+from configparser import ConfigParser
 
+import torch
+import torch.nn as nn
+import torch.optim.lr_scheduler as lr_scheduler
+from torch import optim
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -71,6 +71,11 @@ class MazeBaseModel(nn.Module):
 
         # Record the start time
         start_time = time.time()
+
+        # Check if we ar ein development mode.
+        if config.getboolean("DEFAULT", "development_mode", fallback=False):
+            logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
+            num_epochs = 2
 
         self.to(device)
         # Set up early stopping patience to monitor overfitting
