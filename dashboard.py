@@ -1,13 +1,13 @@
 import logging
-
-import dash
-from dash import dcc, html
-from dash.dependencies import Input, Output
-import pandas as pd
-import plotly.graph_objs as go
-import numpy as np  # Import NumPy for NaN handling
 import os  # Import os module for file operations
 import traceback
+
+import dash
+import numpy as np  # Import NumPy for NaN handling
+import pandas as pd
+import plotly.graph_objs as go
+from dash import dcc, html
+from dash.dependencies import Input, Output
 
 # File where training script logs loss values
 OUTPUT = "output/"
@@ -180,4 +180,4 @@ def validate_loss_file():
 # Run the Dash app
 if __name__ == "__main__":
     validate_loss_file()  # Validate the loss file before starting the app
-    app.run_server(debug=False, dev_tools_ui=False, dev_tools_hot_reload=False)
+    app.run(debug=False, dev_tools_ui=False, dev_tools_hot_reload=False)

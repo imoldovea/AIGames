@@ -12,3 +12,5 @@ wandb
 tensorflow
 fpdf
 pytest
+kaleido
+
