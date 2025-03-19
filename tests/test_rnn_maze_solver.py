@@ -1,82 +1,77 @@
-import numpy as np
 import pytest
-from rnn2_maze_solver import RNN2MazeSolver, MazeLSTMModel
+
 from maze import Maze
-import torch
-from configparser import ConfigParser
-
-PARAMETERS_FILE = "config.properties"
-config = ConfigParser()
-config.read(PARAMETERS_FILE)
-OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
-INPUT = config.get("FILES", "INPUT", fallback="input/")
-
-LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
-
-# Load the model state dictionary once
-state_dict = torch.load(LSTM_MODEL_PATH)
-
-# Read configurations
-config = ConfigParser()
-config.read("config.properties")
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# Initialize the LSTM model once
-lstm_model = MazeLSTMModel(
-    input_size=config.getint("LSTM", "input_size", fallback=5),
-    output_size=config.getint("LSTM", "output_size", fallback=4),
-    hidden_size=config.getint("LSTM", "hidden_size"),
-    num_layers=config.getint("LSTM", "num_layers"),
-)
-lstm_model.to(device)
-lstm_model.load_state_dict(state_dict)
+from rnn2_maze_solver import RNN2MazeSolver
 
 
-@pytest.fixture
-def sample_grid():
-    return np.array([
-        [1, 1, 1, 1, 1],
-        [1, 3, 0, 0, 1],
-        [1, 1, 1, 0, 1],
-        [1, 0, 0, 0, 1],
-        [1, 1, 1, 0, 1]
-    ])
+def test_rnn_solver_valid_solution():
+    # Create a solvable maze
+    solvable_maze_grid = [
+        [1, 1, 1, 1],
+        [1, 1, 0, 1],
+        [1, 2, 0, 1],
+        [1, 1, 0, 1]
+    ]
+    solvable_maze = Maze(solvable_maze_grid)
+    solver = RNN2MazeSolver(solvable_maze)
+    solution = solver.solve()
+    assert solvable_maze.test_solution(solution), "RNN Solver failed to solve a valid maze."
 
 
-@pytest.fixture
-def maze_instance(sample_grid):
-    return Maze(sample_grid)
+def test_rnn_solver_for_unsolvable_maze():
+    # Create a maze with no valid solution
+    unsolvable_maze_grid = [
+        [1, 1, 1, 0],
+        [1, 1, 2, 1],
+        [1, 1, 0, 1],
+        [1, 1, 1, 1]
+    ]
+    unsolvable_maze = Maze(unsolvable_maze_grid)
+    solver = RNN2MazeSolver(unsolvable_maze)
+    with pytest.raises(ValueError, match="Maze is unsolvable"):
+        solver.solve()
 
 
-@pytest.fixture
-def solver_instance(maze_instance):
-    return RNN2MazeSolver(maze=maze_instance, model=lstm_model, device=device)
+def test_rnn_solver_invalid_dimensions():
+    # Test maze with invalid dimensions
+    invalid_maze_grid = [
+        [0, 1],
+        [1, 0]
+    ]
+    with pytest.raises(ValueError, match="Maze dimensions are invalid"):
+        invalid_maze = Maze(invalid_maze_grid)
+        RNN2MazeSolver(invalid_maze)
 
 
-def test_get_local_patch_center_position(solver_instance, sample_grid):
-    position = (1, 1)
-    patch = solver_instance.get_local_patch(sample_grid, position)
-    expected_patch = np.array([
-        [1, 0, 0],
-        [0, 1, 1],
-        [1, 1, 0]
-    ])
-    assert np.array_equal(patch, expected_patch), "The extracted patch does not match the expected patch."
+def test_rnn_solver_respects_max_steps():
+    # Create a solvable maze but test the solver with limited steps
+    solvable_maze_grid = [
+        [1, 1, 1, 1],
+        [1, 1, 0, 1],
+        [1, 2, 0, 1],
+        [1, 1, 0, 1]
+    ]
+    max_steps = 5
+    solvable_maze = Maze(solvable_maze_grid)
+    solver = RNN2MazeSolver(solvable_maze, max_steps=max_steps)
+    solution = solver.solve()
+    assert len(solution) <= max_steps, "RNN Solver exceeded the maximum step limit."
 
 
-def test_get_local_patch_edge_position(solver_instance, sample_grid):
-    position = (0, 0)
-    patch = solver_instance.get_local_patch(sample_grid, position)
-    expected_patch = np.array([
-        [0, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1]
-    ])
-    assert np.array_equal(patch,
-                          expected_patch), "The extracted patch for edge position does not match the expected patch."
-
-
-def test_get_local_patch_correct_size(solver_instance, sample_grid):
-    position = (2, 2)
-    patch = solver_instance.get_local_patch(sample_grid, position)
-    assert patch.shape == (3, 3), f"Expected patch size (3, 3), but got {patch.shape}."
+def test_rnn_solver_with_mock_configuration():
+    # Mocked configuration for the neural network settings
+    mock_config = {
+        "hidden_size": 64,
+        "num_layers": 2,
+        "learning_rate": 0.001
+    }
+    solvable_maze_grid = [
+        [1, 1, 1, 1],
+        [1, 1, 0, 1],
+        [1, 2, 0, 1],
+        [1, 1, 0, 1]
+    ]
+    solvable_maze = Maze(solvable_maze_grid)
+    solver = RNN2MazeSolver(solvable_maze, neural_net_config=mock_config)
+    solution = solver.solve()
+    assert solvable_maze.test_solution(), "RNN Solver failed with the mocked configuration."

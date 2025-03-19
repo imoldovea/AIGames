@@ -10,3 +10,5 @@ torchviz
 tqdm
 wandb
 tensorflow
+fpdf
+pytest
