@@ -203,7 +203,7 @@ def plot_maze(maze):
     plt.axis('off')  # Hides axes for better visualization
     plt.show()
 
-def generate(filename, number)
+def generate(filename, number):
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
 
