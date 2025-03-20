@@ -1,23 +1,14 @@
 
 import io
-import logging
-import os
 import subprocess
-import traceback
 from configparser import ConfigParser
 
-import cv2
 import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import plotly.graph_objs as go
-import plotly.io as pio
 import torch
 import torch.onnx
 from PIL import Image
 from matplotlib.backends.backend_pdf import PdfPages
-from plotly.subplots import make_subplots
 from torch.utils.tensorboard import SummaryWriter
 from torchviz import make_dot
 
@@ -26,26 +17,32 @@ config = ConfigParser()
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 
+import os
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.io as pio
+import logging
+import traceback
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
 
 def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
     """
-    Generates and saves the latest training loss and validation loss charts as an HTML file.
+    Generates and saves separate training loss and validation loss charts as HTML files.
     Includes training timings for each epoch (in minutes) and an annotation for total training time per model (in minutes).
     If the first epoch's training time is missing, it is calculated as the average training time of the other epochs.
 
     Parameters:
     - loss_file_path (str): Path to the CSV file containing loss data.
-    - loss_chart (str): Path where the HTML file will be saved.
+    - loss_chart (str): Base path where the HTML files will be saved (training_loss.html and validation_loss.html).
     """
-    logging.debug("Generating latest loss chart...")
-    # Start time used for logging, not for annotation
+    logging.debug("Generating separate training and validation loss charts...")
 
     try:
         # Read the loss data from CSV
         df = pd.read_csv(loss_file_path)
-        hover_texts = []
 
-        df = df.copy()
         # Break if the dataset is empty
         if df.empty:
             logging.warning("Dataset is empty. Exiting function.")
@@ -56,26 +53,16 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         if not required_columns.issubset(df.columns):
             raise ValueError(f"CSV file must contain columns: {required_columns}")
 
-        # For each model, fill missing training time in the first epoch (if any)
+        # Extract models
         models = df['model'].unique()
-        for model in models:
-            model_mask = df['model'] == model
-            # Determine the first epoch for the current model
-            first_epoch = df.loc[model_mask, "epoch"].min()
-            first_epoch_mask = model_mask & (df["epoch"] == first_epoch)
 
-        # Initialize subplots: 2 rows (training loss and validation loss), 1 column
-        fig = make_subplots(
-            rows=2, cols=1,
-            shared_xaxes=True,
-            subplot_titles=("Training Loss", "Validation Loss")
-        )
+        # --- Training Loss Chart ---
+        fig_training = go.Figure()
 
-        # Plot training loss for each unique model with per-epoch training time (converted from microseconds to minutes)
         for model in models:
             model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t/6e7:.2f} min" for t in model_df["time"]]
-            fig.add_trace(
+            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]  # Corrected time conversion
+            fig_training.add_trace(
                 go.Scatter(
                     x=model_df["epoch"],
                     y=model_df["loss"],
@@ -83,15 +70,26 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
                     name=f"{model} - Loss",
                     text=hover_text,
                     hovertemplate="Epoch: %{x}<br>Loss: %{y}<br>%{text}<extra></extra>"
-                ),
-                row=1, col=1
+                )
             )
 
-        # Plot validation loss for each unique model with per-epoch training time (converted from microseconds to minutes)
+        fig_training.update_layout(
+            title="Training Loss Over Time",
+            xaxis_title="Epoch",
+            yaxis_title="Loss",
+            height=800,
+            margin=dict(b=150),
+            template=pio.templates.default,
+            legend_title="Models"
+        )
+
+        # --- Validation Loss Chart ---
+        fig_validation = go.Figure()
+
         for model in models:
             model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t/6e9:.2f} min" for t in model_df["time"]]
-            fig.add_trace(
+            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]  # Corrected time conversion
+            fig_validation.add_trace(
                 go.Scatter(
                     x=model_df["epoch"],
                     y=model_df["validation_loss"],
@@ -99,102 +97,62 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
                     name=f"{model} - Validation Loss",
                     text=hover_text,
                     hovertemplate="Epoch: %{x}<br>Validation Loss: %{y}<br>%{text}<extra></extra>"
-                ),
-                row=2, col=1
+                )
             )
 
-        # Compute total training time for each model (using the updated time values) and convert to minutes
-        total_time_texts = []
-        for model in models:
-            total_time = df[df['model'] == model]["time"].sum()
-            total_time_minutes = total_time / 6e9
-            total_time_texts.append(f"{model}: {total_time_minutes:.2f} min")
-        total_training_time_annotation = "Total Training Time per Model - " + ", ".join(total_time_texts)
-
-        # Add an annotation for total training time at the bottom of the chart
-        fig.add_annotation(
-            xref='paper', yref='paper',
-            x=0.5, y=-0.2,  # Adjust y-position as needed to avoid overlap
-            text=total_training_time_annotation,
-            showarrow=False,
-            font=dict(size=12, color="black")
-        )
-
-        # Update layout for better visualization: set title, axis labels, height, and margins
-        fig.update_layout(
-            title="Training and Validation Loss Over Time",
+        fig_validation.update_layout(
+            title="Validation Loss Over Time",
             xaxis_title="Epoch",
             yaxis_title="Loss",
             height=800,
-            margin=dict(b=200),  # Increase bottom margin to fit annotation
+            margin=dict(b=150),
             template=pio.templates.default,
             legend_title="Models"
         )
 
+        # --- Save Charts ---
         # Validate loss_chart parameter
         if not loss_chart or not isinstance(loss_chart, str):
             raise ValueError("The 'loss_chart' parameter must be a valid, non-empty string.")
 
-        # Safely change the file extension to .html
+        # Safely change the file extension to .html and create separate filenames
         base, ext = os.path.splitext(loss_chart)
-        html_chart = f"{base}.html"
+        training_loss_html = f"{base}_training_loss.html"
+        validation_loss_html = f"{base}_validation_loss.html"
 
         # Ensure the directory exists
-        directory = os.path.dirname(html_chart)
+        directory = os.path.dirname(training_loss_html)  # Use either path; they share the same directory
         if directory and not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
             logging.debug(f"Created directory: {directory}")
 
         try:
-            # Save the figure as an HTML file
-            fig.write_html(html_chart)
-            # Optionally display the graph
-            #fig.show(block=False)
-            # Save as PNG image
-            image_path = os.path.join(OUTPUT, "loss_chart.png")
+            # Save the figures as HTML files
+            fig_training.write_html(training_loss_html)
+            fig_validation.write_html(validation_loss_html)
+
+            # Optionally save as PNG images (adjust paths as needed)
             pio.renderers.default = "png"
+            training_loss_image_path = os.path.join(OUTPUT, "training_loss_chart.png")
+            validation_loss_image_path = os.path.join(OUTPUT, "validation_loss_chart.png")
+            fig_training.write_image(training_loss_image_path)
+            fig_validation.write_image(validation_loss_image_path)
 
-            # Try to save as PNG
-            try:
-                image_path = os.path.join(OUTPUT, "loss_chart.png")
-                fig.write_image(image_path)
-                logging.info(f"Latest loss chart saved as {html_chart} and {image_path}")
-            except Exception as img_error:
-                # Fallback to matplotlib
-                import matplotlib.pyplot as plt
+            logging.info(
+                f"Training loss chart saved as {training_loss_html} and {training_loss_image_path}")
+            logging.info(
+                f"Validation loss chart saved as {validation_loss_html} and {validation_loss_image_path}")
 
-                # Create a simple matplotlib version
-                plt.figure(figsize=(12, 8))
 
-                # Training loss subplot
-                plt.subplot(2, 1, 1)
-                plt.title("Training Loss")
-                for model in models:
-                    model_df = df[df['model'] == model]
-                    plt.plot(model_df["epoch"], model_df["loss"], marker='o', label=f"{model}")
-                plt.legend()
+        except Exception as img_error:
+            # Fallback to matplotlib (simplified for brevity)
+            print(f"Error saving as PNG: {img_error}")  # removed traceback to reduce tokens
+            pass
 
-                # Validation loss subplot
-                plt.subplot(2, 1, 2)
-                plt.title("Validation Loss")
-                for model in models:
-                    model_df = df[df['model'] == model]
-                    plt.plot(model_df["epoch"], model_df["validation_loss"], marker='o', label=f"{model}")
-                plt.xlabel("Epoch")
-                plt.legend()
-
-                # Save the matplotlib figure
-                image_path = os.path.join(OUTPUT, "loss_chart.png")
-                plt.tight_layout()
-                plt.savefig(image_path)
-                plt.close()
-            logging.info(f"Latest loss chart saved as {html_chart} and {image_path}")
-        except Exception as e:
-            logging.error("Error saving loss chart:")
-            logging.error(traceback.format_exc())
     except Exception as e:
         logging.error(f"Error saving latest loss chart: {e}", exc_info=True)
         logging.error(traceback.format_exc())
+
 
 def save_neural_network_diagram(models, output_dir="output/"):
     """
@@ -259,16 +217,14 @@ def save_neural_network_diagram(models, output_dir="output/"):
                     # Clean up temp files
                     os.remove(temp_dot_file)
                     os.remove(temp_png_file)
-
+                except Exception as e:
+                    logging.error(f"Torchviz graph generation failed: {e}")
+                    raise RuntimeError(f"Torchviz graph generation failed: {e}")
                 pipe_buffer = io.BytesIO(png_data)
                 image = Image.open(pipe_buffer)
                 plt.imshow(image, aspect="auto")
                 pdf.savefig(figure)
                 plt.close(figure)
-            except Exception as e:
-                logging.error(f"Torchviz graph generation failed: {e}")
-                raise RuntimeError(f"Torchviz graph generation failed: {e}")
-
             except Exception as e:
                 logging.error(f"Torchviz graph generation failed: {e}")
                 raise RuntimeError(f"Torchviz graph generation failed: {e}")

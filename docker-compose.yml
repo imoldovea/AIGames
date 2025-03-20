@@ -1,0 +1,15 @@
+version: "3.8"  # Use a recent version of Docker Compose
+
+services:
+  maze-solver:
+    build:
+      context: .  # Path to the directory containing the Dockerfile
+    image: maze-solver
+    volumes:
+      - ./host-input:/app/input
+      - ./host-output:/app/output
+    ports:
+      - "6006:6006"
+      - "8050:8050"
+    container_name: maze-container
+    tty: true #allocates a pseudo-TTY which prevents the container from exiting immediately when run

@@ -1,22 +1,26 @@
-# Use an official Python image as the base
-FROM python:3.12-slim
+FROM python:3.12
+
+##Alternative
+#FROM ubuntu:latest
+#RUN apt-get update && apt-get install -y python3 python3-pip
 
 
-# Set the working directory in the container
-WORKDIR /app
+# Update package lists and upgrade existing packages
+RUN apt-get update && apt-get upgrade -y
 
-# Copy the list of dependencies into the container
-COPY requirements.txt ./
 
-# Create input and output directories if they don't exist
-RUN mkdir -p ./input ./output
+# Install graphics dependencies
+RUN apt-get install -y libgl1-mesa-glx
 
-# Install any needed packages specified in requirements.txt
+# Install other dependencies (if any)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your project files into the container
-COPY . .
+# Copy your application code into the container
+COPY . /app
 
-# Set the command to execute your main script.
-# This will run the main function in rnn2_maze_solver.py
-CMD ["python", "rnn2_maze_solver.py"]
+# Set the working directory
+WORKDIR /app
+
+# Command to run your application
+CMD ["python3", "rnn2_maze_solver.py"]
