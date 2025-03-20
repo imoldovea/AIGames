@@ -1,183 +1,159 @@
-import logging
-import os  # Import os module for file operations
-import traceback
+import os
 
-import dash
-import numpy as np  # Import NumPy for NaN handling
 import pandas as pd
-import plotly.graph_objs as go
-from dash import dcc, html
-from dash.dependencies import Input, Output
+import plotly.graph_objects as go
+from dash import Dash, dcc, html, Input, Output
 
-# File where training script logs loss values
-OUTPUT = "output/"
-INPUT = "input/"
-LOSS_FILE = f"{OUTPUT}loss_data.csv"
+OUTPUT = "./output/"
+INPUT = "./input/"
+LOSS_FILE = os.path.join(OUTPUT, "loss_data.csv")
 
-# Initialize Dash app
-app = dash.Dash(__name__)
-app.logger.setLevel(logging.ERROR)
-app.logger.disabled = True
+app = Dash(__name__)
 
+# Define the layout of the dashboard
+app.layout = html.Div(
+    children=[
+        html.H1(children="Real-Time Training Dashboard"),
+        dcc.Graph(id="training-loss-graph"),
+        dcc.Graph(id="validation-loss-graph"),
+        dcc.Interval(
+            id="interval-component",
+            interval=5 * 1000,  # in milliseconds
+            n_intervals=0,
+        ),
+    ]
+)
 
-# Layout of the web application
-app.layout = html.Div([
-    html.H1("Real-Time Training Loss Visualization"),
-    dcc.Graph(id="loss-graph"),
-    dcc.Graph(id="validation-loss-graph"),  # Added second graph for validation_loss
-    dcc.Interval(
-        id="interval-component",
-        interval=10000,  # Update every 10 seconds
-        n_intervals=0
-    )
-])
 
 @app.callback(
-    Output("loss-graph", "figure"),
-    [Input("interval-component", "n_intervals")]
+    Output("training-loss-graph", "figure"),
+    Input("interval-component", "n_intervals"),
 )
-def update_graph(n_intervals):
+def update_graph(n):
+    """
+    Updates the training loss graph with data from the loss file.
+    Displays only the training loss.
+    """
     try:
-        # Read the loss data from CSV
         df = pd.read_csv(LOSS_FILE)
 
-        # Verify that the required columns are present
-        required_columns = {'model', 'epoch', 'loss', 'validation_loss', 'time'}
-        if not required_columns.issubset(df.columns):
-            raise ValueError(f"CSV file must contain columns: {required_columns}")
+        # Basic error handling (replace with more robust validation if needed)
+        if df.empty:
+            return {
+                "data": [],
+                "layout": {
+                    "title": "No Training Data Available",
+                    "xaxis": {"title": "Epoch"},
+                    "yaxis": {"title": "Loss"},
+                },
+            }
 
-        df["time_minutes"] = df["time"] / 6e9
-
-        # Initialize the graph
         fig = go.Figure()
-
-        # For each unique model in the data, add traces for training and validation loss.
-        models = df['model'].unique()
-        for model in models:
-            model_df = df[df['model'] == model]
-            training_time = df["time_minutes"] = df["time"] / 6e9
-            hover_text = [f"Epoch time: {t:.2f} min" for t in model_df["time_minutes"]]
-
-            # Training loss trace
+        for model in df["model"].unique():
+            df_model = df[df["model"] == model]
             fig.add_trace(
                 go.Scatter(
-                    x=model_df["epoch"],
-                    y=model_df["loss"],
+                    x=df_model["epoch"],
+                    y=df_model["loss"],  # Plot training loss
                     mode="lines+markers",
-                    name=f"{model} - Loss",
-                    text=hover_text,
-                    hovertemplate="Epoch: %{x}<br>Loss: %{y}<br>%{text}<extra></extra>"
+                    name=model,
                 )
             )
 
-            # Validation loss trace
-            fig.add_trace(
-                go.Scatter(
-                    x=model_df["epoch"],
-                    y=model_df["validation_loss"],
-                    mode="lines+markers",
-                    name=f"{model} - Validation Loss",
-                    text=hover_text,
-                    hovertemplate="Epoch: %{x}<br>Validation Loss: %{y}<br>%{text}<extra></extra>"
-                )
-            )
-
-        # Update the layout for better visualization
         fig.update_layout(
-            title="Training and Validation Loss Over Time",
+            title="Real-Time Training Loss",
             xaxis_title="Epoch",
             yaxis_title="Loss",
-            template="plotly_dark",
-            legend_title="Models"
         )
-
-        # Return the updated figure so it can be rendered
         return fig
-
     except Exception as e:
-        logging.error("Error updating graph:")
-        logging.error(traceback.format_exc())
-        return None
+        print(f"Error updating training loss graph: {e}")
+        return {
+            "data": [],
+            "layout": {
+                "title": f"Error Loading Training Data: {e}",
+                "xaxis": {"title": "Epoch"},
+                "yaxis": {"title": "Loss"},
+            },
+        }
 
 
-# Callback function to update the validation loss graph
 @app.callback(
     Output("validation-loss-graph", "figure"),
-    [Input("interval-component", "n_intervals")]
+    Input("interval-component", "n_intervals"),
 )
-def update_validation_graph(n_intervals):
+def update_validation_graph(n):
+    """
+    Updates the validation loss graph with data from the loss file.
+    Displays only the validation loss.
+    """
     try:
-        # Read the loss file
         df = pd.read_csv(LOSS_FILE)
 
-        # Get unique models
-        models = df['model'].unique()
+        if df.empty:
+            return {
+                "data": [],
+                "layout": {
+                    "title": "No Validation Data Available",
+                    "xaxis": {"title": "Epoch"},
+                    "yaxis": {"title": "Validation Loss"},
+                },
+            }
 
         fig = go.Figure()
-
-        # Add a trace for each model with breaks
-        for model in models:
-            model_df = df[df['model'] == model].copy()
-
-            # Ensure gaps between independent runs
-            model_df["epoch_diff"] = model_df["epoch"].diff()
-            model_df.loc[model_df["epoch_diff"] > 1, "validation_loss"] = np.nan  # Introduce NaN for breaks
-
-            fig.add_trace(go.Scatter(
-                x=model_df["epoch"],
-                y=model_df["validation_loss"],
-                mode="lines+markers",
-                name=model  # Use the model name for the legend
-            ))
+        for model in df["model"].unique():
+            df_model = df[df["model"] == model]
+            fig.add_trace(
+                go.Scatter(
+                    x=df_model["epoch"],
+                    y=df_model["validation_loss"],  # Plot validation loss
+                    mode="lines+markers",
+                    name=model,
+                )
+            )
 
         fig.update_layout(
-            title="Validation Loss Over Time",
+            title="Real-Time Validation Loss",
             xaxis_title="Epoch",
             yaxis_title="Validation Loss",
-            template="plotly_dark",
-            legend_title="Models"  # Add a title to the legend
         )
-
         return fig
-
     except Exception as e:
-        print(f"Error reading the validation loss data: {e}")
-        return go.Figure()
+        print(f"Error updating validation loss graph: {e}")
+        return {
+            "data": [],
+            "layout": {
+                "title": f"Error Loading Validation Data: {e}",
+                "xaxis": {"title": "Epoch"},
+                "yaxis": {"title": "Validation Loss"},
+            },
+        }
 
 
-def validate_loss_file():
+def validate_loss_file(file_path: str) -> bool:
     """
-    Validates the existence, structure, and content of the loss data file.
-    Terminates the process if the file does not exist, has incorrect columns, or is empty.
+    Validates that the loss file exists and contains the necessary columns.
     """
     try:
-        # Check if the loss file exists
-        if not os.path.exists(LOSS_FILE):
-            print(f"Error: File '{LOSS_FILE}' does not exist.")
-            exit(1)
+        if not os.path.exists(file_path):
+            print(f"Loss file not found: {file_path}")
+            return False
 
-        # Read the file into a DataFrame
-        df = pd.read_csv(LOSS_FILE)
-
-        # Check for required columns
-        required_columns = {'model', 'epoch', 'loss', 'validation_loss', 'time'}
+        df = pd.read_csv(file_path)
+        required_columns = {"model", "epoch", "loss", "validation_loss"}  # Corrected column check
         if not required_columns.issubset(df.columns):
-            logging.warning(f"Error: File '{LOSS_FILE}' is missing required columns. "
-                  f"Expected columns: {required_columns}.")
-            exit(1)
+            print(f"Loss file missing required columns: {required_columns}")
+            return False
 
-        # Check if the file has at least one record
-        if df.empty:
-            logging.warning(f"Warning: File '{LOSS_FILE}' is currently empty. Waiting for new training data...")
-            return  # Allow the process to continue without exiting
-
+        return True
 
     except Exception as e:
-        logging.warning(f"Error validating the loss file: {e}")
-        exit(1)
+        print(f"Error validating loss file: {e}")
+        return False
 
 
-# Run the Dash app
 if __name__ == "__main__":
-    validate_loss_file()  # Validate the loss file before starting the app
-    app.run(debug=False, dev_tools_ui=False, dev_tools_hot_reload=False)
+    if validate_loss_file(LOSS_FILE):
+        app.run(debug=True)
+    else:
+        print("Loss file validation failed.  Please check the file and its contents.")
