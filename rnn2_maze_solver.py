@@ -3,6 +3,7 @@
 
 import logging
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -66,7 +67,6 @@ class RNN2MazeSolver(MazeSolver):
         maze.set_algorithm(self.__class__.__name__)
         model.to(self.device)
         model.eval()
-        self.activations = {}
         self.fig, self.ax = plt.subplots()
         self.img = None
         # Initialize the "recurrent" activations as an empty list
@@ -112,8 +112,6 @@ class RNN2MazeSolver(MazeSolver):
         current_pos = self.maze.start_position
         path = [current_pos]
         step_number = 0
-        config = ConfigParser()
-        config.read(PARAMETERS_FILE)
         max_steps = config.getint("DEFAULT", "max_steps")
         while self.maze.exit != current_pos and len(path) < max_steps:
             step_number += 1
@@ -347,20 +345,27 @@ def main():
             if is_port_in_use(6006):
                 logging.warning("TensorBoard is already running on port 6006. Skipping startup.")
             else:
-                # tensorboard_process = subprocess.Popen(
-                #    ["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
-                tensorboard_process = subprocess.Popen(
-                    [sys.executable, "-m", "tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
+                # Try to locate the tensorboard executable in the PATH.
+                tb_exec = shutil.which("tensorboard")
+                if tb_exec:
+                    tensorboard_cmd = [tb_exec, "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"]
+                else:
+                    # Optionally, try to run tensorboard as a module using an alternate entry point.
+                    # This fallback uses 'tensorboard.main' which might exist depending on your installation.
+                    logging.warning("TensorBoard executable not found in PATH. Trying to use module fallback.")
+                    tensorboard_cmd = [sys.executable, "-m", "tensorboard.main", "--logdir",
+                                       f"{OUTPUT}tensorboard_data", "--port", "6006"]
+                    tensorboard_process = subprocess.Popen(tensorboard_cmd)
 
-            tensorboard_url = "http://localhost:6006/"
-            dash_dashboard_url = "http://127.0.0.1:8050/"
-            # Log the URLs
-            logging.info(
-                f"\nWandB dashboard: {wandb_run_url}, \n"
-                f"TensorBoard: {tensorboard_url}, \n"
-                f"Dash Dashboard: {dash_dashboard_url}.\n "
-                "Waiting for models to be trained."
-            )
+        tensorboard_url = "http://localhost:6006/"
+        dash_dashboard_url = "http://127.0.0.1:8050/"
+        # Log the URLs
+        logging.info(
+            f"\nWandB dashboard: {wandb_run_url}, \n"
+            f"TensorBoard: {tensorboard_url}, \n"
+            f"Dash Dashboard: {dash_dashboard_url}.\n "
+            "Waiting for models to be trained."
+        )
 
         # training
         logging.debug("Training models...")
