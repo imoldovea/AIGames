@@ -1,24 +1,24 @@
 # maze_trainer.py
 # MazeTrainingDataset and RNN2MazeTrainer
 
+import csv
+import logging
+import os
+from configparser import ConfigParser
+
 import numpy as np
+import torch
 from numpy.f2py.auxfuncs import throw_error
-from sympy.physics.units.definitions.dimension_definitions import information
+from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
+from torch.utils.tensorboard import SummaryWriter
 
 import utils
-from backtrack_maze_solver import BacktrackingMazeSolver
-from torch.utils.data import Dataset
-import logging
-from maze import Maze
-import os, csv
 import wandb
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-import torch
-from configparser import ConfigParser
+from backtrack_maze_solver import BacktrackingMazeSolver
+from maze import Maze
 # Import the unified model
 from model import MazeRecurrentModel
-
 
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -269,7 +269,8 @@ def train_models(device="cpu", batch_size=32):
         logging.info(f"GPU Name: {gpu_props.name}, Multiprocessor Count: {multiproc_count}")
 
         # Distribute CPU cores among GPU multiprocessors, ensuring at least one worker per multiprocessor
-        num_workers = max(1, num_cores // multiproc_count)
+        num_workers = max(num_cores, multiproc_count * 4)
+
     else:
         num_workers = num_cores
 
