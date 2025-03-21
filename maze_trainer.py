@@ -131,7 +131,7 @@ class RNN2MazeTrainer:
             Loads and processes training mazes from the specified file path.
         
             Parameters:
-                file_path (str): Path to the training mazes file.
+                path (str): Path to the training mazes file.
         
             Returns:
                 List of processed training mazes.
@@ -269,7 +269,7 @@ def train_models(device="cpu", batch_size=32):
         logging.info(f"GPU Name: {gpu_props.name}, Multiprocessor Count: {multiproc_count}")
 
         # Distribute CPU cores among GPU multiprocessors, ensuring at least one worker per multiprocessor
-        num_workers = max(num_cores, multiproc_count * 4)
+        num_workers = max(num_cores, multiproc_count)
 
     else:
         num_workers = num_cores
