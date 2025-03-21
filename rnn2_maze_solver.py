@@ -1,21 +1,26 @@
 # rnn2_maze_solver.py
 # RNN2MazeSolver
 
+import logging
+import os
+import socket
+import subprocess
+import sys
+import traceback
+from configparser import ConfigParser
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import logging
-import os, subprocess, traceback
-import socket
-import matplotlib.pyplot as plt
-from configparser import ConfigParser
+
 import wandb
-from maze_solver import MazeSolver
-from maze import Maze  # Assumes maze.py exists
-from utils import load_mazes, save_mazes_as_pdf, setup_logging
 from chart_utility import (save_neural_network_diagram, save_latest_loss_chart, visualize_model_weights,
                            visualize_model_activations)
-from utils import save_movie
+from maze import Maze  # Assumes maze.py exists
+from maze_solver import MazeSolver
 from maze_trainer import train_models  # Training function from maze_trainer.py
+from utils import load_mazes, save_mazes_as_pdf, setup_logging
+from utils import save_movie
 
 # -------------------------------
 # Global Configurations and Constants
@@ -342,8 +347,10 @@ def main():
             if is_port_in_use(6006):
                 logging.warning("TensorBoard is already running on port 6006. Skipping startup.")
             else:
+                # tensorboard_process = subprocess.Popen(
+                #    ["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
                 tensorboard_process = subprocess.Popen(
-                    ["tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
+                    [sys.executable, "-m", "tensorboard", "--logdir", f"{OUTPUT}tensorboard_data", "--port", "6006"])
 
             tensorboard_url = "http://localhost:6006/"
             dash_dashboard_url = "http://127.0.0.1:8050/"
