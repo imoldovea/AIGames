@@ -1,33 +1,26 @@
-FROM python:3.12
-
-##Alternative
-#FROM ubuntu:latest
-#RUN apt-get update && apt-get install -y python3 python3-pip
-
-
-# Update package lists and upgrade existing packages
-RUN apt-get update && apt-get upgrade -y
-
+# Use slim and pin the version
+FROM python:3.12.2-slim
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y libgl1-mesa-glx
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-
-# Install other dependencies (if any)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy your application code into the container
-COPY . /app
-
-
-# Set the working directory
+# Set work directory early
 WORKDIR /app
 
-# Expose any application ports (optional)
-EXPOSE 6006
+# Copy requirements first to benefit from caching
+COPY requirements.txt .
+
+# Use pip cache to speed up rebuilds (requires BuildKit)
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+
+# Copy the rest of the source
+COPY . .
+
+# Expose necessary ports
 EXPOSE 8050
+EXPOSE 6006
 
-
-# Command to run your application
+# Run the main app
 CMD ["python3", "rnn2_maze_solver.py"]

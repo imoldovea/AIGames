@@ -1,18 +1,19 @@
-version: "3.8"  # Use a recent version of Docker Compose
+version: "3.8"
 
 services:
   maze-solver:
     build:
-      context: .  # Path to the directory containing the Dockerfile
+      context: .
+      dockerfile: Dockerfile
     image: maze-solver
     volumes:
-      # Mount the entire project directory for access to all files
       - .:/app
-      # Ensure explicit access to the ./output folder
       - ./output:/app/output
-    ports:
-      # Map ports from host to container
+      - ./input:/app/input
       - "8050:8050"
-      - "6006:6006"  # Retain an existing port mapping if needed
+      - "6006:6006"
     container_name: maze-container
-    tty: true # Allocates a pseudo-TTY to prevent the container from stopping immediately
+    tty: true
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1  # Don't generate .pyc files
+      - PYTHONUNBUFFERED=1         # Stream output immediately
