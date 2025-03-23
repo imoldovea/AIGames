@@ -57,8 +57,7 @@ def setup_logging():
     # Create formatter
     formatter = logging.Formatter('%(asctime)s - %(filename)s - %(levelname)s - %(message)s')
     # Add more substrings as needed
-    forbidden_logs = ["findfont", "werkzeug", "werkzeug:_internal.py", "dash-update-component", "internal.py", "pydevd",
-                      "wandb:"]
+    forbidden_logs = ["findfont", "werkzeug", "werkzeug:_internal.py", "dash-update-component", "internal.py", "pydevd"]
     # Console handler for INFO level and above
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
@@ -244,25 +243,7 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
             # 2. ADD MAZE FRAMES WITH A TOP MARGIN FOR TEXT
             margin_height = 60  # pixels reserved at the top for text
 
-            for i, img in enumerate(images):
-                # If we have current positions, highlight the current position with bright pink
-                if current_positions and i < len(current_positions):
-                    curr_pos = current_positions[i]
-                    if curr_pos:  # Make sure position is not None
-                        # Get coordinates of current position
-                        y, x = curr_pos
-                        # Get cell size based on maze dimensions
-                        cell_height = img.shape[0] // maze.height if hasattr(maze, 'height') else 10
-                        cell_width = img.shape[1] // maze.width if hasattr(maze, 'width') else 10
-
-                        # Draw a bright pink marker at the current position
-                        y_pixel = y * cell_height + cell_height // 2
-                        x_pixel = x * cell_width + cell_width // 2
-                        # Ensure coordinates are within image bounds
-                        if 0 <= y_pixel < img.shape[0] and 0 <= x_pixel < img.shape[1]:
-                            # Draw a circle at the current position
-                            cv2.circle(img, (x_pixel, y_pixel), cell_width // 2, BRIGHT_PINK, -1)
-
+            for img in images:
                 # Resize img to fit the frame height minus the margin
                 desired_height = height - margin_height
                 aspect_ratio = img.shape[1] / img.shape[0]
