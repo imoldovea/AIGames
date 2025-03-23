@@ -269,7 +269,7 @@ def train_models(device="cpu", batch_size=32):
         logging.info(f"GPU Name: {gpu_props.name}, Multiprocessor Count: {multiproc_count}")
 
         # Distribute CPU cores among GPU multiprocessors, ensuring at least one worker per multiprocessor
-        num_workers = max(num_cores, multiproc_count)
+        num_workers = min(num_cores, multiproc_count)
 
     else:
         num_workers = num_cores
