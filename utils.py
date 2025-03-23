@@ -1,18 +1,18 @@
-from datetime import datetime
-from fpdf import FPDF
-import tempfile
-from PIL import Image
-import numpy as np
-import cv2
-import os
 import logging
-import traceback
+import os
 import pickle
-from multiprocessing import Process
-from configparser import ConfigParser
 import shutil
-import flask.cli
+import tempfile
+import traceback
+from configparser import ConfigParser
+from datetime import datetime
+from multiprocessing import Process
 
+import cv2
+import flask.cli
+import numpy as np
+from PIL import Image
+from fpdf import FPDF
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -197,12 +197,14 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
     """
     Generates and saves a video of all mazes and their solutions using OpenCV,
     with a title screen before each maze and non-overlapping text.
+    The current position is highlighted with bright pink color.
     """
     logging.info("Generating solution video...")
     try:
         fps = 5
         width, height = 800, 600  # Desired resolution for the final video
         title_frames_count = 10  # Number of frames to show the title screen
+        BRIGHT_PINK = (255, 0, 255)  # Bright pink/magenta color (B,G,R format)
 
         frames = []
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -212,6 +214,9 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
             try:
                 images = maze.get_raw_movie()  # Maze frames as NumPy arrays
                 algorithm = maze.algorithm
+
+                # Get current positions from the maze if available
+                current_positions = maze.get_current_positions() if hasattr(maze, 'get_current_positions') else None
             except Exception as e:
                 logging.warning(f"Could not process maze #{maze_count}: {e}")
                 maze_count += 1
@@ -238,7 +243,25 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
             # 2. ADD MAZE FRAMES WITH A TOP MARGIN FOR TEXT
             margin_height = 60  # pixels reserved at the top for text
 
-            for img in images:
+            for i, img in enumerate(images):
+                # If we have current positions, highlight the current position with bright pink
+                if current_positions and i < len(current_positions):
+                    curr_pos = current_positions[i]
+                    if curr_pos:  # Make sure position is not None
+                        # Get coordinates of current position
+                        y, x = curr_pos
+                        # Get cell size based on maze dimensions
+                        cell_height = img.shape[0] // maze.height if hasattr(maze, 'height') else 10
+                        cell_width = img.shape[1] // maze.width if hasattr(maze, 'width') else 10
+
+                        # Draw a bright pink marker at the current position
+                        y_pixel = y * cell_height + cell_height // 2
+                        x_pixel = x * cell_width + cell_width // 2
+                        # Ensure coordinates are within image bounds
+                        if 0 <= y_pixel < img.shape[0] and 0 <= x_pixel < img.shape[1]:
+                            # Draw a circle at the current position
+                            cv2.circle(img, (x_pixel, y_pixel), cell_width // 2, BRIGHT_PINK, -1)
+
                 # Resize img to fit the frame height minus the margin
                 desired_height = height - margin_height
                 aspect_ratio = img.shape[1] / img.shape[0]
