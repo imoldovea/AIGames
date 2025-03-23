@@ -413,15 +413,18 @@ def main():
 
     finally:
         try:
-            dashboard_process.terminate()
+            if config.getboolean("MONITORING", "dashboard", fallback=True):
+                dashboard_process.terminate()
         except Exception as e:
             logging.error(f"Error finalizing Dash: {e}")
         try:
-            wandb.finish()
+            if config.getboolean("MONITORING", "wandb", fallback=True):
+                wandb.finish()
         except Exception as e:
             logging.error(f"Error finalizing WandB: {e}")
         try:
-            tensorboard_process.terminate()
+            if config.getboolean("MONITORING", "tensorboard", fallback=True):
+                tensorboard_process.terminate()
         except Exception as e:
             logging.error(f"Error finalizing Tensorboard: {e}")
 
