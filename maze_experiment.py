@@ -1,12 +1,12 @@
+import cProfile
+import io
+import logging
+import pstats
+import traceback
+
 from backtrack_maze_solver import BacktrackingMazeSolver
 from bfs_maze_solver import BFSMazeSolver
 from maze import Maze
-import logging
-import cProfile
-import pstats
-import io
-
-import traceback
 from utils import (
     save_movie,
     display_all_mazes,
@@ -48,7 +48,7 @@ def main():
     Main function to load, solve, and save all mazes into a PDF.
     """
     input_mazes = "input/mazes.pkl"
-    training_mazes = "input/training_mazes.pkl"
+
     output_pdf = "output/solved_mazes.pdf"
     output_mp4 = "output/solved_mazes.mp4"
     try:

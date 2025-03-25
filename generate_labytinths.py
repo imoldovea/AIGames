@@ -1,13 +1,14 @@
-import numpy as np
-import os
-import random
-import pickle
-import matplotlib.pyplot as plt
 import logging
-from utils import setup_logging
+import os
+import pickle
+import random
 from configparser import ConfigParser
+
+import matplotlib.pyplot as plt
+import numpy as np
 import tqdm
 
+from utils import setup_logging
 
 PATH = 0
 WALL = 1
@@ -67,7 +68,7 @@ def generate_maze(width: int, height: int) -> np.ndarray:
     maze = find_start(maze, width, height)
 
     # find exit
-    maze = find_exit(maze, width, height);
+    maze = find_exit(maze, width, height)
 
     maze = add_loops(maze)
     return maze
@@ -153,7 +154,6 @@ def add_loops(maze):
 
     Args:
         maze (numpy.ndarray): 2D array representing the maze structure.
-        loop_probability (float): Likelihood (between 0 and 1) to remove an extra wall.
 
     Returns:
         numpy.ndarray: Maze with additional loops.
@@ -177,8 +177,6 @@ def add_loops(maze):
 def save_mazes(folder, filename, mazes):
     with open(folder +'/' + filename, 'wb') as f:
         pickle.dump(mazes, f)
-    logging.info(f"Saved {len(mazes)} mazes to {folder}/{filename}")
-
 
 def display_maze(maze):
     """
@@ -207,8 +205,8 @@ def generate(filename, number):
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
 
+    mazes = []
     for i in tqdm.tqdm(range(number), desc="Generating mazes"):
-        mazes = []
         width, height = random.choice(range(min_size, max_size, 2)), random.choice(range(min_size, max_size, 2))
         maze = generate_maze(width, height)
         mazes.append(maze)

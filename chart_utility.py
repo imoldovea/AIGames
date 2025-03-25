@@ -1,10 +1,18 @@
 
 import io
+import logging
+import os
 import subprocess
+import traceback
 from configparser import ConfigParser
 
+import cv2
 import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
+import plotly.io as pio
 import torch
 import torch.onnx
 from PIL import Image
@@ -17,15 +25,7 @@ config = ConfigParser()
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 
-import os
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.io as pio
-import logging
-import traceback
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
+
 
 def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
     """
@@ -172,8 +172,6 @@ def save_neural_network_diagram(models, output_dir="output/"):
     if not models or not isinstance(models, list):
         raise ValueError("The 'models' parameter must be a non-empty list of neural network models.")
 
-    config = ConfigParser()
-    config.read("config.properties")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     pdf_path = os.path.join(output_dir, "neural_network_diagrams.pdf")
@@ -261,7 +259,7 @@ def save_neural_network_diagram(models, output_dir="output/"):
                 raise RuntimeError(f"TensorBoard graph logging failed: {e}")
 
 
-def visualize_model_weights(models, output_folder=OUTPUT, base_title="Model Diagram", cmap="viridis", **kwargs):
+def visualize_model_weights(models, output_folder=OUTPUT, base_title="Model Diagram", cmap="viridis"):
     logging.debug("Visualizing model weights...")
     pdf_filename = f"{output_folder}model_weights_diagrams.pdf"
 
@@ -303,7 +301,7 @@ def visualize_model_activations(all_activations, output_folder = OUTPUT, model_n
     Generates a video showing model activations over time.
 
     Args:
-        activations (list): A list of numpy arrays representing model activations.
+        all_activations (list): A list of numpy arrays representing model activations.
         output_folder (str): Directory where the video will be saved.
         model_name (str): Name of the model (used for labeling output).
         video_filename (str): Name of the output video file.

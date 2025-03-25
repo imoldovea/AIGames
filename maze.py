@@ -1,12 +1,13 @@
-import numpy as np
 import json
 import logging
 import traceback
-from utils import (load_mazes)
-import matplotlib.pyplot as plt
 from configparser import ConfigParser
-from PIL import Image, ImageDraw, ImageFont
 
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
+
+from utils import (load_mazes)
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -364,10 +365,6 @@ class Maze:
 
         # Convert the numpy array to a PIL Image for easier text drawing
         pil_image = Image.fromarray(resized_image)
-        draw = ImageDraw.Draw(pil_image)
-
-        # Use the default font; you can customize by loading a specific font if desired
-        font = ImageFont.load_default()
 
         # Convert back to a numpy array
         resized_image = np.array(pil_image)
@@ -474,9 +471,9 @@ class Maze:
         Returns:
             None
         """
-        imgage_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution,
+        image_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution,
                                            show_position=show_position)
-        plt.imshow(imgage_data, interpolation='none')
+        plt.imshow(image_data, interpolation='none')
 
         # Get the result of the solution test
         valid_solution = self.test_solution()

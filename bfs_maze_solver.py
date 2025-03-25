@@ -1,11 +1,14 @@
-from numpy.f2py.auxfuncs import throw_error
-from maze_solver import MazeSolver
-from maze import Maze
-from collections import deque
-import traceback
 import logging
-from utils import setup_logging
 import pickle
+import traceback
+from collections import deque
+
+from numpy.f2py.auxfuncs import throw_error
+
+from maze import Maze
+from maze_solver import MazeSolver
+from utils import setup_logging
+
 
 class BFSMazeSolver(MazeSolver):
     def __init__(self, maze):
@@ -29,7 +32,7 @@ class BFSMazeSolver(MazeSolver):
             raise ValueError("Maze exit is not set.")
 
         start = self.maze.start_position
-        exit = self.maze.exit
+        maze_exit = self.maze.exit
 
         # Queue for BFS and dictionary to store the parent of each visited position.
         queue = deque([start])
@@ -40,7 +43,7 @@ class BFSMazeSolver(MazeSolver):
         while queue:
             current = queue.popleft()
 
-            if current == exit:
+            if current == maze_exit:
                 # Exit found, reconstruct the path from start to exit.
                 path = []
                 while current is not None:

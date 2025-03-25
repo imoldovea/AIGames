@@ -24,7 +24,6 @@ app.layout = html.Div(
     ]
 )
 
-
 @app.callback(
     Output("training-loss-graph", "figure"),
     Input("interval-component", "n_intervals"),

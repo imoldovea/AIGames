@@ -8,13 +8,13 @@ from configparser import ConfigParser
 
 import numpy as np
 import torch
+import wandb
 from numpy.f2py.auxfuncs import throw_error
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
 
 import utils
-import wandb
 from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
@@ -80,6 +80,7 @@ class ValidationDataset(MazeTrainingDataset):
                 - target_action (int): Action to take (0: up, 1: down, 2: left, 3: right).
                 - step_number (int): Step number in the solution path.
         """
+        super().__init__(data)  # Pass data to parent constructor
         self.data = data
         if len(data) == 0:
             self.max_steps = 0  # or raise a custom error if an empty dataset is not acceptable
@@ -120,7 +121,7 @@ class RNN2MazeTrainer:
         if training_samples < 10:
             logging.error("Training samples must be at least 10.")
             throw_error(
-                "Training samples must be at least 10.",
+                "Training samples must be at least 10 "
                 "Please adjust the training_samples parameter in the config file.")
 
         self.training_mazes = self._load_and_process_training_mazes(training_file_path,training_samples)
@@ -136,7 +137,7 @@ class RNN2MazeTrainer:
             Returns:
                 List of processed training mazes.
             """
-        training_mazes = self._load_mazes_safe(path)
+        training_mazes = self._load_mazes_safe(file_path=path)
         solved_training_mazes = []
         for i, maze_data in enumerate(training_mazes):
             if i >= training_samples:
@@ -148,7 +149,8 @@ class RNN2MazeTrainer:
                 raise RuntimeError(f"Processing maze {i + 1} failed.") from e
         return solved_training_mazes
 
-    def _load_mazes_safe(self, file_path):
+    @staticmethod
+    def _load_mazes_safe(file_path):
         try:
             return utils.load_mazes(file_path)
         except FileNotFoundError as e:
@@ -158,11 +160,11 @@ class RNN2MazeTrainer:
             logging.error(f"Error loading mazes: {str(e)}")
             raise RuntimeError("Maze loading failed.") from e
 
-    def _process_maze(self, data, index):
+    @staticmethod
+    def _process_maze(data, index):
         maze = Maze(data)
         if not maze.self_test():
             logging.warning(f"Maze {index + 1} failed validation.")
-            raise ValueError(f"Maze {index + 1} failed self-test.")
         solver = BacktrackingMazeSolver(maze)
         maze.set_solution(solver.solve())
         return maze
@@ -171,6 +173,7 @@ class RNN2MazeTrainer:
         """
         Constructs a dataset for training a maze-navigating model.
         """
+        logging.info("Creating dataset.")
         dataset = []
         for maze in self.training_mazes:
             solution = maze.get_solution()
@@ -188,18 +191,21 @@ class RNN2MazeTrainer:
                 dataset.append((local_context, relative_position, target_action, steps_number))
 
         validation_dataset = []
-        for maze in self.validation_mazes:
+        from tqdm import tqdm
+        for maze in tqdm(self.validation_mazes, desc="Processing validation mazes"):
             solution = maze.get_solution()
-            for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
-                steps_number = i
-                local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
-                relative_position = (current_pos[0] - start_position[0], current_pos[1] - start_position[1])
-                move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
-                if move_delta not in DIRECTION_TO_ACTION:
-                    raise KeyError(f"Invalid move delta: {move_delta}")
-                target_action = DIRECTION_TO_ACTION[move_delta]
-                validation_dataset.append((local_context, relative_position, target_action, steps_number))
-
+            if maze.self_test():  # avoid validating on mazes with no solution
+                for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
+                    steps_number = i
+                    local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
+                    relative_position = (current_pos[0] - start_position[0], current_pos[1] - start_position[1])
+                    move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
+                    if move_delta not in DIRECTION_TO_ACTION:
+                        raise KeyError(f"Invalid move delta: {move_delta}")
+                    target_action = DIRECTION_TO_ACTION[move_delta]
+                    validation_dataset.append((local_context, relative_position, target_action, steps_number))
+            else:
+                logging.warning(f"Maze {index + 1} failed validation.")
         return dataset, validation_dataset
 
     def _compute_local_context(self, maze, position, directions):

@@ -62,6 +62,7 @@ class RNN2MazeSolver(MazeSolver):
         """
         Initializes the solver with a Maze and a trained model.
         """
+        super().__init__(maze)  # Pass the maze parameter to the parent constructor
         self.maze = maze
         self.device = torch.device(device)
         self.model = model
@@ -77,13 +78,12 @@ class RNN2MazeSolver(MazeSolver):
         if isinstance(recurrent, torch.nn.Module):
             recurrent.register_forward_hook(self.save_activation)
 
-    def save_activation(self, module, input, output):
+    def save_activation(self, module, input_tensor, output):
         if isinstance(output, tuple):
             activation_tensor = output[0]
         else:
             activation_tensor = output
         self.activations['recurrent'].append(activation_tensor.detach().cpu().numpy())
-
 
     def solve(self):
         """
@@ -213,12 +213,13 @@ class RNN2MazeSolver(MazeSolver):
 # -------------------------------
 # Integration Functions
 # -------------------------------
-def rnn2_solver(models, mazes, device="cpu"):
+def rnn2_solver(models, mazes, device):
     """
     Applies trained models to test data, solves mazes, and evaluates performance.
 
     Args:
         models (list): List of tuples containing model name and model object.
+        mazes (list): List of maze data.
         device (str): Device to run the models on ('cpu' or 'cuda').
 
     Returns:
@@ -343,6 +344,7 @@ def main():
         for handler in logging.getLogger('werkzeug').handlers:
             logging.getLogger('werkzeug').removeHandler(handler)
 
+        tensorboard_process = None  # Default Declaration
         if config.getboolean("MONITORING", "tensorboard", fallback=True):
             if is_port_in_use(6006):
                 logging.warning("TensorBoard is already running on port 6006. Skipping startup.")
@@ -416,17 +418,17 @@ def main():
             if config.getboolean("MONITORING", "dashboard", fallback=True):
                 dashboard_process.terminate()
         except Exception as e:
-            logging.error(f"Error finalizing Dash: {e}")
+            logging.debug(f"Error finalizing Dash: {e}")
         try:
             if config.getboolean("MONITORING", "wandb", fallback=True):
                 wandb.finish()
         except Exception as e:
-            logging.error(f"Error finalizing WandB: {e}")
+            logging.debug(f"Error finalizing WandB: {e}")
         try:
-            if config.getboolean("MONITORING", "tensorboard", fallback=True):
+            if config.getboolean("MONITORING", "tensorboard", fallback=True) and tensorboard_process is not None:
                 tensorboard_process.terminate()
         except Exception as e:
-            logging.error(f"Error finalizing Tensorboard: {e}")
+            logging.debug(f"Error finalizing Tensorboard: {e}")
 
 if __name__ == "__main__":
     main()

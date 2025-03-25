@@ -1,11 +1,12 @@
+import logging
+import pickle
+import traceback
+
 from numpy.f2py.auxfuncs import throw_error
 
+from maze import Maze
 from maze_solver import MazeSolver
 from utils import setup_logging
-from maze import Maze
-import pickle
-import logging
-import traceback
 
 
 class BacktrackingMazeSolver(MazeSolver):
@@ -19,7 +20,6 @@ class BacktrackingMazeSolver(MazeSolver):
         maze.set_algorithm(self.__class__.__name__)
 
     def solve(self):
-
         """
             Attempts to solve the maze using recursive backtracking.
 
