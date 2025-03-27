@@ -152,6 +152,50 @@ class Maze:
         """
         return self.raw_movie
 
+    def get_frames(self):
+        """
+        Instead of saving one frame at a time with self.raw_movie.append(self.get_maze_as_png(....))
+        This method does use iterate solution one step at a time to create a list of frames. It will use the same
+        self.get_maze_as_png(....) to transform a snapshot of the maze, and the current iteration in the solutions
+        into a frame.
+
+        Each frame will highlight the current position and the path taken. That means that the following frame will
+        update the previous frame removing the current position highlight in the previous frame and adding it to the
+         current frame with the current position highlight.
+        :return: list of frames as png array. The first frame is the initial maze.
+        """
+
+        row_frames = []
+
+        # Add the initial maze frame (showing the maze without solution or path)
+        row_frames.append(self.get_maze_as_png(show_path=False, show_solution=False, show_position=False))
+
+        # Store the original current position
+        original_position = self.current_position
+
+        # Iterate through the solution steps
+        for i in range(len(self._solution)):
+            # Set the current position to the position at this step in the solution
+            self.current_position = self._solution[i]
+
+            # Create a partial path up to the current position
+            temp_path = self._solution[:i + 1]
+            original_path = self.path
+            self.path = temp_path
+
+            # Create a frame showing the path taken so far and highlighting the current position
+            frame = self.get_maze_as_png(show_path=True, show_solution=False, show_position=True)
+
+            # Add the frame to the list
+            row_frames.append(frame)
+
+            # Restore the original path
+            self.path = original_path
+
+        # Restore the original current position
+        self.current_position = original_position
+
+        return row_frames
 
     def set_save_movie(self, value):
         """

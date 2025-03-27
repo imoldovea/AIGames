@@ -212,7 +212,8 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
         for maze in solved_mazes:
             try:
                 # Retrieve maze frames and current positions
-                images = maze.get_raw_movie()  # Maze frames as NumPy arrays
+                # images = maze.get_raw_movie()  # Maze frames as NumPy arrays
+                images = maze.get_frames()  # Online generation of frames, highlighting the current postion.
                 algorithm = maze.algorithm
 
                 # Current positions (list of tuples per frame, e.g., [(x1, y1), (x2, y2)...])

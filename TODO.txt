@@ -1,17 +1,4 @@
-  File "C:\Users\imold\PycharmProjects\AIGames\rnn2_maze_solver.py", line 377, in main
-    models = train_models(device=device, batch_size=batch_size)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\imold\PycharmProjects\AIGames\maze_trainer.py", line 297, in train_models
-    gru_model = _train_gru_model(
-                ^^^^^^^^^^^^^^^^^
-  File "C:\Users\imold\PycharmProjects\AIGames\maze_trainer.py", line 380, in _train_gru_model
-    gru_model = gru_model.train_model(
-                ^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\imold\PycharmProjects\AIGames\base_model.py", line 148, in train_model
-    outputs = self.forward(inputs)  # Pass input through the model
-           ^^^^^^^^^
-NameError: name 'criterion' is not defined
-
+Plot model accuracy
 
 
 - fix network diagram
