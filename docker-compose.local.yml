@@ -1,0 +1,10 @@
+services:
+  maze-solver:
+    volumes:
+      - .:/app
+      - ./output:/app/output
+      - ./input:/app/input
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - TF_ENABLE_ONEDNN_OPTS=0

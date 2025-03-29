@@ -16,3 +16,4 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1  # Don't generate .pyc files
       - PYTHONUNBUFFERED=1         # Stream output immediately
+      - TF_ENABLE_ONEDNN_OPTS=0
