@@ -101,19 +101,15 @@ class MazeBaseModel(nn.Module):
         best_validation_loss = float("inf")
         early_stopping_counter = 0
 
-        #setup progress bar
-        use_progress_bar = config.getboolean("DEFAULT", "progress_bar", fallback=False)
-        epoch_iterator = tqdm(range(num_epochs), desc="Epoch Progress") if use_progress_bar else range(num_epochs)
-
-        for epoch in epoch_iterator:
+        for epoch in range(num_epochs):
             # network performance monitoring
             running_loss = 0.0
             correct = 0
             total = 0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
-            desc = f"{self._get_name()} Training Progress"
-            iterator = tqdm(dataloader, desc=desc, leave=False) if  use_progress_bar else dataloader
+            desc = f"Epoch {epoch} Training Progress"
+            iterator = tqdm(dataloader, desc=desc, leave=True)
             for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(iterator):
                 target_action = target_action.to(device).long()
                 # Convert local_context to PyTorch tensor and ensure it's at least 2D
@@ -177,6 +173,8 @@ class MazeBaseModel(nn.Module):
 
             train_losses["train"].append(epoch_loss)
             train_losses["validation"].append(validation_loss)
+            train_accuracies["train"].append(training_accuracy)
+            train_accuracies["validation"].append(validation_accuracy)
 
             # Monitoring
             self._monitor_training(
