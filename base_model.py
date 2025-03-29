@@ -202,7 +202,9 @@ class MazeBaseModel(nn.Module):
                 early_stopping_counter += 1
 
             logging.info(
-                f"Epoch {epoch + 1}: Train Loss = {epoch_loss:.4f} | Validation Loss = {validation_loss:.4f} | "
+                f"Epoch {epoch + 1}: Train Loss = {epoch_loss:.4f} | Validation Loss = {validation_loss:.4f} |"
+                f" Traning Accuracy = {training_accuracy:.4f} | Validation Accuracy = {validation_accuracy:.4f} |"
+                f" Learning Rate = {current_lr:.6f} | "
                 f"Early Stopping Counter = {early_stopping_counter}")
 
             # Trigger early stopping if no improvement within set patience and the learning rate is sufficiently low.

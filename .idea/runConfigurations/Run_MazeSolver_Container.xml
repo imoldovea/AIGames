@@ -1,7 +1,10 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="maze_solver_docker" type="docker-deploy" factoryName="dockerfile" server-name="Docker">
-    <deployment type="dockerfile">
+  <configuration default="false" name="Run MazeSolver Container" type="docker-deploy" factoryName="docker-image" server-name="Docker">
+    <deployment type="docker-image">
       <settings>
+        <option name="imageTag" value="c49b5b99029f34c80c16de9904d7d04a7ea6503881010cc3ba394618d2efdde0" />
+        <option name="attachToContainerNeeded" value="true" />
+        <option name="command" value="" />
         <option name="containerName" value="Maze_Solver" />
         <option name="envVars">
           <list>
@@ -31,14 +34,21 @@
             </DockerPortBindingImpl>
           </list>
         </option>
-        <option name="sourceFilePath" value="Dockerfile" />
+        <option name="commandLineOptions" value="" />
         <option name="volumeBindings">
           <list>
             <DockerVolumeBindingImpl>
-              <option name="containerPath" value="." />
-              <option name="hostPath" value="C:\Docker Mount" />
+              <option name="containerPath" value="/app" />
+              <option name="hostPath" value="&quot;$PROJECT_DIR$/../../../../Docker Mount/app" />
             </DockerVolumeBindingImpl>
-            <DockerVolumeBindingImpl />
+            <DockerVolumeBindingImpl>
+              <option name="containerPath" value="/app/outpu" />
+              <option name="hostPath" value="&quot;$PROJECT_DIR$/../../../../Docker Mount/output" />
+            </DockerVolumeBindingImpl>
+            <DockerVolumeBindingImpl>
+              <option name="containerPath" value="/app/input" />
+              <option name="hostPath" value="$PROJECT_DIR$/../../../../Docker Mount/input" />
+            </DockerVolumeBindingImpl>
           </list>
         </option>
       </settings>
