@@ -3,7 +3,6 @@ import io
 import logging
 import os
 import subprocess
-import traceback
 from configparser import ConfigParser
 
 import cv2
@@ -26,18 +25,16 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 
 
-
 def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
     """
-    Generates and saves separate training loss and validation loss charts as HTML files.
-    Includes training timings for each epoch (in minutes) and an annotation for total training time per model (in minutes).
-    If the first epoch's training time is missing, it is calculated as the average training time of the other epochs.
+    Generates and saves separate training loss, validation loss, training accuracy,
+    and validation accuracy charts as HTML files.
 
     Parameters:
-    - loss_file_path (str): Path to the CSV file containing loss data.
-    - loss_chart (str): Base path where the HTML files will be saved (training_loss.html and validation_loss.html).
+    - loss_file_path (str): Path to the CSV file containing loss and accuracy data.
+    - loss_chart (str): Base path where the HTML files will be saved.
     """
-    logging.debug("Generating separate training and validation loss charts...")
+    logging.debug("Generating separate training and validation charts...")
 
     try:
         # Read the loss data from CSV
@@ -48,7 +45,7 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
             logging.warning("Dataset is empty. Exiting function.")
             return
 
-        # Validate required columns
+        # Validate required columns for loss charts
         required_columns = {'model', 'epoch', 'loss', 'validation_loss', 'time'}
         if not required_columns.issubset(df.columns):
             raise ValueError(f"CSV file must contain columns: {required_columns}")
@@ -61,7 +58,7 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
 
         for model in models:
             model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]  # Corrected time conversion
+            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
             fig_training.add_trace(
                 go.Scatter(
                     x=model_df["epoch"],
@@ -88,7 +85,7 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
 
         for model in models:
             model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]  # Corrected time conversion
+            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
             fig_validation.add_trace(
                 go.Scatter(
                     x=model_df["epoch"],
@@ -110,6 +107,62 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
             legend_title="Models"
         )
 
+        # --- New: Training Accuracy Chart ---
+        if 'accuracy' in df.columns:
+            fig_accuracy = go.Figure()
+
+            for model in models:
+                model_df = df[df['model'] == model]
+                hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
+                fig_accuracy.add_trace(
+                    go.Scatter(
+                        x=model_df["epoch"],
+                        y=model_df["accuracy"],
+                        mode="lines+markers",
+                        name=f"{model} - Accuracy",
+                        text=hover_text,
+                        hovertemplate="Epoch: %{x}<br>Accuracy: %{y:.4f}<br>%{text}<extra></extra>"
+                    )
+                )
+
+            fig_accuracy.update_layout(
+                title="Training Accuracy Over Time",
+                xaxis_title="Epoch",
+                yaxis_title="Accuracy",
+                height=800,
+                margin=dict(b=150),
+                template=pio.templates.default,
+                legend_title="Models"
+            )
+
+        # --- New: Validation Accuracy Chart ---
+        if 'validation_accuracy' in df.columns:
+            fig_val_accuracy = go.Figure()
+
+            for model in models:
+                model_df = df[df['model'] == model]
+                hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
+                fig_val_accuracy.add_trace(
+                    go.Scatter(
+                        x=model_df["epoch"],
+                        y=model_df["validation_accuracy"],
+                        mode="lines+markers",
+                        name=f"{model} - Validation Accuracy",
+                        text=hover_text,
+                        hovertemplate="Epoch: %{x}<br>Validation Accuracy: %{y:.4f}<br>%{text}<extra></extra>"
+                    )
+                )
+
+            fig_val_accuracy.update_layout(
+                title="Validation Accuracy Over Time",
+                xaxis_title="Epoch",
+                yaxis_title="Accuracy",
+                height=800,
+                margin=dict(b=150),
+                template=pio.templates.default,
+                legend_title="Models"
+            )
+
         # --- Save Charts ---
         # Validate loss_chart parameter
         if not loss_chart or not isinstance(loss_chart, str):
@@ -120,38 +173,35 @@ def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
         training_loss_html = f"{base}_training_loss.html"
         validation_loss_html = f"{base}_validation_loss.html"
 
+        # New accuracy chart filenames
+        training_accuracy_html = f"{base}_training_accuracy.html"
+        validation_accuracy_html = f"{base}_validation_accuracy.html"
+
         # Ensure the directory exists
-        directory = os.path.dirname(training_loss_html)  # Use either path; they share the same directory
+        directory = os.path.dirname(training_loss_html)
         if directory and not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
             logging.debug(f"Created directory: {directory}")
 
-        try:
-            # Save the figures as HTML files
-            fig_training.write_html(training_loss_html)
-            fig_validation.write_html(validation_loss_html)
+        # Save loss charts
+        fig_training.write_html(training_loss_html)
+        logging.debug(f"Saved training loss chart to: {training_loss_html}")
 
-            # Optionally save as PNG images (adjust paths as needed)
-            pio.renderers.default = "png"
-            training_loss_image_path = os.path.join(OUTPUT, "training_loss_chart.png")
-            validation_loss_image_path = os.path.join(OUTPUT, "validation_loss_chart.png")
-            fig_training.write_image(training_loss_image_path)
-            fig_validation.write_image(validation_loss_image_path)
+        fig_validation.write_html(validation_loss_html)
+        logging.debug(f"Saved validation loss chart to: {validation_loss_html}")
 
-            logging.info(
-                f"Training loss chart saved as {training_loss_html} and {training_loss_image_path}")
-            logging.info(
-                f"Validation loss chart saved as {validation_loss_html} and {validation_loss_image_path}")
+        # Save accuracy charts if data is available
+        if 'accuracy' in df.columns:
+            fig_accuracy.write_html(training_accuracy_html)
+            logging.debug(f"Saved training accuracy chart to: {training_accuracy_html}")
 
-
-        except Exception as img_error:
-            # Fallback to matplotlib (simplified for brevity)
-            print(f"Error saving as PNG: {img_error}")  # removed traceback to reduce tokens
-            pass
+        if 'validation_accuracy' in df.columns:
+            fig_val_accuracy.write_html(validation_accuracy_html)
+            logging.debug(f"Saved validation accuracy chart to: {validation_accuracy_html}")
 
     except Exception as e:
-        logging.error(f"Error saving latest loss chart: {e}", exc_info=True)
-        logging.error(traceback.format_exc())
+        logging.error(f"Error saving loss charts: {e}")
+        raise
 
 
 def save_neural_network_diagram(models, output_dir="output/"):

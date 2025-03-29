@@ -32,8 +32,6 @@ PATH = 0
 WALL = 1
 START = 3
 
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-
 # File paths and configuration files
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()

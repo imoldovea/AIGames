@@ -58,7 +58,8 @@ def setup_logging():
     # Create formatter
     formatter = logging.Formatter('%(asctime)s - %(filename)s - %(levelname)s - %(message)s')
     # Add more substrings as needed
-    forbidden_logs = ["findfont", "werkzeug", "werkzeug:_internal.py", "dash-update-component", "internal.py", "pydevd"]
+    forbidden_logs = ["findfont", "werkzeug", "werkzeug:_internal.py", "dash-update-component", "internal.py", "pydevd",
+                      "TF_ENABLE_ONEDNN_OPTS"]
     # Console handler for INFO level and above
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)

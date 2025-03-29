@@ -86,8 +86,6 @@ class MazeBaseModel(nn.Module):
             f"if no improvement over {improvement_threshold}"
             f" epochs without improvement on training loss or validation loss."
         )
-        loss_trigger_times = 0
-        validation_loss_trigger_times = 0
 
         # Define optimizer, learning rate scheduler, and loss function
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -97,6 +95,7 @@ class MazeBaseModel(nn.Module):
         criterion = nn.CrossEntropyLoss()
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
+        train_accuracies = {"train": [], "validation": []}  # Dictionary to store accuracies
 
         # Set up a counter and best loss value for early stopping
         best_validation_loss = float("inf")
@@ -107,7 +106,10 @@ class MazeBaseModel(nn.Module):
         epoch_iterator = tqdm(range(num_epochs), desc="Epoch Progress") if use_progress_bar else range(num_epochs)
 
         for epoch in epoch_iterator:
+            # network performance monitoring
             running_loss = 0.0
+            correct = 0
+            total = 0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
             desc = f"{self._get_name()} Training Progress"
@@ -155,20 +157,38 @@ class MazeBaseModel(nn.Module):
                 loss.backward()  # Backpropagate loss to calculate gradients
                 optimizer.step()  # Update model weights
 
+                #calculate loss
                 running_loss += loss.item() * inputs.size(0)
+                # Calculate training accuracy
+                _, predicted = torch.max(outputs.data, 1)
+                total += target_action.size(0)
+                correct += (predicted == target_action).sum().item()
 
-            #Back Epoch loop
+            #Back Epoch loop. Compute loss and accuracy
             epoch_loss = running_loss / len(dataloader.dataset)
+            training_accuracy = correct / total if total > 0 else 0.0
 
             # After finishing the training epoch and recording epoch_loss, do validation:
-            validation_loss=self._validate_model(val_loader = val_loader,criterion =  criterion, device = device, epoch = epoch)
+            # validation_loss=self._validate_model(val_loader = val_loader,criterion =  criterion, device = device, epoch = epoch)
+            validation_loss, validation_accuracy = self._validate_model(val_loader=val_loader,
+                                                                        criterion=criterion,
+                                                                        device=device,
+                                                                        epoch=epoch)
+
             train_losses["train"].append(epoch_loss)
             train_losses["validation"].append(validation_loss)
 
             # Monitoring
-            self._monitor_training(epoch = epoch, num_epochs= num_epochs, epoch_loss = epoch_loss,
-                                   scheduler = scheduler, validation_loss = validation_loss,
-                                   tensorboard_writer= tensorboard_writer)
+            self._monitor_training(
+                epoch=epoch,
+                num_epochs=num_epochs,
+                epoch_loss=epoch_loss,
+                scheduler=scheduler,
+                validation_loss=validation_loss,
+                training_accuracy=training_accuracy,
+                validation_accuracy=validation_accuracy,
+                tensorboard_writer=tensorboard_writer
+            )
 
             # Stop is no improvement on loss function
             current_lr = self.lr_scheduler.get_last_lr()[0]  # Get the current learning rate
@@ -201,7 +221,8 @@ class MazeBaseModel(nn.Module):
 
         return self
 
-    def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss, tensorboard_writer):
+    def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss,
+                          training_accuracy, validation_accuracy, tensorboard_writer):
         """
         Logs training information and updates tensorboard/histograms for monitoring.
 
@@ -211,6 +232,8 @@ class MazeBaseModel(nn.Module):
             epoch_loss (float): Training loss for the current epoch.
             scheduler: Learning rate scheduler.
             validation_loss (float): Validation loss for the current epoch.
+            training_accuracy (float): Training accuracy for the current epoch.
+            validation_accuracy (float): Validation accuracy for the current epoch.
             tensorboard_writer: Optional TensorBoard writer for logging.
         """
         logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
@@ -222,75 +245,88 @@ class MazeBaseModel(nn.Module):
         scheduler.step(epoch_loss)
         with open(LOSS_FILE, "a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss, time.time()])
+            writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss,
+                             training_accuracy, validation_accuracy, time.time()])
 
+        # Log to tensorboard
         if tensorboard_writer:
-            tensorboard_writer.add_scalar("Loss/epoch", epoch_loss, epoch)
-            tensorboard_writer.add_scalar("Loss/Validation", validation_loss, epoch)
+            tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
+            tensorboard_writer.add_scalar("Loss/validation", validation_loss, epoch)
+            tensorboard_writer.add_scalar("Accuracy/train", training_accuracy, epoch)
+            tensorboard_writer.add_scalar("Accuracy/validation", validation_accuracy, epoch)
+
+            # Log weights and gradients
             for name, param in self.named_parameters():
                 tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
                 if param.grad is not None:
                     tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
 
-
     def _validate_model(self, val_loader, criterion, device, epoch):
-            """
-            Runs the validation phase and logs metrics.
+        """
+        Runs the validation phase and logs metrics.
 
-            Parameters:
-                val_loader: Validation DataLoader.
-                criterion: Loss function.
-                device: Device to use (e.g. 'cpu' or 'cuda').
-                epoch: Current epoch (for logging purposes).
+        Parameters:
+            val_loader: Validation DataLoader.
+            criterion: Loss function.
+            device: Device to use (e.g. 'cpu' or 'cuda').
+            epoch: Current epoch (for logging purposes).
 
-            Returns:
-                Average validation loss.
-            """
-            self.eval()  # Set model to evaluation mode
-            val_loss_sum = 0.0
-            num_batches = 0
+        Returns:
+            Average validation loss.
+        """
+        self.eval()  # Set model to evaluation mode
+        val_loss_sum = 0.0
+        num_batches = 0
+        correct = 0
+        total = 0
 
-            with torch.no_grad():
-                for batch in val_loader:
-                    local_context, relative_position, target_action, steps_number = batch
+        with torch.no_grad():
+            for batch in val_loader:
+                local_context, relative_position, target_action, steps_number = batch
 
-                    # Convert target_action to a tensor ensuring it has a batch dimension
-                    if isinstance(target_action, (list, tuple)):
-                        target_action = torch.tensor(target_action, dtype=torch.long).to(device)
-                    else:
-                        target_action = torch.tensor([target_action], dtype=torch.long, device=device)
+                # Convert target_action to a tensor ensuring it has a batch dimension
+                if isinstance(target_action, (list, tuple)):
+                    target_action = torch.tensor(target_action, dtype=torch.long).to(device)
+                else:
+                    target_action = torch.tensor([target_action], dtype=torch.long, device=device)
 
-                    # Ensure local_context is a tensor and at least 2D
-                    if not isinstance(local_context, torch.Tensor):
-                        local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
-                    if local_context.ndim == 1:
-                        local_context = local_context.unsqueeze(0)
-                    # Convert relative_position to a tensor if needed
-                    if not isinstance(relative_position, torch.Tensor):
-                        relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
-                    if relative_position.ndim == 1:
-                        relative_position = relative_position.unsqueeze(0)
+                # Ensure local_context is a tensor and at least 2D
+                if not isinstance(local_context, torch.Tensor):
+                    local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
+                if local_context.ndim == 1:
+                    local_context = local_context.unsqueeze(0)
+                # Convert relative_position to a tensor if needed
+                if not isinstance(relative_position, torch.Tensor):
+                    relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
+                if relative_position.ndim == 1:
+                    relative_position = relative_position.unsqueeze(0)
 
-                    # Ensure steps_number is a tensor with shape (batch_size, 1)
-                    if not isinstance(steps_number, torch.Tensor):
-                        steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
-                    if steps_number.ndim == 0:
-                        steps_number = steps_number.unsqueeze(0)
-                    if steps_number.ndim == 1:
-                        steps_number = steps_number.unsqueeze(1)
+                # Ensure steps_number is a tensor with shape (batch_size, 1)
+                if not isinstance(steps_number, torch.Tensor):
+                    steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
+                if steps_number.ndim == 0:
+                    steps_number = steps_number.unsqueeze(0)
+                if steps_number.ndim == 1:
+                    steps_number = steps_number.unsqueeze(1)
 
-                    # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
-                    inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
-                    # Add a sequence dimension for RNN input: (batch_size, sequence_length, num_features)
-                    inputs = inputs.unsqueeze(1)
+                # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
+                inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
+                # Add a sequence dimension for RNN input: (batch_size, sequence_length, num_features)
+                inputs = inputs.unsqueeze(1)
 
-                    # Forward pass
-                    outputs = self.forward(inputs)
-                    loss = criterion(outputs, target_action)
-                    val_loss_sum += loss.item()
-                    num_batches += 1
+                # Forward pass
+                outputs = self.forward(inputs)
+                loss = criterion(outputs, target_action)
+                val_loss_sum += loss.item()
+                num_batches += 1
 
-            # After the validation loop
-            average_val_loss = val_loss_sum / num_batches if num_batches > 0 else float('inf')
+                # Calculate accuracy
+                _, predicted = torch.max(outputs.data, 1)
+                total += target_action.size(0)
+                correct += (predicted == target_action).sum().item()
 
-            return average_val_loss
+        # After the validation loop
+        average_val_loss = val_loss_sum / num_batches if num_batches > 0 else float('inf')
+        validation_accuracy = correct / total if total > 0 else 0.0
+
+        return average_val_loss, validation_accuracy

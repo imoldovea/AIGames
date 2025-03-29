@@ -12,13 +12,35 @@ app = Dash(__name__)
 
 # Define the layout of the dashboard
 app.layout = html.Div(
-    children=[
-        html.H1(children="Real-Time Training Dashboard"),
-        dcc.Graph(id="training-loss-graph"),
-        dcc.Graph(id="validation-loss-graph"),
+    [
+        html.H1("Training Dashboard"),
+
+        # Existing components
+        html.Div([
+            html.H2("Training Loss"),
+            dcc.Graph(id="training-loss-graph"),
+        ]),
+
+        html.Div([
+            html.H2("Validation Loss"),
+            dcc.Graph(id="validation-loss-graph"),
+        ]),
+
+        # New components for accuracy
+        html.Div([
+            html.H2("Training Accuracy"),
+            dcc.Graph(id="training-accuracy-graph"),
+        ]),
+
+        html.Div([
+            html.H2("Validation Accuracy"),
+            dcc.Graph(id="validation-accuracy-graph"),
+        ]),
+
+        # Interval component
         dcc.Interval(
             id="interval-component",
-            interval=5 * 1000,  # in milliseconds
+            interval=5000,  # in milliseconds
             n_intervals=0,
         ),
     ]
@@ -129,6 +151,111 @@ def update_validation_graph(n):
         }
 
 
+@app.callback(
+    Output("training-accuracy-graph", "figure"),
+    Input("interval-component", "n_intervals"),
+)
+def update_accuracy_graph(n):
+    """
+    Updates the training accuracy graph with data from the loss file.
+    Displays only the training accuracy.
+    """
+    try:
+        df = pd.read_csv(LOSS_FILE)
+
+        # Basic error handling
+        if df.empty or "accuracy" not in df.columns:
+            return {
+                "data": [],
+                "layout": {
+                    "title": "No Accuracy Data Available",
+                    "xaxis": {"title": "Epoch"},
+                    "yaxis": {"title": "Accuracy"},
+                },
+            }
+
+        fig = go.Figure()
+        for model in df["model"].unique():
+            df_model = df[df["model"] == model]
+            fig.add_trace(
+                go.Scatter(
+                    x=df_model["epoch"],
+                    y=df_model["accuracy"],
+                    mode="lines+markers",
+                    name=model,
+                )
+            )
+
+        fig.update_layout(
+            title="Real-Time Training Accuracy",
+            xaxis_title="Epoch",
+            yaxis_title="Accuracy",
+        )
+        return fig
+    except Exception as e:
+        print(f"Error updating training accuracy graph: {e}")
+        return {
+            "data": [],
+            "layout": {
+                "title": f"Error Loading Accuracy Data: {e}",
+                "xaxis": {"title": "Epoch"},
+                "yaxis": {"title": "Accuracy"},
+            },
+        }
+
+
+@app.callback(
+    Output("validation-accuracy-graph", "figure"),
+    Input("interval-component", "n_intervals"),
+)
+def update_validation_accuracy_graph(n):
+    """
+    Updates the validation accuracy graph with data from the loss file.
+    Displays only the validation accuracy.
+    """
+    try:
+        df = pd.read_csv(LOSS_FILE)
+
+        if df.empty or "validation_accuracy" not in df.columns:
+            return {
+                "data": [],
+                "layout": {
+                    "title": "No Validation Accuracy Data Available",
+                    "xaxis": {"title": "Epoch"},
+                    "yaxis": {"title": "Validation Accuracy"},
+                },
+            }
+
+        fig = go.Figure()
+        for model in df["model"].unique():
+            df_model = df[df["model"] == model]
+            fig.add_trace(
+                go.Scatter(
+                    x=df_model["epoch"],
+                    y=df_model["validation_accuracy"],
+                    mode="lines+markers",
+                    name=model,
+                )
+            )
+
+        fig.update_layout(
+            title="Real-Time Validation Accuracy",
+            xaxis_title="Epoch",
+            yaxis_title="Validation Accuracy",
+        )
+        return fig
+    except Exception as e:
+        print(f"Error updating validation accuracy graph: {e}")
+        return {
+            "data": [],
+            "layout": {
+                "title": f"Error Loading Validation Accuracy Data: {e}",
+                "xaxis": {"title": "Epoch"},
+                "yaxis": {"title": "Validation Accuracy"},
+            },
+        }
+
+
 def validate_loss_file(file_path: str) -> bool:
     """
     Validates that the loss file exists and contains the necessary columns.
@@ -139,7 +266,8 @@ def validate_loss_file(file_path: str) -> bool:
             return False
 
         df = pd.read_csv(file_path)
-        required_columns = {"model", "epoch", "loss", "validation_loss"}  # Corrected column check
+        required_columns = {"model", "epoch", "loss", "validation_loss", "time", "accuracy",
+                            "validation_accuracy"}  # Corrected column check
         if not required_columns.issubset(df.columns):
             print(f"Loss file missing required columns: {required_columns}")
             return False
