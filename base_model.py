@@ -110,7 +110,9 @@ class MazeBaseModel(nn.Module):
             # Loop through batches from the data loader
             desc = f"Epoch {epoch} Training Progress"
             iterator = tqdm(dataloader, desc=desc, leave=True)
-            for iteration, (local_context, relative_position, target_action, steps_number) in enumerate(iterator):
+            for iteration, batch in enumerate(tqdm(dataloader, desc=desc, leave=True)):
+                local_context, relative_position, target_action, steps_number = batch
+
                 target_action = target_action.to(device).long()
                 # Convert local_context to PyTorch tensor and ensure it's at least 2D
                 local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
