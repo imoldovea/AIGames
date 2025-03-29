@@ -8,13 +8,14 @@ from configparser import ConfigParser
 
 import numpy as np
 import torch
-import wandb
 from numpy.f2py.auxfuncs import throw_error
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 import utils
+import wandb
 from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
@@ -175,7 +176,7 @@ class RNN2MazeTrainer:
         """
         logging.info("Creating dataset.")
         dataset = []
-        for maze in self.training_mazes:
+        for maze in tqdm(self.training_mazes, desc="Processing training mazes"):
             solution = maze.get_solution()
             start_position = maze.start_position
             for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
@@ -191,7 +192,6 @@ class RNN2MazeTrainer:
                 dataset.append((local_context, relative_position, target_action, steps_number))
 
         validation_dataset = []
-        from tqdm import tqdm
         for maze in tqdm(self.validation_mazes, desc="Processing validation mazes"):
             solution = maze.get_solution()
             if maze.self_test():  # avoid validating on mazes with no solution

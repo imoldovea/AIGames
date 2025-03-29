@@ -1,8 +1,11 @@
 # rnn2_maze_solver.py
 # RNN2MazeSolver
+import os
+
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import logging
-import os
+
 import shutil
 import socket
 import subprocess
