@@ -5,9 +5,9 @@ services:
       dockerfile: Dockerfile
     image: maze-solver
     volumes:
-      - .:/app
-      - ./output:/app/output
-      - ./input:/app/input
+      - "C:/Docker Mount/app:/app"
+      - "C:/Docker Mount/output:/app/output"
+      - "C:/Docker Mount/input:/app/input"
     ports:
       - "8050:8050"
       - "6006:6006"
