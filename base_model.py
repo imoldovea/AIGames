@@ -109,8 +109,11 @@ class MazeBaseModel(nn.Module):
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
             desc = f"Epoch {epoch} Training Progress"
-            iterator = tqdm(dataloader, desc=desc, leave=True)
-            for iteration, batch in enumerate(tqdm(dataloader, desc=desc, leave=True)):
+            iterator = tqdm(dataloader, desc=desc, leave=True)  # using progress bar
+            # iterator = dataloader
+
+            for iteration, batch in enumerate(iterator):
+                logging.debug(f"Training batch {iteration + 1} of {len(dataloader)}")
                 local_context, relative_position, target_action, steps_number = batch
 
                 target_action = target_action.to(device).long()
@@ -119,8 +122,7 @@ class MazeBaseModel(nn.Module):
                 relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
 
                 # If local_context is 1D, convert it to 2D (batch_size, num_features)
-                if local_context.dim() == 1:
-                    local_context = local_context.unsqueeze(0)  # Convert shape (num_features,) → (1, num_features)
+                local_context = local_context.view(-1, local_context.size(-1))
                 if relative_position.dim() == 1:
                     relative_position = relative_position.unsqueeze(0)
 
