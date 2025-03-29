@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y \
 # Set work directory early
 WORKDIR /app
 
+# Create output directory
+RUN mkdir -p /app/output
+
+
 # Copy requirements first to benefit from caching
 COPY requirements.txt .
 
