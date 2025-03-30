@@ -328,7 +328,7 @@ def main():
     # Setup Monitoring
     try:
         if config.getboolean("MONITORING", "wandb",fallback=True):
-            os.environ['WANDB_MODE'] = 'online'
+            os.environ['WANDB_MODE'] = 'offline'
             config_secrets = ConfigParser()
             config_secrets.read(SECRETS)
             wandb.login(key=config_secrets.get("WandB", "api_key"))
@@ -338,6 +338,8 @@ def main():
             }, reinit=True)
 
             wandb_run_url = wandb.run.get_url()
+        else:
+            wandb_run_url = "WandB Disabled"
 
         if config.getboolean("MONITORING", "dashboard", fallback=True):
             dashboard_process = subprocess.Popen(["python", "dashboard.py"])

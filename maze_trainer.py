@@ -8,7 +8,6 @@ from configparser import ConfigParser
 
 import numpy as np
 import torch
-import wandb
 from numpy.f2py.auxfuncs import throw_error
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
@@ -16,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
+import wandb
 from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
@@ -397,7 +397,7 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
         output_size=config.getint("RNN", "output_size", fallback=4),
     )
     rnn_model.to(device)
-    wandb.watch(rnn_model, log="all", log_freq=1000, mode="offline")
+    wandb.watch(rnn_model, log="all", log_freq=1000)
 
     logging.info("Training RNN model")
     rnn_model = rnn_model.train_model(
@@ -428,7 +428,7 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         output_size=config.getint("GRU", "output_size", fallback=4),
     )
     gru_model.to(device)
-    wandb.watch(gru_model, log="all", log_freq=1000, mode="offline")
+    wandb.watch(gru_model, log="all", log_freq=1000)
 
     logging.info("Training GRU model")
     gru_model = gru_model.train_model(
@@ -458,7 +458,7 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         output_size=config.getint("LSTM", "output_size", fallback=4),
     )
     lstm_model.to(device)
-    wandb.watch(lstm_model, log="all", log_freq=1000, mode="offline")
+    wandb.watch(lstm_model, log="all", log_freq=1000)
 
     logging.info("Training LSTM model")
     lstm_model = lstm_model.train_model(
