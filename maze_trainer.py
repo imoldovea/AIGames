@@ -38,6 +38,7 @@ LOSS_FILE = f"{OUTPUT}loss_data.csv"
 
 TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
 VALIDATION_MAZES_FILE = f"{INPUT}validation_mazes.pkl"
+wandb_enabled = config.getboolean("MONITORING", "wandb", fallback=True)
 
 # -------------------------------
 # Custom Dataset for Training Samples
@@ -338,7 +339,7 @@ def train_models(allowed_models):
         logging.info(f"GPU Name: {gpu_props.name}, Multiprocessor Count: {multiproc_count}")
 
         # Distribute CPU cores among GPU multiprocessors, ensuring at least one worker per multiprocessor
-        num_workers = max(num_cores, multiproc_count * 2)
+        num_workers = min(max(num_cores, multiproc_count), 20)
 
     else:
         num_workers = num_cores
@@ -397,7 +398,8 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
         output_size=config.getint("RNN", "output_size", fallback=4),
     )
     rnn_model.to(device)
-    wandb.watch(rnn_model, log="all", log_freq=1000)
+    if wandb_enabled:
+        wandb.watch(rnn_model, log="all", log_freq=1000)
 
     logging.info("Training RNN model")
     rnn_model = rnn_model.train_model(
@@ -413,7 +415,8 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
     logging.info(f"Done training RNN model. Loss {loss:.4f}")
     torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
     logging.info("Saved RNN model")
-    wandb.log({"RNN_final_loss": loss})
+    if wandb_enabled:
+        wandb.log({"RNN_final_loss": loss})
     tensorboard_data_sever.add_scalar("Loss/RNN_final_loss", loss)
 
     return rnn_model
@@ -428,7 +431,8 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         output_size=config.getint("GRU", "output_size", fallback=4),
     )
     gru_model.to(device)
-    wandb.watch(gru_model, log="all", log_freq=1000)
+    if wandb_enabled:
+        wandb.watch(gru_model, log="all", log_freq=1000)
 
     logging.info("Training GRU model")
     gru_model = gru_model.train_model(
@@ -443,7 +447,8 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
     loss = gru_model.last_loss
     torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
     logging.info(f"Done training GRU model. Loss {loss:.4f}")
-    wandb.log({"GRU_final_loss": loss})
+    if wandb_enabled:
+        wandb.log({"GRU_final_loss": loss})
     tensorboard_data_sever.add_scalar("Loss/GRU_final_loss", loss)
 
     return gru_model
@@ -458,7 +463,8 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         output_size=config.getint("LSTM", "output_size", fallback=4),
     )
     lstm_model.to(device)
-    wandb.watch(lstm_model, log="all", log_freq=1000)
+    if wandb_enabled:
+        wandb.watch(lstm_model, log="all", log_freq=1000)
 
     logging.info("Training LSTM model")
     lstm_model = lstm_model.train_model(
@@ -473,7 +479,8 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
     loss = lstm_model.last_loss
     torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
     logging.info(f"Done training LSTM model. Loss {loss:.4f}")
-    wandb.log({"LSTM_final_loss": loss})
+    if wandb_enabled:
+        wandb.log({"LSTM_final_loss": loss})
     tensorboard_data_sever.add_scalar("Loss/LSTM_final_loss", loss)
 
     return lstm_model
