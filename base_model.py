@@ -1,11 +1,15 @@
 # base_model.py
 # MazeBaseModel
 
+import cProfile
 import csv
+import io
 import logging
 import os
+import pstats
 import time
 from configparser import ConfigParser
+from functools import wraps
 
 import torch
 import torch.nn as nn
@@ -50,6 +54,38 @@ class MazeBaseModel(nn.Module):
                 weights.append((name, param.detach().cpu().numpy()))
         return weights
 
+    def profile_method(output_file=None):
+        """Decorator for profiling a method"""
+
+        def decorator(func):
+            @wraps(func)
+            def wrapper(self, *args, **kwargs):
+                profiler = cProfile.Profile()
+                profiler.enable()
+
+                result = func(self, *args, **kwargs)
+
+                profiler.disable()
+
+                # Print stats
+                s = io.StringIO()
+                ps = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+                ps.print_stats(30)  # Print top 30 time-consuming functions
+                print(s.getvalue())
+
+                # Optionally save to file
+                if output_file:
+                    ps.dump_stats(output_file)
+                    print(f"Profile data saved to {output_file}")
+
+                return result
+
+            return wrapper
+
+        return decorator
+
+    # Then modify the train_model method by adding the decorator
+    @profile_method(output_file=f"{OUTPUT}train_model_profile.prof")
     def train_model(self, dataloader, val_loader, num_epochs=20, learning_rate=0.001, weight_decay=0.001,
                     device='cpu', tensorboard_writer=None):
         """
