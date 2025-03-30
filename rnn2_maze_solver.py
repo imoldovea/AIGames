@@ -414,6 +414,8 @@ def main():
             logging.info("Closing Dash Dashboard...")
             dashboard_process = subprocess.Popen(["python", "dashboard.py"])
 
+        logging.info("All done!")
+
     finally:
         try:
             if config.getboolean("MONITORING", "dashboard", fallback=True):
