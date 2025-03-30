@@ -338,14 +338,18 @@ def train_models(allowed_models):
         logging.info(f"GPU Name: {gpu_props.name}, Multiprocessor Count: {multiproc_count}")
 
         # Distribute CPU cores among GPU multiprocessors, ensuring at least one worker per multiprocessor
-        num_workers = min(num_cores, multiproc_count)
+        num_workers = max(num_cores, multiproc_count * 2)
 
     else:
         num_workers = num_cores
 
     # Assuming train_ds and batch_size are defined elsewhere
-    dataloader = DataLoader(train_ds, batch_size, shuffle=True, num_workers=num_workers)
-
+    dataloader = DataLoader(train_ds,
+                            batch_size,
+                            shuffle=True,
+                            num_workers=num_workers,
+                            pin_memory=True,
+                            persistent_workers=True)
 
     logging.info(f"Number of CPU cores: {num_cores}, Number of workers: {num_workers}")
     logging.info(f'Using device: {device}')
@@ -393,7 +397,7 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
         output_size=config.getint("RNN", "output_size", fallback=4),
     )
     rnn_model.to(device)
-    wandb.watch(rnn_model, log="all", log_freq=10)
+    wandb.watch(rnn_model, log="all", log_freq=1000, mode="offline")
 
     logging.info("Training RNN model")
     rnn_model = rnn_model.train_model(
@@ -424,7 +428,7 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         output_size=config.getint("GRU", "output_size", fallback=4),
     )
     gru_model.to(device)
-    wandb.watch(gru_model, log="all", log_freq=10)
+    wandb.watch(gru_model, log="all", log_freq=1000, mode="offline")
 
     logging.info("Training GRU model")
     gru_model = gru_model.train_model(
@@ -454,7 +458,7 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         output_size=config.getint("LSTM", "output_size", fallback=4),
     )
     lstm_model.to(device)
-    wandb.watch(lstm_model, log="all", log_freq=10)
+    wandb.watch(lstm_model, log="all", log_freq=1000, mode="offline")
 
     logging.info("Training LSTM model")
     lstm_model = lstm_model.train_model(

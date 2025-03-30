@@ -144,9 +144,38 @@ class MazeBaseModel(nn.Module):
             total = 0
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
-            desc = f"Epoch {epoch} Training Progress"
+            desc = f"Epoch {epoch + 1} Training Progress"
             iterator = tqdm(dataloader, desc=desc, leave=True)  # using progress bar
-            # iterator = dataloader
+
+            # ##Profile
+            # first_batch_start = time.time()
+            # iterator = tqdm(dataloader, desc=desc, leave=True)  # using progress bar
+            #
+            # # Get the first batch (this will help identify if the slowdown is in data loading)
+            # first_batch_start = time.time()
+            # try:
+            #     # Get iterator but don't consume first batch yet
+            #     iterator_obj = iter(iterator)
+            #     logging.info(f"Time to create iterator: {time.time() - first_batch_start:.4f}s")
+            #
+            #     # Now get first batch
+            #     batch_start = time.time()
+            #     first_batch = next(iterator_obj, None)
+            #     logging.info(f"Time to get first batch: {time.time() - batch_start:.4f}s")
+            # except StopIteration:
+            #     logging.warning("Dataloader is empty")
+            #
+            # # Stop profiling and print results
+            # profiler.disable()
+            # s = io.StringIO()
+            # stats = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+            # stats.print_stats(20)
+            # logging.info(f"Profiling for epoch {epoch} initialization:\n{s.getvalue()}")
+            # ##END Profiling
+
+            # Now continue with the normal training loop
+            # Reset iterator to start from beginning
+            iterator = tqdm(dataloader, desc=desc, leave=True)
 
             for iteration, batch in enumerate(iterator):
                 logging.debug(f"Training batch {iteration + 1} of {len(dataloader)}")
