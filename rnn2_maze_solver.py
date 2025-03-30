@@ -163,7 +163,7 @@ class RNN2MazeSolver(MazeSolver):
                 self.maze.move(current_pos)
         else:
             if self.maze.exit != current_pos:
-                logging.warning(f"Reached max steps ({max_steps}) without finding a solution.")
+                logging.debug(f"Reached max steps ({max_steps}) without finding a solution.")
 
         return path
 
