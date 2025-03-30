@@ -1,7 +1,6 @@
 - fix network diagram
-- why stop before max step?
-- Google side processing / Docker
-- Fix loss function
+-  Docker
+
 
 - LLM apprach
 - Genetic algorithm learning
