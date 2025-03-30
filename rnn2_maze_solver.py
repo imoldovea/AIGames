@@ -22,7 +22,7 @@ from chart_utility import (save_neural_network_diagram, save_latest_loss_chart, 
                            visualize_model_activations)
 from maze import Maze  # Assumes maze.py exists
 from maze_solver import MazeSolver
-from maze_trainer import train_models  # Training function from maze_trainer.py
+from maze_trainer import get_models  # Training function from maze_trainer.py
 from utils import load_mazes, save_mazes_as_pdf, setup_logging
 from utils import save_movie
 
@@ -320,10 +320,10 @@ def is_port_in_use(port: int) -> bool:
 def main():
     setup_logging()
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = ConfigParser()
     config.read("config.properties")
-    batch_size = config.getint("DEFAULT", "batch_size")
+    batch_size = config.getint("DEFAULT", "batch_size", fallback=128)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Setup Monitoring
     try:
@@ -375,7 +375,7 @@ def main():
         # training
         logging.debug("Training models...")
 
-        models = train_models(device=device, batch_size=batch_size)
+        models = get_models()
         try:
             if config.getboolean("MONITORING", "save_neural_network_diagram", fallback=True):
                 logging.info("Saving neural network diagram...")

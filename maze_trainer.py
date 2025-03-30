@@ -8,6 +8,7 @@ from configparser import ConfigParser
 
 import numpy as np
 import torch
+import wandb
 from numpy.f2py.auxfuncs import throw_error
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
@@ -15,7 +16,6 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
-import wandb
 from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
@@ -234,7 +234,72 @@ def load_model_state(model, model_path, old_prefix, new_prefix):
             new_state_dict[key] = value
     model.load_state_dict(new_state_dict)
 
-def train_models(device="cpu", batch_size=32):
+
+def get_models():
+    """
+    Loads models from the specified paths, or trainmodels 
+    :return: list of model paths and trained models.
+    """
+    config = ConfigParser()
+    config.read("config.properties")
+
+    # Read the allowed models from the config file. Expected format: "GRU, LSTM, RNN"
+    models_config = config.get("DEFAULT", "models", fallback="GRU,LSTM,RNN")
+    allowed_models = [model.strip().upper() for model in models_config.split(",")]
+
+    retrain_model = config.getboolean("GRU", "retrain_model", fallback=False)
+    if retrain_model:
+        models = train_models(allowed_models)
+    else:
+        models = load_models(allowed_models)
+
+    return models
+
+
+def load_models(allowed_models):
+    """
+    Loads models from the specified paths.
+    :param allowed_models: List of model types to load (e.g., ["RNN", "GRU", "LSTM"])
+    :return: List of loaded models with weights from the input folder
+    """
+
+    models = []
+    for model_name in allowed_models:
+        if model_name == "GRU":
+            gru_model = MazeRecurrentModel(
+                mode_type="GRU",
+                input_size=config.getint("GRU", "input_size", fallback=7),
+                hidden_size=config.getint("GRU", "hidden_size"),
+            )
+            model_path = os.path.join(INPUT, GRU_MODEL_PATH)
+            if os.path.exists(model_path):
+                gru_model.load_state_dict(torch.load(model_path))
+            models.append(("GRU", gru_model))
+        elif model_name == "RNN":
+            rnn_model = MazeRecurrentModel(
+                mode_type="RNN",
+                input_size=config.getint("RNN", "input_size", fallback=7),
+                hidden_size=config.getint("RNN", "hidden_size"),
+            )
+            model_path = os.path.join(INPUT, RNN_MODEL_PATH)
+            if os.path.exists(model_path):
+                rnn_model.load_state_dict(torch.load(model_path))
+            models.append(("RNN", rnn_model))
+        elif model_name == "LSTM":
+            lstm_model = MazeRecurrentModel(
+                mode_type="LSTM",
+                input_size=config.getint("LSTM", "input_size", fallback=7),
+                hidden_size=config.getint("LSTM", "hidden_size"),
+            )
+            model_path = os.path.join(INPUT, LSTM_MODEL_PATH)
+            if os.path.exists(model_path):
+                lstm_model.load_state_dict(torch.load(model_path))
+            models.append(("RNN", lstm_model))
+
+    return models
+
+
+def train_models(allowed_models):
     """
     Trains RNN, GRU, and LSTM models on maze-solving data.
     Returns:
@@ -242,8 +307,9 @@ def train_models(device="cpu", batch_size=32):
     """
     logging.debug("Starting training.")
 
-    config = ConfigParser()
-    config.read("config.properties")
+    trained_models = []
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    batch_size = config.getint("DEFAULT", "batch_size", fallback=128)
 
     #Delete previous tensorboard files.
     try:
@@ -263,11 +329,7 @@ def train_models(device="cpu", batch_size=32):
     validation_ds = ValidationDataset(validation_dataset)
 
     #compute the number of workers.
-    #workers = config.getint("DEFAULT", "num_workers")
-    #num_workers = workers * 8 if device == "cuda" else workers
-
-    # Get number of CPU cores
-    num_cores = os.cpu_count() or 1
+    num_cores = os.cpu_count() or 1  # Get number of CPU cores
     # Get number of GPUs available
     if torch.cuda.is_available():
         # Get properties of the first CUDA device
@@ -284,14 +346,9 @@ def train_models(device="cpu", batch_size=32):
     # Assuming train_ds and batch_size are defined elsewhere
     dataloader = DataLoader(train_ds, batch_size, shuffle=True, num_workers=num_workers)
 
+
     logging.info(f"Number of CPU cores: {num_cores}, Number of workers: {num_workers}")
     logging.info(f'Using device: {device}')
-
-    # Read the allowed models from the config file. Expected format: "GRU, LSTM, RNN"
-    models_config = config.get("DEFAULT", "models", fallback="GRU,LSTM,RNN")
-    allowed_models = [model.strip().upper() for model in models_config.split(",")]
-
-    trained_models = []
 
     for model_name in allowed_models:
         if model_name == "GRU":
@@ -336,28 +393,24 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
         output_size=config.getint("RNN", "output_size", fallback=4),
     )
     rnn_model.to(device)
-    retrain_model = config.getboolean("RNN", "retrain_model", fallback=False)
     wandb.watch(rnn_model, log="all", log_freq=10)
-    if not retrain_model and os.path.exists(RNN_MODEL_PATH):
-        load_model_state(rnn_model, RNN_MODEL_PATH, "rnn.", "recurrent.")
-        logging.info("RNN model loaded from file")
-    else:
-        logging.info("Training RNN model")
-        rnn_model = rnn_model.train_model(
-            dataloader = dataloader,
-            val_loader=validation_ds,
-            num_epochs=config.getint("RNN", "num_epochs"),
-            learning_rate=config.getfloat("RNN", "learning_rate"),
-            weight_decay=config.getfloat("RNN", "weight_decay"),
-            device=device,
-            tensorboard_writer=tensorboard_data_sever
-        )
-        loss = rnn_model.last_loss
-        logging.info(f"Done training RNN model. Loss {loss:.4f}")
-        torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
-        logging.info("Saved RNN model")
-        wandb.log({"RNN_final_loss": loss})
-        tensorboard_data_sever.add_scalar("Loss/RNN_final_loss", loss)
+
+    logging.info("Training RNN model")
+    rnn_model = rnn_model.train_model(
+        dataloader=dataloader,
+        val_loader=validation_ds,
+        num_epochs=config.getint("RNN", "num_epochs"),
+        learning_rate=config.getfloat("RNN", "learning_rate"),
+        weight_decay=config.getfloat("RNN", "weight_decay"),
+        device=device,
+        tensorboard_writer=tensorboard_data_sever
+    )
+    loss = rnn_model.last_loss
+    logging.info(f"Done training RNN model. Loss {loss:.4f}")
+    torch.save(rnn_model.state_dict(), RNN_MODEL_PATH)
+    logging.info("Saved RNN model")
+    wandb.log({"RNN_final_loss": loss})
+    tensorboard_data_sever.add_scalar("Loss/RNN_final_loss", loss)
 
     return rnn_model
 
@@ -371,27 +424,24 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         output_size=config.getint("GRU", "output_size", fallback=4),
     )
     gru_model.to(device)
-    retrain_model = config.getboolean("GRU", "retrain_model", fallback=False)
     wandb.watch(gru_model, log="all", log_freq=10)
-    if not retrain_model and os.path.exists(GRU_MODEL_PATH):
-        load_model_state(gru_model, GRU_MODEL_PATH, "gru.", "recurrent.")
-        logging.debug("GRU model loaded from file.")
-    else:
-        logging.info("Training GRU model")
-        gru_model = gru_model.train_model(
-            dataloader=dataloader,
-            val_loader=validation_ds,
-            num_epochs=config.getint("GRU", "num_epochs"),
-            learning_rate=config.getfloat("GRU", "learning_rate"),
-            weight_decay=config.getfloat("GRU", "weight_decay"),
-            device=device,
-            tensorboard_writer=tensorboard_data_sever
-        )
-        loss = gru_model.last_loss
-        torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
-        logging.info(f"Done training GRU model. Loss {loss:.4f}")
-        wandb.log({"GRU_final_loss": loss})
-        tensorboard_data_sever.add_scalar("Loss/GRU_final_loss", loss)
+
+    logging.info("Training GRU model")
+    gru_model = gru_model.train_model(
+        dataloader=dataloader,
+        val_loader=validation_ds,
+        num_epochs=config.getint("GRU", "num_epochs"),
+        learning_rate=config.getfloat("GRU", "learning_rate"),
+        weight_decay=config.getfloat("GRU", "weight_decay"),
+        device=device,
+        tensorboard_writer=tensorboard_data_sever
+    )
+    loss = gru_model.last_loss
+    torch.save(gru_model.state_dict(), GRU_MODEL_PATH)
+    logging.info(f"Done training GRU model. Loss {loss:.4f}")
+    wandb.log({"GRU_final_loss": loss})
+    tensorboard_data_sever.add_scalar("Loss/GRU_final_loss", loss)
+
     return gru_model
 
 def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever) -> MazeRecurrentModel:
@@ -404,26 +454,22 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         output_size=config.getint("LSTM", "output_size", fallback=4),
     )
     lstm_model.to(device)
-    retrain_model = config.getboolean("LSTM", "retrain_model", fallback=False)
     wandb.watch(lstm_model, log="all", log_freq=10)
-    if not retrain_model and os.path.exists(LSTM_MODEL_PATH):
-        load_model_state(lstm_model, LSTM_MODEL_PATH, "lstm.", "recurrent.")
-        logging.info("LSTM model loaded from file.")
-    else:
-        logging.info("Training LSTM model")
-        lstm_model = lstm_model.train_model(
-            dataloader = dataloader,
-            val_loader=validation_ds,
-            num_epochs=config.getint("LSTM", "num_epochs"),
-            learning_rate=config.getfloat("LSTM", "learning_rate"),
-            weight_decay=config.getfloat("LSTM", "weight_decay"),
-            device=device,
-            tensorboard_writer=tensorboard_data_sever
-        )
-        loss = lstm_model.last_loss
-        torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
-        logging.info(f"Done training LSTM model. Loss {loss:.4f}")
-        wandb.log({"LSTM_final_loss": loss})
-        tensorboard_data_sever.add_scalar("Loss/LSTM_final_loss", loss)
+
+    logging.info("Training LSTM model")
+    lstm_model = lstm_model.train_model(
+        dataloader=dataloader,
+        val_loader=validation_ds,
+        num_epochs=config.getint("LSTM", "num_epochs"),
+        learning_rate=config.getfloat("LSTM", "learning_rate"),
+        weight_decay=config.getfloat("LSTM", "weight_decay"),
+        device=device,
+        tensorboard_writer=tensorboard_data_sever
+    )
+    loss = lstm_model.last_loss
+    torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
+    logging.info(f"Done training LSTM model. Loss {loss:.4f}")
+    wandb.log({"LSTM_final_loss": loss})
+    tensorboard_data_sever.add_scalar("Loss/LSTM_final_loss", loss)
 
     return lstm_model

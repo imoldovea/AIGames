@@ -231,6 +231,9 @@ def save_neural_network_diagram(models, output_dir="output/"):
     with PdfPages(pdf_path) as pdf:
         for idx, (_, model) in enumerate(models):
             model.eval()  # Set model to evaluation mode
+            # Move model to appropriate device (GPU or CPU)
+            model = model.to(device)
+
             logging.debug(f"Processing model: {model}")
 
             input_size = config.getint("DEFAULT", "input_size", fallback=7)
