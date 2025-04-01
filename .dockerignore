@@ -1,1 +1,5 @@
-
+wandb/
+*.log
+__pycache__/
+.git/
+.gitignore
