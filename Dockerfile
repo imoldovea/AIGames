@@ -18,7 +18,8 @@ RUN mkdir -p /app/output
 COPY requirements.txt .
 
 # Use pip cache to speed up rebuilds (requires BuildKit)
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+#RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+RUN pip install -r requirements.txt
 
 # Copy the rest of the source
 COPY . .
