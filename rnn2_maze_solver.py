@@ -395,7 +395,7 @@ def main():
             logging.info("Generating model weights...")
             visualize_model_weights(models)
 
-        mazes = load_mazes(TEST_MAZES_FILE)
+        mazes = [Maze(maze_array) for maze_array in load_mazes(TEST_MAZES_FILE)]
         for maze in mazes:
             maze.save_movie = True
             maze.animate = False
