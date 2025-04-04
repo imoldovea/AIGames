@@ -396,6 +396,9 @@ def main():
             visualize_model_weights(models)
 
         mazes = load_mazes(TEST_MAZES_FILE)
+        for maze in mazes:
+            maze.save_maze = True
+            maze.animate = False
 
         # Apply the model to the test data.
         solved_mazes, model_success_rates = rnn2_solver(models = models, mazes = mazes, device = device)

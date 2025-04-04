@@ -113,6 +113,11 @@ class MazeBaseModel(nn.Module):
             num_epochs = 2
 
         self.to(device)
+
+        # Add PyTorch 2.0+ compilation if available
+        if hasattr(torch, 'compile'):
+            self = torch.compile(self)
+
         # Set up early stopping patience to monitor overfitting
         patience = config.getint("DEFAULT", "patience", fallback=5)
         improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
@@ -135,6 +140,8 @@ class MazeBaseModel(nn.Module):
         # Set up a counter and best loss value for early stopping
         best_validation_loss = float("inf")
         early_stopping_counter = 0
+
+        ccumulation_steps = 2
 
         for epoch in range(num_epochs):
             # network performance monitoring
@@ -176,6 +183,7 @@ class MazeBaseModel(nn.Module):
 
                 # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
                 inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
+                inputs.to(device)
                 # Add sequence dimension for RNN input
                 inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
 
@@ -185,6 +193,7 @@ class MazeBaseModel(nn.Module):
 
                 # Forward pass
                 outputs = self.forward(inputs)  # Pass input through the model
+                outputs.to(device)
                 loss = criterion(outputs, target_action)  # Compute cross-entropy loss
 
                 optimizer.zero_grad()  # Clear previous gradients

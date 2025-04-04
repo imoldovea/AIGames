@@ -16,7 +16,6 @@ from tqdm import tqdm
 
 import utils
 import wandb
-from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
 from model import MazeRecurrentModel
@@ -44,8 +43,16 @@ wandb_enabled = config.getboolean("MONITORING", "wandb", fallback=True)
 # Custom Dataset for Training Samples
 # -------------------------------
 class MazeTrainingDataset(Dataset):
+    """
+    Custom dataset for training the maze navigation model.
+    This class processes the data to return context about the current maze cell,
+    the relative position, the target action, and the normalized step number.
+    """
+
     def __init__(self, data):
         """
+        Initializes the dataset.
+
         Args:
             data (list): List of tuples containing:
                 - local_context (list): State of maze cells around the current position.
@@ -53,7 +60,7 @@ class MazeTrainingDataset(Dataset):
                 - step_number (int): Step number in the solution path.
         """
         self.data = data
-        #max_steps = max(sample[2] for sample in data)
+        # Get the maximum number of steps allowed for a maze solution from the configuration.
         max_steps = config.getint("DEFAULT", "max_steps")
         self.max_steps = max_steps
 
@@ -68,26 +75,32 @@ class MazeTrainingDataset(Dataset):
                 target_action,
                 step_number_normalized)
 
+
 class ValidationDataset(MazeTrainingDataset):
     """
-    Subclass of MazeTrainingDataset to handle validation data.
-    Loads validation mazes from a specified file.
+    Subclass of MazeTrainingDataset used for handling validation datasets.
+    Ensures that the validation dataset is not empty and calculates
+    the maximum steps required for normalized step calculations.
     """
 
     def __init__(self, data):
         """
+        Initializes the validation dataset.
+
         Args:
             data (list): List of tuples containing:
                 - local_context (list): State of maze cells around the current position.
                 - target_action (int): Action to take (0: up, 1: down, 2: left, 3: right).
                 - step_number (int): Step number in the solution path.
         """
-        super().__init__(data)  # Pass data to parent constructor
+        super().__init__(data)  # Call the parent dataset initializations
         self.data = data
         if len(data) == 0:
-            self.max_steps = 0  # or raise a custom error if an empty dataset is not acceptable
+            # Validation datasets must not be empty, raise an error if empty.
+            self.max_steps = 0
             raise ValueError("Validation dataset is empty.")
         else:
+            # Calculate the maximum step count from the dataset.
             max_steps = max(sample[2] for sample in data)
             self.max_steps = max_steps
 
@@ -106,18 +119,34 @@ class ValidationDataset(MazeTrainingDataset):
 # Training Utilities (Imitation Learning Setup)
 # -------------------------------
 class RNN2MazeTrainer:
-    def __init__(self, training_file_path="input/training_mazes.pkl", validation_file_path="input/validation_mazes.pkl"):
+    """
+    Handles training and validation data preparation for maze navigation models.
+    The class processes training mazes, applies solutions, and prepares the datasets
+    for recurrent neural network models.
+    """
+
+    def __init__(self, training_file_path="input/training_mazes.pkl",
+                 validation_file_path="input/validation_mazes.pkl"):
         """
-        Loads and processes training mazes.
+        Initializes the trainer by loading and processing training and validation mazes.
+
+        Args:
+            training_file_path (str): Path to the training mazes pickle file.
+            validation_file_path (str): Path to the validation mazes pickle file.
         """
         self.training_file_path = training_file_path
         self.validation_file_path = validation_file_path
+
+        # Load the configuration file to retrieve parameters for training.
         config = ConfigParser()
         config.read("config.properties")
+
+        # Check if development mode is enabled, reducing the training dataset size.
         if config.getboolean("DEFAULT", "development_mode", fallback=False):
             logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
             training_samples = 10
         else:
+            # Load the total number of training samples allowed.
             training_samples = config.getint("DEFAULT", "training_samples", fallback=100000)
 
         if training_samples < 10:
@@ -167,7 +196,10 @@ class RNN2MazeTrainer:
         maze = Maze(data)
         if not maze.self_test():
             logging.warning(f"Maze {index + 1} failed validation.")
-        solver = BacktrackingMazeSolver(maze)
+
+        solver_obj = config.get("DEFAULT", "solver", fallback="BacktrackingMazeSolver")
+        solver = globals()[solver_obj]()
+
         maze.set_solution(solver.solve())
         return maze
 
@@ -210,13 +242,36 @@ class RNN2MazeTrainer:
         return dataset, validation_dataset
 
     def _compute_local_context(self, maze, position, directions):
+        """
+        Generates the local context around a position in the maze.
+    
+        Args:
+            maze (Maze): The current maze grid.
+            position (tuple): Current position coordinates (row, column).
+            directions (list): Possible movement directions in the maze.
+    
+        Returns:
+            list: Values of the maze cells around the position, with invalid
+                  cells marked as WALL.
+        """
         r, c = position
-        local_context = []
-        for dr, dc in directions:
-            neighbor = (r + dr, c + dc)
-            cell_state = maze.grid[neighbor] if maze.is_within_bounds(neighbor) else WALL
-            local_context.append(cell_state)
-        return local_context
+        directions = np.array(directions)
+
+        # Compute the coordinates of neighboring cells for each direction.
+        neighbors = directions + np.array([r, c])
+
+        # Create a mask to retain only valid neighbors within the maze boundaries.
+        mask = np.apply_along_axis(maze.is_within_bounds, 1, neighbors)
+
+        # Initialize local context array, marking all as walls by default.
+        local_context = np.full(len(directions), WALL, dtype=maze.grid.dtype)
+
+        # For valid neighbors, update the local context with their values.
+        valid_neighbors = neighbors[mask]
+        local_context[mask] = maze.grid[valid_neighbors[:, 0], valid_neighbors[:, 1]]
+
+        return local_context.tolist()
+
 
 # -------------------------------
 # Model Training Function

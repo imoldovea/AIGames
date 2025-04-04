@@ -6,7 +6,9 @@ import traceback
 
 from backtrack_maze_solver import BacktrackingMazeSolver
 from bfs_maze_solver import BFSMazeSolver
+from grpah_maze_solver import AStarMazeSolver
 from maze import Maze
+from optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from utils import (
     save_movie,
     display_all_mazes,
@@ -31,7 +33,8 @@ def solve_all_mazes(mazes, solver_class):
     solved_mazes = []
     for i, maze in enumerate(mazes):
         maze_obj = Maze(maze)
-        maze_obj.set_save_movie(True)
+        maze_obj.animate = False
+        maze_obj.save_movie = True
         solver = solver_class(maze_obj)
 
         try:
@@ -54,28 +57,44 @@ def main():
     try:
         # Step 1: Load mazes
         mazes = load_mazes(input_mazes)
+        all_solved_mazes = []
 
         s = io.StringIO()
         pr = cProfile.Profile()
 
         # Step 2: Solve
         pr.enable()
-        solved_mazes_backtrack = solve_all_mazes(mazes, BacktrackingMazeSolver)
+        solved_mazes = solve_all_mazes(mazes, BacktrackingMazeSolver)
         pr.disable()
         ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
         ps.print_stats(10)  # Show top 10 functions by cumulative time
         logging.info(f"Backtracking execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        all_solved_mazes.extend(solved_mazes)
+
+        solved_mazes = solve_all_mazes(mazes, OptimizedBacktrackingMazeSolver)
+        pr.disable()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        ps.print_stats(10)  # Show top 10 functions by cumulative time
+        logging.info(f"OptimizedBacktracking execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        all_solved_mazes.extend(solved_mazes)
 
         pr.enable()
-        solved_mazes_bfs = solve_all_mazes(mazes, BFSMazeSolver)
+        solved_mazes = solve_all_mazes(mazes, BFSMazeSolver)
         pr.disable()
         ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
         logging.info(f"BFS execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        all_solved_mazes.extend(solved_mazes)
+
+        pr.enable()
+        solved_mazes = solve_all_mazes(mazes, AStarMazeSolver)
+        pr.disable()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        logging.info(f"Graph execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        all_solved_mazes.extend(solved_mazes)
 
         # Step 3: Save mazes to PDF
-        solved_mazes = solved_mazes_backtrack + solved_mazes_bfs
         broken_mazes = []
-        for maze in solved_mazes:
+        for maze in all_solved_mazes:
             if not maze.test_solution():
                 logging.warning(f"Maze {maze.maze_id} has no solution.")
                 solved_mazes.remove(maze)
@@ -85,12 +104,9 @@ def main():
         else:
             logging.info("All mazes solved successfully.")
         display_all_mazes(solved_mazes)
-        save_mazes_as_pdf(solved_mazes, output_pdf)
+        save_mazes_as_pdf(all_solved_mazes, output_pdf)
 
-        pr.enable()
-        save_movie(solved_mazes, output_mp4)
-        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        logging.info(f"BFS execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        save_movie(all_solved_mazes, output_mp4)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")

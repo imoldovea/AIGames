@@ -39,20 +39,24 @@ class Maze:
         self.rows, self.cols = self.grid.shape
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
-        self.visited_cells = []
+        self.visited_cells = set()
         self.animate = False
         self.save_movie = False
         self.raw_movie = []
         self.algorithm = None
         self.valid_solution = False
 
+        # cash
+        self._bounds_cache = {}
+        self._wall_cache = {}
+        self._corridor_cache = {}
+
         # Locate the starting position using the provided start_marker
-        start_positions = np.argwhere(self.grid == self.START)
-        if start_positions.size == 0:
+        start_indices = np.where(self.grid == self.START)
+        if len(start_indices[0]) == 0:
             self.logger.error("Starting marker %d not found in maze matrix.", self.START)
             raise ValueError(f"Starting marker not found in maze matrix.")
-        self.start_position = tuple(start_positions[0])
-        self.current_position = self.start_position
+        self.start_position = (int(start_indices[0][0]), int(start_indices[1][0]))
         self.current_position = self.start_position
 
         # Replace the starting marker with a corridor (0)
@@ -66,6 +70,12 @@ class Maze:
         self.set_exit()
         self.self_test()
 
+    def is_within_bounds(self, position):
+        if position not in self._bounds_cache:
+            r, c = position
+            self._bounds_cache[position] = 0 <= r < self.rows and 0 <= c < self.cols
+        return self._bounds_cache[position]
+
     def set_exit(self):
         """
         Automatically sets the exit position as the first '0'
@@ -78,10 +88,6 @@ class Maze:
                     return
         self.logger.error("No valid exit found on the maze border.")
         raise ValueError("No valid exit found on the maze border.")
-
-    def is_within_bounds(self, position):
-        r, c = position
-        return 0 <= r < self.rows and 0 <= c < self.cols
 
     def is_wall(self, position):
         if not self.is_within_bounds(position):
@@ -116,8 +122,8 @@ class Maze:
 
             if backtrack:
                 self.path.pop()
-                if position not in self.visited_cells:
-                    self.visited_cells.append(position)
+                self.visited_cells.add(position)
+
 
             if self.animate:
                 self.plot_maze()
@@ -415,7 +421,7 @@ class Maze:
 
         return resized_image
 
-    def get_maze_as_png(self, show_path=False, show_solution=True, show_position=False) -> np.ndarray:
+    def get_maze_as_png(self, show_path=True, show_solution=True, show_position=False) -> np.ndarray:
         """
         Returns the current maze configuration as an RGB NumPy image.
 
@@ -464,7 +470,7 @@ class Maze:
                         t = idx / (path_length - 1) if path_length > 1 else 0
                         color = [0, 255, int(255 * t)]
                         image_data[r, c] = color
-                for (r, c) in self.visited_cells:  # show visited cells.
+                for (r, c) in self.visited_cells:
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         image_data[r, c] = [128, 128, 128]
 

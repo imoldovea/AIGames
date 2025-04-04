@@ -1,8 +1,8 @@
+# backtrack_maze_solver.py
+
 import logging
 import pickle
 import traceback
-
-from numpy.f2py.auxfuncs import throw_error
 
 from maze import Maze
 from maze_solver import MazeSolver
@@ -18,52 +18,107 @@ class BacktrackingMazeSolver(MazeSolver):
         """
         self.maze = maze
         maze.set_algorithm(self.__class__.__name__)
+        # Cache for neighbor calculations
+        self._neighbors_cache = {}
 
     def solve(self):
         """
-            Attempts to solve the maze using recursive backtracking.
+        Attempts to solve the maze using recursive backtracking.
 
-            Returns:
-                A list of (row, col) coordinates representing the path from the start to the exit,
-                or None if no solution is found.
-            """
+        Returns:
+            A list of (row, col) coordinates representing the path from the start to the exit,
+            or None if no solution is found.
+        """
         if self.maze.exit is None:
             raise ValueError("Maze exit is not set.")
+
+        # Pre-calculate the valid neighbors for each position to avoid redundant calculations
+        self._precompute_neighbors()
+
         visited = set()
         path = []
         solution = self._dfs(self.maze.start_position, visited, path)
+
         if solution is not None:
             # Optionally update the maze's path to the solution found
             self.maze.path = solution
+
         return solution
+
+    def _precompute_neighbors(self):
+        """
+        Pre-compute valid neighbors for each position in the maze.
+        This reduces redundant calculations during the DFS traversal.
+        """
+        rows, cols = self.maze.rows, self.maze.cols
+        for r in range(rows):
+            for c in range(cols):
+                if not self.maze.is_wall((r, c)):
+                    self._neighbors_cache[(r, c)] = list(self.maze.get_neighbors((r, c)))
+
+    def _get_cached_neighbors(self, position):
+        """
+        Return cached neighbors if available, otherwise compute them.
+        """
+        if position not in self._neighbors_cache:
+            self._neighbors_cache[position] = list(self.maze.get_neighbors(position))
+        return self._neighbors_cache[position]
 
     def _dfs(self, current, visited, path):
         """
         Helper method that performs depth-first search from the current position.
+        Optimized with caching and early exit.
         """
-        visited.add(current)
-        path.append(current)
+        # Stack-based DFS implementation to avoid deep recursion
+        stack = [(current, None)]  # (position, parent_index)
+        parent_indices = {}
 
-        # Animate the current position
-        self.maze.move(current)
+        while stack:
+            position, parent_idx = stack.pop()
 
-        # Check if we've reached the exit
-        if current == self.maze.exit:
-            return path.copy()
+            if position in visited:
+                continue
 
-        # Explore valid neighbors not yet visited
-        for neighbor in self.maze.get_neighbors(current):
-            if neighbor not in visited:
-                sol = self._dfs(neighbor, visited, path)
-                if sol is not None:
-                    return sol
+            # Add position to visited set and determine path index
+            visited.add(position)
 
-        # Animate the current position
-        self.maze.move(current,backtrack=True)
-        # Backtrack if no path found from the current position
-        path.pop()
+            # Update parent indices
+            if parent_idx is not None:
+                parent_indices[position] = parent_idx
+
+            # Animate only when necessary
+            self.maze.move(position)
+
+            # Check if we've reached the exit
+            if position == self.maze.exit:
+                # Reconstruct path
+                solution = self._reconstruct_path(position, parent_indices)
+                return solution
+
+            # Add unvisited neighbors to stack
+            for neighbor in reversed(self._get_cached_neighbors(position)):
+                if neighbor not in visited:
+                    stack.append((neighbor, position))
+
+            # If this position has no valid next moves, animate backtracking
+            if all(neighbor in visited for neighbor in self._get_cached_neighbors(position)):
+                self.maze.move(position, backtrack=True)
 
         return None
+
+    def _reconstruct_path(self, end_position, parent_indices):
+        """
+        Reconstruct the path from start to end using parent indices.
+        """
+        path = [end_position]
+        current = end_position
+
+        while current in parent_indices:
+            current = parent_indices[current]
+            path.append(current)
+
+        return list(reversed(path))
+
 
 # Example test function
 def backtracking_solver() -> None:
@@ -78,16 +133,10 @@ def backtracking_solver() -> None:
             mazes = pickle.load(f)
         logging.info(f"Loaded {len(mazes)} mazes.")
 
-
         # Iterate through each maze in the array
         for i, maze_matrix in enumerate(mazes):
             maze = Maze(maze_matrix)
-
             logging.debug(f"Solving maze {i + 1}...")
-
-            # Create a Maze object from the maze matrix
-            maze.set_animate(False)
-            maze.set_save_movie(False)
 
             # Instantiate the backtracking maze solver
             solver = BacktrackingMazeSolver(maze)
@@ -101,16 +150,15 @@ def backtracking_solver() -> None:
 
             # Visualize the solved maze (with the solution path highlighted)
             maze.set_solution(solution)
-            maze.plot_maze(show_path=False, show_solution=True,show_position=False)
+            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
-        throw_error(e)
-
+        raise e
 
 
 if __name__ == '__main__':
-    #setup logging
+    # Setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.debug("Logging is configured.")
