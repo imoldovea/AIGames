@@ -114,10 +114,6 @@ class MazeBaseModel(nn.Module):
 
         self.to(device)
 
-        # Add PyTorch 2.0+ compilation if available
-        if hasattr(torch, 'compile'):
-            self = torch.compile(self)
-
         # Set up early stopping patience to monitor overfitting
         patience = config.getint("DEFAULT", "patience", fallback=5)
         improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
