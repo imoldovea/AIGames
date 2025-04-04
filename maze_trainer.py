@@ -198,7 +198,8 @@ class RNN2MazeTrainer:
             logging.warning(f"Maze {index + 1} failed validation.")
 
         solver_obj = config.get("DEFAULT", "solver", fallback="BacktrackingMazeSolver")
-        solver = globals()[solver_obj]()
+        # Pass the maze object to the solver constructor
+        solver = globals()[solver_obj](maze)
 
         maze.set_solution(solver.solve())
         return maze
