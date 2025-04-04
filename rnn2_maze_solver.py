@@ -372,7 +372,6 @@ def main():
             f"\nWandB dashboard: {wandb_run_url}, \n"
             f"TensorBoard: {tensorboard_url}, \n"
             f"Dash Dashboard: {dash_dashboard_url}.\n "
-            "Waiting for models to be trained."
         )
 
         # training

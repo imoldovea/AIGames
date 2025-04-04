@@ -304,6 +304,24 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 
 
+def load_mazes(file_path="input/mazes.pkl"):
+    """
+    Loads mazes from a numpy file.
+
+    Args:
+        file_path (str): Path to the numpy file containing mazes.
+
+    Returns:
+        list: A list of maze matrices.
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            mazes = pickle.load(f)
+        logging.info(f"Loaded {len(mazes)} mazes.")
+        return mazes
+    except Exception as e:
+        raise FileNotFoundError(f"Could not load mazes from {file_path}: {e}")
+
 def load_mazes(file_path = "input/mazes.pkl"):
     """
     Loads mazes from a numpy file.

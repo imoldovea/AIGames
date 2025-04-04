@@ -9,6 +9,7 @@ from bfs_maze_solver import BFSMazeSolver
 from grpah_maze_solver import AStarMazeSolver
 from maze import Maze
 from optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
+from pladge_maze_solver import PledgeMazeSolver
 from utils import (
     save_movie,
     display_all_mazes,
@@ -90,6 +91,13 @@ def main():
         pr.disable()
         ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
         logging.info(f"Graph execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        all_solved_mazes.extend(solved_mazes)
+
+        pr.enable()
+        solved_mazes = solve_all_mazes(mazes, PledgeMazeSolver)
+        pr.disable()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        logging.info(f"Pledge execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
         # Step 3: Save mazes to PDF

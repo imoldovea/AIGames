@@ -71,13 +71,27 @@ class Maze:
         self.self_test()
 
     def is_within_bounds(self, position):
+        """
+        Checks if a given position is within the defined bounds of the grid. The method
+        utilizes a cache to store the result of previously checked positions for
+        efficiency. The bounds are determined based on the grid's dimensions
+        (rows and columns).
+
+        :param position: The position to check, represented as an iterable of two elements
+                         (row, column).
+        :type position: Iterable[int]
+        :return: True if the position is within bounds, False otherwise.
+        :rtype: bool
+        """
         if position is None:
             logging.debug("Position is None.")
             return False
-        if position not in self._bounds_cache:
-            r, c = position
-            self._bounds_cache[position] = 0 <= r < self.rows and 0 <= c < self.cols
-        return self._bounds_cache[position]
+        # Convert the position to a tuple to ensure it is hashable.
+        key = tuple(position)
+        if key not in self._bounds_cache:
+            r, c = key
+            self._bounds_cache[key] = 0 <= r < self.rows and 0 <= c < self.cols
+        return self._bounds_cache[key]
 
     def set_exit(self):
         """

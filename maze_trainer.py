@@ -16,9 +16,12 @@ from tqdm import tqdm
 
 import utils
 import wandb
+from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
 from model import MazeRecurrentModel
+from optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
+from pladge_maze_solver import PledgeMazeSolver
 
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -38,6 +41,14 @@ LOSS_FILE = f"{OUTPUT}loss_data.csv"
 TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
 VALIDATION_MAZES_FILE = f"{INPUT}validation_mazes.pkl"
 wandb_enabled = config.getboolean("MONITORING", "wandb", fallback=True)
+
+# Mapping of available solver names to their classes
+solver_mapping = {
+    'BacktrackingMazeSolver': BacktrackingMazeSolver,
+    'OptimizedBacktrackingMazeSolver': OptimizedBacktrackingMazeSolver,
+    'PledgeMazeSolver': PledgeMazeSolver
+}
+
 
 # -------------------------------
 # Custom Dataset for Training Samples
@@ -160,19 +171,20 @@ class RNN2MazeTrainer:
 
     def _load_and_process_training_mazes(self, path, training_samples):
         """
-            Loads and processes training mazes from the specified file path.
-        
-            Parameters:
-                path (str): Path to the training mazes file.
-        
-            Returns:
-                List of processed training mazes.
-            """
+        Loads and processes training mazes from the specified file path.
+
+        Parameters:
+            path (str): Path to the training mazes file.
+            training_samples (int): Maximum number of mazes to process.
+
+        Returns:
+            List of processed training mazes.
+        """
         training_mazes = self._load_mazes_safe(file_path=path)
         solved_training_mazes = []
-        for i, maze_data in enumerate(training_mazes):
-            if i >= training_samples:
-                break
+
+        # Using tqdm to display progress bar - slicing the list to ensure we only process training_samples
+        for i, maze_data in enumerate(tqdm(training_mazes[:training_samples], desc="Processing mazes")):
             try:
                 solved_training_mazes.append(self._process_maze(maze_data, i))
             except Exception as e:
@@ -197,9 +209,14 @@ class RNN2MazeTrainer:
         if not maze.self_test():
             logging.warning(f"Maze {index + 1} failed validation.")
 
+        # Retrieve the solver name from the configuration (defaulting to BacktrackingMazeSolver)
         solver_obj = config.get("DEFAULT", "solver", fallback="BacktrackingMazeSolver")
-        # Pass the maze object to the solver constructor
-        solver = globals()[solver_obj](maze)
+        solver_cls = solver_mapping.get(solver_obj)
+        if not solver_cls:
+            raise RuntimeError(f"Solver '{solver_obj}' not found. Available solvers: {list(solver_mapping.keys())}")
+
+        # Instantiate and use the solver.
+        solver = solver_cls(maze)
 
         maze.set_solution(solver.solve())
         return maze
