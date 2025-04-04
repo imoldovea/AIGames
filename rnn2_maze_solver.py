@@ -267,6 +267,7 @@ def rnn2_solver(models, mazes, device):
         for i, maze_data in enumerate(mazes):
             # Step 5.b.i: Create a Maze object
             maze = Maze(maze_data)
+            maze.save_movie = True
 
             if config.getboolean("MONITORING", "save_solution_movie", fallback=False):
                 maze.set_save_movie(True)
@@ -395,12 +396,8 @@ def main():
             logging.info("Generating model weights...")
             visualize_model_weights(models)
 
-        mazes = [Maze(maze_array) for maze_array in load_mazes(TEST_MAZES_FILE)]
-        for maze in mazes:
-            maze.save_movie = True
-            maze.animate = False
-
         # Apply the model to the test data.
+        mazes = load_mazes(TEST_MAZES_FILE)
         solved_mazes, model_success_rates = rnn2_solver(models = models, mazes = mazes, device = device)
         logging.info(f"Model success rates: {model_success_rates}")
 
