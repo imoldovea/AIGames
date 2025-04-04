@@ -397,7 +397,7 @@ def main():
 
         mazes = load_mazes(TEST_MAZES_FILE)
         for maze in mazes:
-            maze.save_maze = True
+            maze.save_movie = True
             maze.animate = False
 
         # Apply the model to the test data.
