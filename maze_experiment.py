@@ -75,7 +75,7 @@ def main():
         pr.disable()
         ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
         ps.print_stats(10)  # Show top 10 functions by cumulative time
-        logging.info(f"OptimizedBacktracking execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        logging.info(f"Optimized Backtracking execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
         pr.enable()

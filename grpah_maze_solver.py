@@ -77,6 +77,8 @@ class AStarMazeSolver:
         while open_set:
             # Get node with lowest f_score
             _, _, current = heapq.heappop(open_set)
+            # Update current position in the visualization
+            self.maze.move(current)
 
             # Check if we've reached the exit
             if current == exit_position:

@@ -137,6 +137,9 @@ class OptimizedBacktrackingMazeSolver:
             logger.debug(f"Found target at {current}")
             return True
 
+        # Update the maze's current position for visualization
+        self.maze.move(current)
+
         # Get cached neighbors using vectorized arrays
         neighbors = self._get_cached_neighbors(current)
 

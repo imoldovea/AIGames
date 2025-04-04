@@ -102,7 +102,7 @@ class BacktrackingMazeSolver(MazeSolver):
 
             # If this position has no valid next moves, animate backtracking
             if all(neighbor in visited for neighbor in self._get_cached_neighbors(position)):
-                self.maze.move(position, backtrack=True)
+                self.maze.move(position)
 
         return None
 

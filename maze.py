@@ -64,13 +64,16 @@ class Maze:
 
         # Initialize the path with the starting position
         self.path = [self.start_position]
-        #self.move(self.start_position)
+        self.move(self.start_position)
 
         # Exit can be defined later using set_exit()
         self.set_exit()
         self.self_test()
 
     def is_within_bounds(self, position):
+        if position is None:
+            logging.debug("Position is None.")
+            return False
         if position not in self._bounds_cache:
             r, c = position
             self._bounds_cache[position] = 0 <= r < self.rows and 0 <= c < self.cols
@@ -119,17 +122,18 @@ class Maze:
         if self.is_valid_move(position):
             self.current_position = position
             self.path.append(position)
+            self.visited_cells.add(position)
 
             if backtrack:
                 self.path.pop()
-                self.visited_cells.add(position)
-
 
             if self.animate:
                 self.plot_maze()
 
             if self.save_movie:
-                self.raw_movie.append(self.get_maze_as_png(show_path=True, show_solution=False, show_position=False))
+                # Create a snapshot that truly represents the current state.
+                frame = self.get_maze_as_png(show_path=True, show_solution=False, show_position=False)
+                self.raw_movie.append(frame)
 
             return True
         self.logger.warning("Invalid move attempted to position %s", position)
@@ -174,15 +178,15 @@ class Maze:
         row_frames = []
 
         # Add the initial maze frame (showing the maze without solution or path)
-        row_frames.append(self.get_maze_as_png(show_path=False, show_solution=False, show_position=False))
+        row_frames.append(self.get_maze_as_png(show_path=True, show_solution=False, show_position=False))
 
         # Store the original current position
         original_position = self.current_position
 
         # Iterate through the solution steps
-        for i in range(len(self._solution)):
+        for i in range(len(self.path)):
             # Set the current position to the position at this step in the solution
-            self.current_position = self._solution[i]
+            self.current_position = self.path[i]
 
             # Create a partial path up to the current position
             temp_path = self._solution[:i + 1]
@@ -198,6 +202,7 @@ class Maze:
             # Restore the original path
             self.path = original_path
 
+        frame = self.get_maze_as_png(show_path=False, show_solution=True, show_position=True)
         # Restore the original current position
         self.current_position = original_position
 
@@ -463,16 +468,18 @@ class Maze:
             exit_r, exit_c = self.exit
             image_data[exit_r, exit_c] = [0, 255, 255]  # Start of gradient (green to cyan).
             if show_path:
-                path_length = len(self.path)
+                path_length = len(self.visited_cells)
+                for (r, c) in self.visited_cells:
+                    if 0 <= r < self.rows and 0 <= c < self.cols:
+                        image_data[r, c] = [128, 128, 128]
+
                 for idx, (r, c) in enumerate(self.path): #show active track
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         # Calculate the gradient color from green ([0, 255, 0]) to cyan ([0, 255, 255])
                         t = idx / (path_length - 1) if path_length > 1 else 0
                         color = [0, 255, int(255 * t)]
-                        image_data[r, c] = color
-                for (r, c) in self.visited_cells:
-                    if 0 <= r < self.rows and 0 <= c < self.cols:
-                        image_data[r, c] = [128, 128, 128]
+                        image_data[r, c] = np.clip(color, 0, 255)
+
 
         resized_image = self.create_padded_image(image_data, self.IMG_SIZE, self.IMG_SIZE)
         return resized_image

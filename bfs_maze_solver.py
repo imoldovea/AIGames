@@ -49,9 +49,8 @@ class BFSMazeSolver(MazeSolver):
                 while current is not None:
                     path.append(current)
                     current = parent[current]
-                    #self.maze.move(current)
+                    self.maze.move(current)
                 path.reverse()
-                #self.maze.move(current, backtrack=True)
                 # Optionally update the maze's path with the found solution.
                 self.maze.path = path
                 return path
