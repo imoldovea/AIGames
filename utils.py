@@ -78,10 +78,12 @@ def setup_logging():
     file_handler.addFilter(CustomLogFilter(forbidden_logs))
     logger.addHandler(file_handler)
 
+
     #Delete all OUTPUT folder content
-    shutil.rmtree(OUTPUT, ignore_errors=True)
-    os.makedirs(OUTPUT, exist_ok=True)
-    logging.info(f"{OUTPUT}cleared...")
+    if config.getboolean("DEFAULT", "retrain_model", fallback=True):
+        shutil.rmtree(OUTPUT, ignore_errors=True)
+        os.makedirs(OUTPUT, exist_ok=True)
+        logging.info(f"{OUTPUT}cleared...")
 
 # Define a custom PDF class (optional, for adding a header)
 class PDF(FPDF):

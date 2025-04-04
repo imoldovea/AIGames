@@ -21,6 +21,8 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
 
+num_mazes = config.getint("MAZE", "num_mazes")
+
 def generate_maze(width: int, height: int) -> np.ndarray:
     """
     Generate a random rectangular maze with walls and paths.
@@ -212,10 +214,10 @@ def generate(filename, number):
         mazes.append(maze)
     save_mazes(OUTPUT_FOLDER, filename, mazes)
     logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
-def main():
 
-    generate(filename="validation_mazes.pkl",number= 1000)
-    generate(filename="training_mazes.pkl", number=100000)
+def main():
+    generate(filename="training_mazes.pkl", number=num_mazes)
+    generate(filename="validation_mazes.pkl", number=num_mazes // 10)
     generate(filename="mazes.pkl", number=10)
 
 if __name__ == "__main__":

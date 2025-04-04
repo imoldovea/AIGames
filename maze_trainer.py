@@ -329,31 +329,51 @@ def train_models(allowed_models):
     train_ds = MazeTrainingDataset(dataset)
     validation_ds = ValidationDataset(validation_dataset)
 
-    #compute the number of workers.
-    num_cores = os.cpu_count() or 1  # Get number of CPU cores
-    # Get number of GPUs available
-    if torch.cuda.is_available():
-        # Get properties of the first CUDA device
-        gpu_props = torch.cuda.get_device_properties(0)
-        multiproc_count = gpu_props.multi_processor_count
-        logging.info(f"GPU Name: {gpu_props.name}, Multiprocessor Count: {multiproc_count}")
+    # Determine a safe number of workers - much more conservative approach
+    # Start with a small number to avoid memory issues
+    try:
+        # Start with minimal workers
+        num_workers = 0  # Start with single-process loading
 
-        # Distribute CPU cores among GPU multiprocessors, ensuring at least one worker per multiprocessor
-        num_workers = min(max(num_cores, multiproc_count), 20)
+        config_workers = config.getint("DEFAULT", "dataloader_workers", fallback=None)
+        if config_workers is not None:
+            num_workers = config_workers
+            logging.info(f"Using {num_workers} workers from config")
+        # Otherwise try to determine a reasonable value
+        elif device.type == 'cuda':
+            # Use just 1-2 workers for GPU to avoid memory bottlenecks
+            num_workers = min(4, os.cpu_count() or 1)
+            logging.info(f"Using {num_workers} workers for GPU training")
+        else:
+            # For CPU training, use a smaller number of workers
+            num_workers = max(1, (os.cpu_count() or 1) // 4)
+            logging.info(f"Using {num_workers} workers for CPU training")
 
-    else:
-        num_workers = num_cores
+        # Assuming train_ds and batch_size are defined elsewhere
+        dataloader = DataLoader(train_ds,
+                                batch_size,
+                                shuffle=True,
+                                pin_memory=True,
+                                num_workers=num_workers,
+                                persistent_workers=True,
+                                prefetch_factor=2)
 
-    # Assuming train_ds and batch_size are defined elsewhere
-    dataloader = DataLoader(train_ds,
-                            batch_size,
-                            shuffle=True,
-                            num_workers=num_workers,
-                            pin_memory=True,
-                            persistent_workers=True)
+        logging.info(f"Number of workers: {num_workers}")
+        logging.info(f'Using device: {device}')
 
-    logging.info(f"Number of CPU cores: {num_cores}, Number of workers: {num_workers}")
-    logging.info(f'Using device: {device}')
+    except (MemoryError, RuntimeError) as e:
+        logging.warning(f"Failed to create DataLoader with {num_workers} workers: {str(e)}")
+        logging.info("Falling back to single-process loading")
+
+        # Fall back to single-process loading
+        dataloader = DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=0,  # No multiprocessing
+            pin_memory=False,
+        )
+
 
     for model_name in allowed_models:
         if model_name == "GRU":
