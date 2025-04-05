@@ -341,18 +341,19 @@ class MazeBaseModel(nn.Module):
                              training_accuracy, validation_accuracy, time.time(), time_per_step, cpu_load, gpu_load,
                              ram_usage])
 
-        # Log to tensorboard
-        if tensorboard_writer:
-            tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
-            tensorboard_writer.add_scalar("Loss/validation", validation_loss, epoch)
-            tensorboard_writer.add_scalar("Accuracy/train", training_accuracy, epoch)
-            tensorboard_writer.add_scalar("Accuracy/validation", validation_accuracy, epoch)
+        if config.getboolean("MONITORING", "tensorboard", fallback=False):
+            # Log to tensorboard
+            if tensorboard_writer:
+                tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
+                tensorboard_writer.add_scalar("Loss/validation", validation_loss, epoch)
+                tensorboard_writer.add_scalar("Accuracy/train", training_accuracy, epoch)
+                tensorboard_writer.add_scalar("Accuracy/validation", validation_accuracy, epoch)
 
-            # Log weights and gradients
-            for name, param in self.named_parameters():
-                tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
-                if param.grad is not None:
-                    tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
+                # Log weights and gradients
+                for name, param in self.named_parameters():
+                    tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
+                    if param.grad is not None:
+                        tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
 
     def _validate_model(self, val_loader, criterion, device, epoch):
         """
