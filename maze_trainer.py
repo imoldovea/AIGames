@@ -390,7 +390,8 @@ def train_models(allowed_models):
         with open(LOSS_FILE, "w", newline="") as f:
             loss_writer = csv.writer(f)
             loss_writer.writerow(
-                ["model", "epoch", "loss", "validation_loss", "time", "accuracy", "validation_accuracy"])
+                ["model", "epoch", "training_loss", "validation_loss", "accuracy", "validation_accuracy",
+                 "time", "time_per_step", "cpu_load", "gpu_load", "ram_usage"])
     except Exception as e:
         logging.error(f"Error setting up loss file: {e}")
 

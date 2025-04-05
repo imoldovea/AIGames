@@ -11,6 +11,7 @@ import time
 from configparser import ConfigParser
 from functools import wraps
 
+import psutil
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler
@@ -53,6 +54,22 @@ class MazeBaseModel(nn.Module):
             if param.requires_grad and param.ndim >= 2:
                 weights.append((name, param.detach().cpu().numpy()))
         return weights
+
+    def _compute_resource_usage(self):
+        """
+        Computes system resource usage (CPU load, GPU load, and RAM usage).
+        
+        Returns:
+            cpu_load (float): CPU usage percentage.
+            gpu_load (float): GPU memory utilization (if applicable).
+            ram_usage (float): RAM usage in GB.
+        """
+        
+        cpu_load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
+        gpu_load = torch.cuda.memory_allocated(0) / torch.cuda.max_memory_allocated(
+            0) if torch.cuda.is_available() else 0.0
+        ram_usage = psutil.virtual_memory().used / (1024 ** 3)
+        return round(cpu_load, 0), round(gpu_load, 0), round(ram_usage, 0)
 
     def profile_method(output_file=None):
         """Decorator for profiling a method"""
@@ -144,11 +161,20 @@ class MazeBaseModel(nn.Module):
             running_loss = 0.0
             correct = 0
             total = 0
+
+            cpu_loads = []
+            gpu_loads = []
+            ram_usages = []
+            avg_cpu = 0
+            avg_gpu = 0
+            avg_ram = 0
+
             self.train()  # Put the model in training mode
             # Loop through batches from the data loader
             desc = f"Epoch {epoch + 1} Training Progress"
             iterator = tqdm(dataloader, desc=desc, leave=True)
 
+            start_time = time.time()
             for iteration, batch in enumerate(iterator):
                 logging.debug(f"Training batch {iteration + 1} of {len(dataloader)}")
                 local_context, relative_position, target_action, steps_number = batch
@@ -187,14 +213,26 @@ class MazeBaseModel(nn.Module):
                 assert target_action.dim() == 1, (f"Expected target labels to be 1-dimensional, but got "
                                                   f"{target_action.dim()} dimensions")
 
+                # Compute resource usage during the batch processing
+                cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
+
                 # Forward pass
                 outputs = self.forward(inputs)  # Pass input through the model
                 outputs.to(device)
                 loss = criterion(outputs, target_action)  # Compute cross-entropy loss
 
                 optimizer.zero_grad()  # Clear previous gradients
-                loss.backward()  # Backpropagate loss to calculate gradients
+                loss.backward()  # Backpropagate loss to calculate gradient
                 optimizer.step()  # Update model weights
+
+                # Call resource usage after processing the batch
+                cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
+                cpu_loads.append(cpu_load)
+                gpu_loads.append(gpu_load)
+                ram_usages.append(ram_usage)
+                avg_cpu = sum(cpu_loads) / len(cpu_loads)
+                avg_gpu = sum(gpu_loads) / len(gpu_loads)
+                avg_ram = sum(ram_usages) / len(ram_usages)
 
                 #calculate loss
                 running_loss += loss.item() * inputs.size(0)
@@ -203,6 +241,7 @@ class MazeBaseModel(nn.Module):
                 total += target_action.size(0)
                 correct += (predicted == target_action).sum().item()
 
+            time_per_step = (time.time() - start_time) / ccumulation_steps
             #Back Epoch loop. Compute loss and accuracy
             epoch_loss = running_loss / len(dataloader.dataset)
             training_accuracy = correct / total if total > 0 else 0.0
@@ -228,8 +267,17 @@ class MazeBaseModel(nn.Module):
                 validation_loss=validation_loss,
                 training_accuracy=training_accuracy,
                 validation_accuracy=validation_accuracy,
-                tensorboard_writer=tensorboard_writer
+                time_per_step=time_per_step,
+                cpu_load=avg_cpu,
+                gpu_load=avg_gpu,
+                ram_usage=avg_ram,
+                tensorboard_writer=tensorboard_writer,
             )
+            # Reset the accumulators for the next set of iterations
+            cpu_loads.clear()
+            gpu_loads.clear()
+            ram_usages.clear()
+
 
             # Stop is no improvement on loss function
             current_lr = self.lr_scheduler.get_last_lr()[0]  # Get the current learning rate
@@ -264,8 +312,9 @@ class MazeBaseModel(nn.Module):
 
         return self
 
-    def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss,
-                          training_accuracy, validation_accuracy, tensorboard_writer):
+    def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss=0,
+                          training_accuracy=0, validation_accuracy=0,
+                          time_per_step=0, cpu_load=0, gpu_load=0, ram_usage=0, tensorboard_writer=None):
         """
         Logs training information and updates tensorboard/histograms for monitoring.
 
@@ -289,7 +338,8 @@ class MazeBaseModel(nn.Module):
         with open(LOSS_FILE, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss,
-                             training_accuracy, validation_accuracy, time.time()])
+                             training_accuracy, validation_accuracy, time.time(), time_per_step, cpu_load, gpu_load,
+                             ram_usage])
 
         # Log to tensorboard
         if tensorboard_writer:

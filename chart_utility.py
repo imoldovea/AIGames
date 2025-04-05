@@ -1,6 +1,5 @@
 
 import io
-import logging
 import os
 import subprocess
 from configparser import ConfigParser
@@ -9,9 +8,7 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import plotly.graph_objs as go
-import plotly.io as pio
 import torch
 import torch.onnx
 from PIL import Image
@@ -23,186 +20,194 @@ PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+LOSS_FILE = f"{OUTPUT}loss_data.csv"
+
+import pandas as pd
+import logging
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.io as pio
 
 
-def save_latest_loss_chart(loss_file_path: str, loss_chart: str) -> None:
-    """
-    Generates and saves separate training loss, validation loss, training accuracy,
-    and validation accuracy charts as HTML files.
-
-    Parameters:
-    - loss_file_path (str): Path to the CSV file containing loss and accuracy data.
-    - loss_chart (str): Base path where the HTML files will be saved.
-    """
-    logging.debug("Generating separate training and validation charts...")
-
+def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
+    # Ensure epoch is numeric (if needed)
     try:
-        # Read the loss data from CSV
-        df = pd.read_csv(loss_file_path)
-
-        # Break if the dataset is empty
-        if df.empty:
-            logging.warning("Dataset is empty. Exiting function.")
-            return
-
-        # Validate required columns for loss charts
-        required_columns = {'model', 'epoch', 'loss', 'validation_loss', 'time'}
-        if not required_columns.issubset(df.columns):
-            raise ValueError(f"CSV file must contain columns: {required_columns}")
-
-        # Extract models
-        models = df['model'].unique()
-
-        # --- Training Loss Chart ---
-        fig_training = go.Figure()
-
-        for model in models:
-            model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
-            fig_training.add_trace(
-                go.Scatter(
-                    x=model_df["epoch"],
-                    y=model_df["loss"],
-                    mode="lines+markers",
-                    name=f"{model} - Loss",
-                    text=hover_text,
-                    hovertemplate="Epoch: %{x}<br>Loss: %{y}<br>%{text}<extra></extra>"
-                )
-            )
-
-        fig_training.update_layout(
-            title="Training Loss Over Time",
-            xaxis_title="Epoch",
-            yaxis_title="Loss",
-            height=800,
-            margin=dict(b=150),
-            template=pio.templates.default,
-            legend_title="Models"
-        )
-
-        # --- Validation Loss Chart ---
-        fig_validation = go.Figure()
-
-        for model in models:
-            model_df = df[df['model'] == model]
-            hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
-            fig_validation.add_trace(
-                go.Scatter(
-                    x=model_df["epoch"],
-                    y=model_df["validation_loss"],
-                    mode="lines+markers",
-                    name=f"{model} - Validation Loss",
-                    text=hover_text,
-                    hovertemplate="Epoch: %{x}<br>Validation Loss: %{y}<br>%{text}<extra></extra>"
-                )
-            )
-
-        fig_validation.update_layout(
-            title="Validation Loss Over Time",
-            xaxis_title="Epoch",
-            yaxis_title="Loss",
-            height=800,
-            margin=dict(b=150),
-            template=pio.templates.default,
-            legend_title="Models"
-        )
-
-        # --- New: Training Accuracy Chart ---
-        if 'accuracy' in df.columns:
-            fig_accuracy = go.Figure()
-
-            for model in models:
-                model_df = df[df['model'] == model]
-                hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
-                fig_accuracy.add_trace(
-                    go.Scatter(
-                        x=model_df["epoch"],
-                        y=model_df["accuracy"],
-                        mode="lines+markers",
-                        name=f"{model} - Accuracy",
-                        text=hover_text,
-                        hovertemplate="Epoch: %{x}<br>Accuracy: %{y:.4f}<br>%{text}<extra></extra>"
-                    )
-                )
-
-            fig_accuracy.update_layout(
-                title="Training Accuracy Over Time",
-                xaxis_title="Epoch",
-                yaxis_title="Accuracy",
-                height=800,
-                margin=dict(b=150),
-                template=pio.templates.default,
-                legend_title="Models"
-            )
-
-        # --- New: Validation Accuracy Chart ---
-        if 'validation_accuracy' in df.columns:
-            fig_val_accuracy = go.Figure()
-
-            for model in models:
-                model_df = df[df['model'] == model]
-                hover_text = [f"Epoch time: {t / 6e7:.2f} min" for t in model_df["time"]]
-                fig_val_accuracy.add_trace(
-                    go.Scatter(
-                        x=model_df["epoch"],
-                        y=model_df["validation_accuracy"],
-                        mode="lines+markers",
-                        name=f"{model} - Validation Accuracy",
-                        text=hover_text,
-                        hovertemplate="Epoch: %{x}<br>Validation Accuracy: %{y:.4f}<br>%{text}<extra></extra>"
-                    )
-                )
-
-            fig_val_accuracy.update_layout(
-                title="Validation Accuracy Over Time",
-                xaxis_title="Epoch",
-                yaxis_title="Accuracy",
-                height=800,
-                margin=dict(b=150),
-                template=pio.templates.default,
-                legend_title="Models"
-            )
-
-        # --- Save Charts ---
-        # Validate loss_chart parameter
-        if not loss_chart or not isinstance(loss_chart, str):
-            raise ValueError("The 'loss_chart' parameter must be a valid, non-empty string.")
-
-        # Safely change the file extension to .html and create separate filenames
-        base, ext = os.path.splitext(loss_chart)
-        training_loss_html = f"{base}_training_loss.html"
-        validation_loss_html = f"{base}_validation_loss.html"
-
-        # New accuracy chart filenames
-        training_accuracy_html = f"{base}_training_accuracy.html"
-        validation_accuracy_html = f"{base}_validation_accuracy.html"
-
-        # Ensure the directory exists
-        directory = os.path.dirname(training_loss_html)
-        if directory and not os.path.exists(directory):
-            os.makedirs(directory, exist_ok=True)
-            logging.debug(f"Created directory: {directory}")
-
-        # Save loss charts
-        fig_training.write_html(training_loss_html)
-        logging.debug(f"Saved training loss chart to: {training_loss_html}")
-
-        fig_validation.write_html(validation_loss_html)
-        logging.debug(f"Saved validation loss chart to: {validation_loss_html}")
-
-        # Save accuracy charts if data is available
-        if 'accuracy' in df.columns:
-            fig_accuracy.write_html(training_accuracy_html)
-            logging.debug(f"Saved training accuracy chart to: {training_accuracy_html}")
-
-        if 'validation_accuracy' in df.columns:
-            fig_val_accuracy.write_html(validation_accuracy_html)
-            logging.debug(f"Saved validation accuracy chart to: {validation_accuracy_html}")
-
-    except Exception as e:
-        logging.error(f"Error saving loss charts: {e}")
+        loss_data = pd.read_csv(LOSS_FILE)
+        loss_data['epoch'] = pd.to_numeric(loss_data['epoch'], errors='coerce')
+    except FileNotFoundError:
+        logging.error(f"Loss file not found: {LOSS_FILE}")
         raise
+    except pd.errors.EmptyDataError:
+        logging.error(f"Loss file is empty: {LOSS_FILE}")
+        raise
+    except Exception as e:
+        logging.error(f"An error occurred while loading the loss data: {e}")
+        raise Exception(f"An error occurred while loading the loss data: {e}")
 
+    # Prepare aggregate metrics over epochs
+    training_loss = loss_data.groupby('epoch')['training_loss'].mean()
+    validation_loss = loss_data.groupby('epoch')['validation_loss'].mean()
+    accuracy = loss_data.groupby('epoch')['accuracy'].mean()
+    validation_accuracy = loss_data.groupby('epoch')['validation_accuracy'].mean()
+
+    # Create a figure with 5 vertical subplots
+    fig = make_subplots(
+        rows=5,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.05,
+        subplot_titles=(
+            "Training Loss",
+            "Validation Loss",
+            "Accuracy",
+            "Validation Accuracy",
+            "Time per Step and Resource Usage"
+        )
+    )
+
+    # Chart 1: Training Loss
+    fig.add_trace(
+        go.Scatter(x=training_loss.index, y=training_loss.values, mode='lines+markers', name="Training Loss"),
+        row=1, col=1
+    )
+
+    # Chart 2: Validation Loss
+    fig.add_trace(
+        go.Scatter(x=validation_loss.index, y=validation_loss.values, mode='lines+markers', name="Validation Loss",
+                   marker=dict(color='orange')),
+        row=2, col=1
+    )
+
+    # Chart 3: Accuracy
+    fig.add_trace(
+        go.Scatter(x=accuracy.index, y=accuracy.values, mode='lines+markers', name="Accuracy",
+                   marker=dict(color='green')),
+        row=3, col=1
+    )
+
+    # Chart 4: Validation Accuracy
+    fig.add_trace(
+        go.Scatter(x=validation_accuracy.index, y=validation_accuracy.values, mode='lines+markers',
+                   name="Validation Accuracy", marker=dict(color='red')),
+        row=4, col=1
+    )
+
+    # Chart 5: Time per Step and Resource Usage
+    models = loss_data['model'].unique()
+    colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+    for i, model in enumerate(models):
+        model_data = loss_data[loss_data['model'] == model]
+        fig.add_trace(
+            go.Scatter(
+                x=model_data['epoch'],
+                y=model_data['time_per_step'],
+                mode='lines+markers',
+                name=f"Time per Step ({model})",
+                marker=dict(color=colors[i % len(colors)])
+            ),
+            row=5, col=1
+        )
+
+    # Average resource usage per epoch
+    agg_cols = ['time_per_step', 'cpu_load', 'gpu_load', 'ram_usage']
+    resource_avg = loss_data.groupby('epoch')[agg_cols].mean()
+
+    fig.add_trace(
+        go.Scatter(
+            x=resource_avg.index,
+            y=resource_avg['time_per_step'],
+            mode='lines+markers',
+            name="Time per Step (avg)",
+            marker=dict(symbol='diamond', color='blue')
+        ),
+        row=5, col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=resource_avg.index,
+            y=resource_avg['cpu_load'],
+            mode='lines+markers',
+            name="CPU Load (avg)",
+            marker=dict(symbol='diamond', color='magenta')
+        ),
+        row=5, col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=resource_avg.index,
+            y=resource_avg['gpu_load'],
+            mode='lines+markers',
+            name="GPU Load (avg)",
+            marker=dict(symbol='diamond', color='cyan')
+        ),
+        row=5, col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=resource_avg.index,
+            y=resource_avg['ram_usage'],
+            mode='lines+markers',
+            name="RAM Usage (avg)",
+            marker=dict(symbol='diamond', color='brown')
+        ),
+        row=5, col=1
+    )
+
+    # Disable the global legend
+    fig.update_layout(
+        showlegend=False,
+        height=1200,
+        width=900,
+        title_text="Latest Loss Chart",
+        margin=dict(b=150)
+    )
+
+    # Custom annotations
+    annotations = [
+        dict(
+            x=0.98, y=0.97, xref="paper", yref="paper",
+            text="<b>Training Loss</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.78, xref="paper", yref="paper",
+            text="<b>Validation Loss</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.59, xref="paper", yref="paper",
+            text="<b>Accuracy</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.40, xref="paper", yref="paper",
+            text="<b>Validation Accuracy</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=1.05, y=0.10, xref="paper", yref="paper",
+            text=("<b>Chart 5 Legend:</b><br>"
+                  "• Model traces: Time per Step (each model)<br>"
+                  "• Blue Diamond: Time per Step (avg)<br>"
+                  "• Magenta Diamond: CPU Load (avg)<br>"
+                  "• Cyan Diamond: GPU Load (avg)<br>"
+                  "• Brown Diamond: RAM Usage (avg)"),
+            showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="left", yanchor="bottom"
+        )
+    ]
+    fig.update_layout(annotations=annotations)
+
+    # Restore full-width for Chart 5
+    fig.update_xaxes(domain=[0.0, 1.0], row=5, col=1)
+
+    # Save to HTML
+    pio.write_html(fig, file=output_file_name, auto_open=True)
 
 def save_neural_network_diagram(models, output_dir="output/"):
     """

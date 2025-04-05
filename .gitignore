@@ -1,5 +1,8 @@
 #Traing mazes
 *.pkl
+input/mazes.pkl
+input/training_mazes.pkl
+input/validation_mazes.pkl
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -18,7 +18,7 @@ import numpy as np
 import torch
 
 import wandb
-from chart_utility import (save_neural_network_diagram, save_latest_loss_chart, visualize_model_weights,
+from chart_utility import (save_latest_loss_chart, save_neural_network_diagram, visualize_model_weights,
                            visualize_model_activations)
 from maze import Maze  # Assumes maze.py exists
 from maze_solver import MazeSolver
@@ -385,7 +385,7 @@ def main():
             if config.getboolean("MONITORING", "save_last_loss_chart", fallback=True):
                 logging.info("Generating latest loss chart...")
                 if os.path.isfile(LOSS_FILE):
-                     save_latest_loss_chart(LOSS_FILE, LOSS_PLOT_FILE)
+                    save_latest_loss_chart()
                 else:
                     logging.warning(f"Loss file {LOSS_PLOT_FILE} is missing. Skipping loss chart generation.")
         except Exception as e:
