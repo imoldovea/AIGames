@@ -102,7 +102,7 @@ class MazeBaseModel(nn.Module):
         return decorator
 
     @profile_method(output_file=f"{OUTPUT}train_model_profile.prof")
-    def train_model(self, dataloader, val_loader, num_epochs=20, learning_rate=0.001, weight_decay=0.001,
+    def train_model(self, dataloader, val_loader, num_epochs=20, learning_rate=0.0001, weight_decay=0.001,
                     device='cpu', tensorboard_writer=None):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.

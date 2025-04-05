@@ -184,7 +184,7 @@ class RNN2MazeTrainer:
         solved_training_mazes = []
 
         # Using tqdm to display progress bar - slicing the list to ensure we only process training_samples
-        for i, maze_data in enumerate(tqdm(training_mazes[:training_samples], desc="Processing mazes")):
+        for i, maze_data in enumerate(tqdm(training_mazes[:training_samples], desc="Load training mazes")):
             try:
                 solved_training_mazes.append(self._process_maze(maze_data, i))
             except Exception as e:
@@ -227,7 +227,7 @@ class RNN2MazeTrainer:
         """
         logging.info("Creating dataset.")
         dataset = []
-        for maze in tqdm(self.training_mazes, desc="Processing training mazes"):
+        for maze in tqdm(self.training_mazes, desc="Creating training dataset"):
             solution = maze.get_solution()
             start_position = maze.start_position
             for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
@@ -243,7 +243,7 @@ class RNN2MazeTrainer:
                 dataset.append((local_context, relative_position, target_action, steps_number))
 
         validation_dataset = []
-        for maze in tqdm(self.validation_mazes, desc="Processing validation mazes"):
+        for maze in tqdm(self.validation_mazes, desc="Creating validation dataset"):
             solution = maze.get_solution()
             if maze.self_test():  # avoid validating on mazes with no solution
                 for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
@@ -416,7 +416,8 @@ def train_models(allowed_models):
         # Otherwise try to determine a reasonable value
         elif device.type == 'cuda':
             # Use just 1-2 workers for GPU to avoid memory bottlenecks
-            num_workers = min(4, os.cpu_count() or 1)
+            max_workers = config.getint("DEFAULT", "max_num_workers", fallback=6)
+            num_workers = min(max_workers, os.cpu_count() or 1)
             logging.info(f"Using {num_workers} workers for GPU training")
         else:
             # For CPU training, use a smaller number of workers

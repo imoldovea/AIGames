@@ -49,10 +49,11 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
     validation_loss = loss_data.groupby('epoch')['validation_loss'].mean()
     accuracy = loss_data.groupby('epoch')['accuracy'].mean()
     validation_accuracy = loss_data.groupby('epoch')['validation_accuracy'].mean()
+    time_per_step_avg = loss_data.groupby('epoch')['time_per_step'].mean()
 
-    # Create a figure with 5 vertical subplots
+    # Create a figure with 6 vertical subplots (separated Time per Step)
     fig = make_subplots(
-        rows=5,
+        rows=6,
         cols=1,
         shared_xaxes=True,
         vertical_spacing=0.05,
@@ -61,7 +62,8 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
             "Validation Loss",
             "Accuracy",
             "Validation Accuracy",
-            "Time per Step and Resource Usage"
+            "Time per Step",
+            "Resource Usage"
         )
     )
 
@@ -92,9 +94,23 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
         row=4, col=1
     )
 
-    # Chart 5: Time per Step and Resource Usage
+    # Chart 5: Time per Step (dedicated chart)
     models = loss_data['model'].unique()
     colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+
+    # Add average time per step
+    fig.add_trace(
+        go.Scatter(
+            x=time_per_step_avg.index,
+            y=time_per_step_avg.values,
+            mode='lines+markers',
+            name="Time per Step (avg)",
+            marker=dict(symbol='diamond', color='blue')
+        ),
+        row=5, col=1
+    )
+
+    # Add individual model traces for time per step
     for i, model in enumerate(models):
         model_data = loss_data[loss_data['model'] == model]
         fig.add_trace(
@@ -108,20 +124,10 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
             row=5, col=1
         )
 
-    # Average resource usage per epoch
-    agg_cols = ['time_per_step', 'cpu_load', 'gpu_load', 'ram_usage']
+    # Chart 6: Resource Usage
+    agg_cols = ['cpu_load', 'gpu_load', 'ram_usage']
     resource_avg = loss_data.groupby('epoch')[agg_cols].mean()
 
-    fig.add_trace(
-        go.Scatter(
-            x=resource_avg.index,
-            y=resource_avg['time_per_step'],
-            mode='lines+markers',
-            name="Time per Step (avg)",
-            marker=dict(symbol='diamond', color='blue')
-        ),
-        row=5, col=1
-    )
     fig.add_trace(
         go.Scatter(
             x=resource_avg.index,
@@ -130,7 +136,7 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
             name="CPU Load (avg)",
             marker=dict(symbol='diamond', color='magenta')
         ),
-        row=5, col=1
+        row=6, col=1
     )
     fig.add_trace(
         go.Scatter(
@@ -140,7 +146,7 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
             name="GPU Load (avg)",
             marker=dict(symbol='diamond', color='cyan')
         ),
-        row=5, col=1
+        row=6, col=1
     )
     fig.add_trace(
         go.Scatter(
@@ -150,19 +156,19 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
             name="RAM Usage (avg)",
             marker=dict(symbol='diamond', color='brown')
         ),
-        row=5, col=1
+        row=6, col=1
     )
 
     # Disable the global legend
     fig.update_layout(
         showlegend=False,
-        height=1200,
+        height=1400,  # Increased height for 6 charts
         width=900,
         title_text="Latest Loss Chart",
         margin=dict(b=150)
     )
 
-    # Custom annotations
+    # Custom annotations - updated for 6 charts
     annotations = [
         dict(
             x=0.98, y=0.97, xref="paper", yref="paper",
@@ -171,28 +177,39 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
             xanchor="right", yanchor="top"
         ),
         dict(
-            x=0.98, y=0.78, xref="paper", yref="paper",
+            x=0.98, y=0.81, xref="paper", yref="paper",
             text="<b>Validation Loss</b>", showarrow=False,
             font=dict(size=10, color="black"),
             xanchor="right", yanchor="top"
         ),
         dict(
-            x=0.98, y=0.59, xref="paper", yref="paper",
+            x=0.98, y=0.65, xref="paper", yref="paper",
             text="<b>Accuracy</b>", showarrow=False,
             font=dict(size=10, color="black"),
             xanchor="right", yanchor="top"
         ),
         dict(
-            x=0.98, y=0.40, xref="paper", yref="paper",
+            x=0.98, y=0.49, xref="paper", yref="paper",
             text="<b>Validation Accuracy</b>", showarrow=False,
             font=dict(size=10, color="black"),
             xanchor="right", yanchor="top"
         ),
         dict(
+            x=0.98, y=0.33, xref="paper", yref="paper",
+            text="<b>Time per Step</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.17, xref="paper", yref="paper",
+            text="<b>Resource Usage</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
             x=1.05, y=0.10, xref="paper", yref="paper",
-            text=("<b>Chart 5 Legend:</b><br>"
-                  "• Model traces: Time per Step (each model)<br>"
-                  "• Blue Diamond: Time per Step (avg)<br>"
+            text=("<b>Legend:</b><br>"
+                  "• Time per Step: Individual models and average<br>"
                   "• Magenta Diamond: CPU Load (avg)<br>"
                   "• Cyan Diamond: GPU Load (avg)<br>"
                   "• Brown Diamond: RAM Usage (avg)"),
@@ -203,8 +220,9 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
     ]
     fig.update_layout(annotations=annotations)
 
-    # Restore full-width for Chart 5
+    # Restore full-width for the last two charts
     fig.update_xaxes(domain=[0.0, 1.0], row=5, col=1)
+    fig.update_xaxes(domain=[0.0, 1.0], row=6, col=1)
 
     # Save to HTML
     pio.write_html(fig, file=output_file_name, auto_open=True)

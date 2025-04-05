@@ -16,6 +16,7 @@ def load_loss_data():
         df['validation_loss'] = pd.to_numeric(df['validation_loss'], errors='coerce')
         df['accuracy'] = pd.to_numeric(df['accuracy'], errors='coerce')
         df['validation_accuracy'] = pd.to_numeric(df['validation_accuracy'], errors='coerce')
+        df['time_per_step'] = pd.to_numeric(df['time_per_step'], errors='coerce')
     except Exception as e:
         print("Error loading CSV:", e)
         df = pd.DataFrame()
@@ -25,13 +26,14 @@ def load_loss_data():
 # Initialize the Dash app
 app = dash.Dash(__name__)
 
-# Dashboard layout with four graphs
+# Dashboard layout with five graphs (added time_per_step)
 app.layout = html.Div([
     html.H1("Neural Network Training Dashboard"),
     dcc.Graph(id="training-loss-graph"),
     dcc.Graph(id="validation-loss-graph"),
     dcc.Graph(id="accuracy-graph"),
     dcc.Graph(id="validation-accuracy-graph"),
+    dcc.Graph(id="time-per-step-graph"),
     dcc.Interval(id="interval-component", interval=3000, n_intervals=0)
 ])
 
@@ -41,12 +43,13 @@ app.layout = html.Div([
     Output("validation-loss-graph", "figure"),
     Output("accuracy-graph", "figure"),
     Output("validation-accuracy-graph", "figure"),
+    Output("time-per-step-graph", "figure"),
     Input("interval-component", "n_intervals")
 )
 def update_graphs(n):
     df = load_loss_data()
     if df.empty or 'model' not in df.columns:
-        return no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
 
     df = df.sort_values('epoch')
 
@@ -83,9 +86,17 @@ def update_graphs(n):
         markers=True,
         title="Validation Accuracy"
     )
+    fig_time_per_step = px.line(
+        df,
+        x='epoch',
+        y='time_per_step',
+        color='model',
+        markers=True,
+        title="Time Per Step"
+    )
 
     # Update layout for each figure:
-    for fig in (fig_training, fig_validation, fig_accuracy, fig_val_accuracy):
+    for fig in (fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step):
         fig.update_layout(
             xaxis_title="Epoch",
             legend=dict(
@@ -95,7 +106,7 @@ def update_graphs(n):
             )
         )
 
-    return fig_training, fig_validation, fig_accuracy, fig_val_accuracy
+    return fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step
 
 
 if __name__ == '__main__':
