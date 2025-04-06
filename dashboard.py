@@ -16,7 +16,7 @@ def load_loss_data():
         df['validation_loss'] = pd.to_numeric(df['validation_loss'], errors='coerce')
         df['accuracy'] = pd.to_numeric(df['accuracy'], errors='coerce')
         df['validation_accuracy'] = pd.to_numeric(df['validation_accuracy'], errors='coerce')
-        df['time_per_step'] = pd.to_numeric(df['time_per_step'], errors='coerce')
+        df['time_per_step'] = (pd.to_numeric(df['time_per_step'], errors='coerce') / 60).round(0)
     except Exception as e:
         print("Error loading CSV:", e)
         df = pd.DataFrame()
@@ -94,6 +94,7 @@ def update_graphs(n):
         markers=True,
         title="Time Per Step"
     )
+    fig_time_per_step.update_yaxes(title_text="time_per_step (minutes)")
 
     # Update layout for each figure:
     for fig in (fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step):

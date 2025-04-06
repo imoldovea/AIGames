@@ -1,3 +1,4 @@
+# chart_utility.py
 
 import io
 import os
@@ -9,6 +10,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objs as go
+import psutil
 import torch
 import torch.onnx
 from PIL import Image
@@ -44,12 +46,14 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
         logging.error(f"An error occurred while loading the loss data: {e}")
         raise Exception(f"An error occurred while loading the loss data: {e}")
 
+    memory_info = psutil.virtual_memory()
+
     # Prepare aggregate metrics over epochs
     training_loss = loss_data.groupby('epoch')['training_loss'].mean()
     validation_loss = loss_data.groupby('epoch')['validation_loss'].mean()
     accuracy = loss_data.groupby('epoch')['accuracy'].mean()
     validation_accuracy = loss_data.groupby('epoch')['validation_accuracy'].mean()
-    time_per_step_avg = loss_data.groupby('epoch')['time_per_step'].mean()
+    time_per_step_avg = (loss_data.groupby('epoch')['time_per_step'].mean() / 60).round(0)
 
     # Create a figure with 6 vertical subplots (separated Time per Step)
     fig = make_subplots(
@@ -113,12 +117,16 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
     # Add individual model traces for time per step
     for i, model in enumerate(models):
         model_data = loss_data[loss_data['model'] == model]
+        time_per_step_sec = model_data['time_per_step']
+        # Convert time per step from seconds to minutes
+        time_per_step_min = (time_per_step_sec / 60.0).round(0)
+
         fig.add_trace(
             go.Scatter(
                 x=model_data['epoch'],
-                y=model_data['time_per_step'],
+                y=time_per_step_min,
                 mode='lines+markers',
-                name=f"Time per Step ({model})",
+                name=f"Time per Step (minutes) ({model})",
                 marker=dict(color=colors[i % len(colors)])
             ),
             row=5, col=1
@@ -151,13 +159,14 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
     fig.add_trace(
         go.Scatter(
             x=resource_avg.index,
-            y=resource_avg['ram_usage'],
+            y=(resource_avg['ram_usage'] / memory_info.total) * 100,
             mode='lines+markers',
             name="RAM Usage (avg)",
             marker=dict(symbol='diamond', color='brown')
         ),
         row=6, col=1
     )
+    fig.update_yaxes(range=[0, 100], row=6, col=1)
 
     # Disable the global legend
     fig.update_layout(
@@ -208,16 +217,21 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
         ),
         dict(
             x=1.05, y=0.10, xref="paper", yref="paper",
-            text=("<b>Legend:</b><br>"
-                  "• Time per Step: Individual models and average<br>"
-                  "• Magenta Diamond: CPU Load (avg)<br>"
-                  "• Cyan Diamond: GPU Load (avg)<br>"
-                  "• Brown Diamond: RAM Usage (avg)"),
+            text=(
+                "<b>Legend:</b><br>"
+                "<span style='color:magenta'>• Diamond: CPU Load (avg)</span><br>"
+                "<span style='color:cyan'>• Diamond: GPU Load (avg)</span><br>"
+                "<span style='color:brown'>• Diamond: RAM Usage (avg)</span>"
+            ),
             showarrow=False,
             font=dict(size=10, color="black"),
             xanchor="left", yanchor="bottom"
         )
     ]
+    fig.update_layout(
+        width=1200,  # Increase this value as necessary
+        margin=dict(r=250)  # Increase right margin if required
+    )
     fig.update_layout(annotations=annotations)
 
     # Restore full-width for the last two charts
@@ -443,3 +457,10 @@ def visualize_model_activations(all_activations, output_folder = OUTPUT, model_n
     plt.close('all')
     logging.info(f"Activations Video saved to: {video_path}")
 
+
+def main():
+    save_latest_loss_chart()
+
+
+if __name__ == '__main__':
+    main()
