@@ -15,7 +15,6 @@ import psutil
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler
-from torch import optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -40,6 +39,7 @@ class MazeBaseModel(nn.Module):
         super(MazeBaseModel, self).__init__()
         self.model_name = "MazeBaseModel"  # Define the model name
         self.last_loss = 1
+        self.lr_scheduler = None
 
     def forward(self, x):
         """
@@ -103,7 +103,9 @@ class MazeBaseModel(nn.Module):
 
     @profile_method(output_file=f"{OUTPUT}train_model_profile.prof")
     def train_model(self, dataloader, val_loader, num_epochs=20, learning_rate=0.0001, weight_decay=0.001,
-                    device='cpu', tensorboard_writer=None):
+                    momentum=0.9, optimizer_type='adam', scheduler_type='plateau', scheduler_params=None,
+                    device='cpu', tensorboard_writer=None,
+                    exit_weight=1.0):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.
     
@@ -115,7 +117,8 @@ class MazeBaseModel(nn.Module):
             weight_decay (float): Weight decay (L2 penalty) for regularization in the optimizer.
             device (str): The device (e.g., 'cpu' or 'cuda') used for training.
             tensorboard_writer: Optional TensorBoard writer for logging.
-    
+            exit_weight: Weight for the exit prediction loss (default: 1.0)
+
         Returns:
             self: The trained model or its final loss after training.
         """
@@ -141,10 +144,43 @@ class MazeBaseModel(nn.Module):
         )
 
         # Define optimizer, learning rate scheduler, and loss function
-        optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        # Setup optimizer based on type
+        if optimizer_type.lower() == 'adam':
+            optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        elif optimizer_type.lower() == 'sgd':
+            optimizer = torch.optim.SGD(self.parameters(), lr=learning_rate, momentum=momentum,
+                                        weight_decay=weight_decay)
+        elif optimizer_type.lower() == 'rmsprop':
+            optimizer = torch.optim.RMSprop(self.parameters(), lr=learning_rate, weight_decay=weight_decay,
+                                            momentum=momentum)
+        else:
+            raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
+
         lr_factor = config.getfloat("DEFAULT", "lr_factor", fallback=0.7)
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=patience)
-        self.lr_scheduler = scheduler
+
+        # Setup learning rate scheduler
+        if scheduler_type:
+            # Initialize scheduler_params to empty dict if None
+            scheduler_params = scheduler_params or {}
+
+            if scheduler_type.lower() == 'step':
+                step_size = scheduler_params.get('step_size', 10)
+                gamma = scheduler_params.get('gamma', 0.1)
+                self.lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+            elif scheduler_type.lower() == 'plateau':
+                patience = patience
+                factor = scheduler_params.get('factor', 0.1)
+                self.lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, factor=factor)
+            elif scheduler_type.lower() == 'cosine':
+                T_max = scheduler_params.get('T_max', num_epochs)
+                eta_min = scheduler_params.get('eta_min', 0)
+                self.lr_scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=eta_min)
+
+        # Loss functions
+        action_criterion = nn.CrossEntropyLoss()
+        exit_criterion = nn.BCEWithLogitsLoss()  # Binary cross-entropy with logits for exit prediction
+
         criterion = nn.CrossEntropyLoss()
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
@@ -153,8 +189,6 @@ class MazeBaseModel(nn.Module):
         # Set up a counter and best loss value for early stopping
         best_validation_loss = float("inf")
         early_stopping_counter = 0
-
-        ccumulation_steps = 2
 
         for epoch in range(num_epochs):
             # network performance monitoring
@@ -177,9 +211,11 @@ class MazeBaseModel(nn.Module):
             start_time = time.time()
             for iteration, batch in enumerate(iterator):
                 logging.debug(f"Training batch {iteration + 1} of {len(dataloader)}")
-                local_context, relative_position, target_action, steps_number = batch
+                local_context, relative_position, target_action, steps_number, exit_target = batch
 
                 target_action = target_action.to(device).long()
+                exit_target = exit_target.to(device).float()  # Float for BCE loss
+
                 # Convert local_context to PyTorch tensor and ensure it's at least 2D
                 local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
                 relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
@@ -205,7 +241,8 @@ class MazeBaseModel(nn.Module):
 
                 # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
                 inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
-                inputs.to(device)
+                inputs = inputs.to(device)
+
                 # Add sequence dimension for RNN input
                 inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
 
@@ -217,12 +254,25 @@ class MazeBaseModel(nn.Module):
                 cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
 
                 # Forward pass
-                outputs = self.forward(inputs)  # Pass input through the model
-                outputs.to(device)
-                loss = criterion(outputs, target_action)  # Compute cross-entropy loss
+                action_logits, exit_logits = self.forward(inputs)  # Return two outputs from forward
+                # Ensure outputs are on the correct device
+                action_logits = action_logits.to(device)
+                exit_logits = exit_logits.to(device)
+
+                action_loss = action_criterion(action_logits, target_action)
+                # Calculate exit prediction loss if target data is available
+                if target_exit is not None:
+                    exit_loss = exit_criterion(exit_logits, target_exit)
+                    # Combined loss (you might want to weight these differently)
+                    loss = action_loss + exit_loss
+                else:
+                    loss = action_loss
+
+                # Combine losses with weighting for exit prediction
+                total_loss = action_loss + exit_weight * exit_loss
 
                 optimizer.zero_grad()  # Clear previous gradients
-                loss.backward()  # Backpropagate loss to calculate gradient
+                total_loss.backward()  # Backpropagate loss to calculate gradient
                 optimizer.step()  # Update model weights
 
                 # Call resource usage after processing the batch
@@ -241,7 +291,7 @@ class MazeBaseModel(nn.Module):
                 total += target_action.size(0)
                 correct += (predicted == target_action).sum().item()
 
-            time_per_step = (time.time() - start_time) / ccumulation_steps
+            time_per_step = (time.time() - start_time) / len(iterator)
             #Back Epoch loop. Compute loss and accuracy
             epoch_loss = running_loss / len(dataloader.dataset)
             training_accuracy = correct / total if total > 0 else 0.0
@@ -371,12 +421,23 @@ class MazeBaseModel(nn.Module):
         self.eval()  # Set model to evaluation mode
         val_loss_sum = 0.0
         num_batches = 0
-        correct = 0
-        total = 0
+        action_correct = 0
+        action_total = 0
+        exit_correct = 0
+        exit_total = 0
+        has_exit_prediction = hasattr(self, 'exit_predictor')
+
+        # Check if we have separate criteria for action and exit prediction
+        if isinstance(criterion, tuple) and len(criterion) == 2:
+            action_criterion, exit_criterion = criterion
+        else:
+            action_criterion = criterion
+            exit_criterion = nn.BCEWithLogitsLoss()  # Default exit criterion
 
         with torch.no_grad():
             for batch in val_loader:
-                local_context, relative_position, target_action, steps_number = batch
+                local_context, relative_position, target_action, steps_number = batch[:4]
+                target_exit = batch[4] if len(batch) > 4 else None
 
                 # Convert target_action to a tensor ensuring it has a batch dimension
                 if isinstance(target_action, (list, tuple)):
@@ -384,11 +445,25 @@ class MazeBaseModel(nn.Module):
                 else:
                     target_action = torch.tensor([target_action], dtype=torch.long, device=device)
 
+                # Convert target_action to a tensor ensuring it has a batch dimension
+                if isinstance(target_action, (list, tuple)):
+                    target_action = torch.tensor(target_action, dtype=torch.long).to(device)
+                else:
+                    target_action = torch.tensor([target_action], dtype=torch.long, device=device)
+
+                # Process target_exit if provided
+                if target_exit is not None:
+                    if isinstance(target_exit, (list, tuple)):
+                        target_exit = torch.tensor(target_exit, dtype=torch.float32).to(device)
+                    else:
+                        target_exit = torch.tensor([target_exit], dtype=torch.float32, device=device)
+
                 # Ensure local_context is a tensor and at least 2D
                 if not isinstance(local_context, torch.Tensor):
                     local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
                 if local_context.ndim == 1:
                     local_context = local_context.unsqueeze(0)
+
                 # Convert relative_position to a tensor if needed
                 if not isinstance(relative_position, torch.Tensor):
                     relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
@@ -408,19 +483,60 @@ class MazeBaseModel(nn.Module):
                 # Add a sequence dimension for RNN input: (batch_size, sequence_length, num_features)
                 inputs = inputs.unsqueeze(1)
 
-                # Forward pass
+                # Forward pass - handle both cases (with and without exit_predictor)
                 outputs = self.forward(inputs)
-                loss = criterion(outputs, target_action)
+
+                if has_exit_prediction:
+                    # Model returns a tuple of (action_logits, exit_logits)
+                    action_logits, exit_logits = outputs
+
+                    # Handle different types of criterion
+                    if isinstance(criterion, tuple) and len(criterion) == 2:
+                        action_criterion, exit_criterion = criterion
+                        action_loss = action_criterion(action_logits, target_action)
+
+                        if target_exit is not None:
+                            exit_loss = exit_criterion(exit_logits, target_exit)
+                            loss = action_loss + exit_loss
+                        else:
+                            loss = action_loss
+                    else:
+                        # Single criterion for action prediction only
+                        loss = criterion(action_logits, target_action)
+                else:
+                    # Legacy model with single output
+                    action_logits = outputs
+                    loss = criterion(action_logits, target_action)
+
+                # Calculate exit prediction loss if target data is available
+                if target_exit is not None:
+                    exit_loss = exit_criterion(exit_logits, target_exit)
+                    # Combined loss (you might want to weight these differently)
+                    loss = action_loss + exit_loss
+                else:
+                    loss = action_loss
+
                 val_loss_sum += loss.item()
                 num_batches += 1
 
                 # Calculate accuracy
-                _, predicted = torch.max(outputs.data, 1)
-                total += target_action.size(0)
-                correct += (predicted == target_action).sum().item()
+                _, predicted_actions = torch.max(outputs.data, 1)
+                action_total += target_action.size(0)
+                action_correct += (predicted_actions == target_action).sum().item()
+
+                # Calculate exit prediction accuracy if target data is available
+                if target_exit is not None:
+                    predicted_exits = (torch.sigmoid(exit_logits) > 0.5).float()
+                    exit_total += target_exit.size(0)
+                    exit_correct += (predicted_exits == target_exit).sum().item()
 
         # After the validation loop
         average_val_loss = val_loss_sum / num_batches if num_batches > 0 else float('inf')
-        validation_accuracy = correct / total if total > 0 else 0.0
+        action_accuracy = action_correct / action_total if action_total > 0 else 0.0
 
-        return average_val_loss, validation_accuracy
+        # Only return exit accuracy if we have exit data
+        if exit_total > 0:
+            exit_accuracy = exit_correct / exit_total
+            return average_val_loss, action_accuracy, exit_accuracy
+        else:
+            return average_val_loss, action_accuracy, None

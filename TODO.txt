@@ -1,5 +1,6 @@
-- fix network diagram
--  Docker
+- Randimize trnainf data set per epoch
+- fix network diagram?
+
 
 
 - LLM apprach

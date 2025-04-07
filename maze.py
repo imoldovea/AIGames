@@ -378,6 +378,20 @@ class Maze:
             return False
         return self.current_position == self.exit
 
+    def at_exit(self, position: tuple[int, int]) -> bool:
+        """
+        Checks if the provided position corresponds to the exit.
+        
+        Args:
+            position (tuple[int, int]): The position to check.
+        
+        Returns:
+            bool: True if the position is the exit, False otherwise.
+        """
+        if self.exit is None:
+            return False
+        return position == self.exit
+
     def get_path(self):
         """
         Returns the list of recorded path coordinates.

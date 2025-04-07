@@ -27,6 +27,8 @@ WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
 
+EXIT_IMPORTANCE_WEIGHT = 1
+
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
@@ -239,8 +241,21 @@ class RNN2MazeTrainer:
                 if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
                 target_action = DIRECTION_TO_ACTION[move_delta]
-                # Append the tuple with the additional relative_position information
-                dataset.append((local_context, relative_position, target_action, steps_number))
+
+                # Check if next position is at the exit using the at_exit method
+                # We need to temporarily set the position to check if it's an exit
+                original_position = maze.current_position
+                maze.current_position = next_pos
+                at_exit = 1 if maze.at_exit() else 0
+                maze.current_position = original_position  # Restore original position
+
+                # Check if next position is at the exit using the at_exit method
+                at_exit = 1 if maze.at_exit(next_pos) else 0
+                weighted_exit = at_exit * EXIT_IMPORTANCE_WEIGHT
+
+                # Append the tuple with at_exit as an additional output parameter
+                dataset.append((local_context, relative_position, target_action, steps_number, weighted_exit))
+
 
         validation_dataset = []
         for maze in tqdm(self.validation_mazes, desc="Creating validation dataset"):
@@ -254,7 +269,14 @@ class RNN2MazeTrainer:
                     if move_delta not in DIRECTION_TO_ACTION:
                         raise KeyError(f"Invalid move delta: {move_delta}")
                     target_action = DIRECTION_TO_ACTION[move_delta]
-                    validation_dataset.append((local_context, relative_position, target_action, steps_number))
+
+                    # Check if next position is at the exit
+                    at_exit = 1 if maze.at_exit(next_pos) else 0
+                    weighted_exit = at_exit * EXIT_IMPORTANCE_WEIGHT
+
+                    validation_dataset.append(
+                        (local_context, relative_position, target_action, steps_number, weighted_exit))
+
             else:
                 logging.warning(f"Maze {index + 1} failed validation.")
         return dataset, validation_dataset
@@ -490,7 +512,7 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
         input_size=config.getint("RNN", "input_size", fallback=7),
         hidden_size=config.getint("RNN", "hidden_size"),
         num_layers=config.getint("RNN", "num_layers"),
-        output_size=config.getint("RNN", "output_size", fallback=4),
+        output_size=config.getint("RNN", "output_size", fallback=5),
     )
     rnn_model.to(device)
     if wandb_enabled:
@@ -503,6 +525,8 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
         num_epochs=config.getint("RNN", "num_epochs"),
         learning_rate=config.getfloat("RNN", "learning_rate"),
         weight_decay=config.getfloat("RNN", "weight_decay"),
+        optimizer_type=config.get("RNN", "optimizer_type", fallback="Adam"),
+        scheduler_type=config.get("RNN", "scheduler_type", fallback="plateau"),
         device=device,
         tensorboard_writer=tensorboard_data_sever
     )
@@ -523,7 +547,7 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         input_size=config.getint("GRU", "input_size", fallback=7),
         hidden_size=config.getint("GRU", "hidden_size"),
         num_layers=config.getint("GRU", "num_layers"),
-        output_size=config.getint("GRU", "output_size", fallback=4),
+        output_size=config.getint("GRU", "output_size", fallback=5),
     )
     gru_model.to(device)
     if wandb_enabled:
@@ -536,6 +560,8 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         num_epochs=config.getint("GRU", "num_epochs"),
         learning_rate=config.getfloat("GRU", "learning_rate"),
         weight_decay=config.getfloat("GRU", "weight_decay"),
+        optimizer_type=config.get("RNN", "optimizer_type", fallback="Adam"),
+        scheduler_type=config.get("RNN", "scheduler_type", fallback="plateau"),
         device=device,
         tensorboard_writer=tensorboard_data_sever
     )
@@ -555,7 +581,7 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         input_size=config.getint("LSTM", "input_size", fallback=7),
         hidden_size=config.getint("LSTM", "hidden_size"),
         num_layers=config.getint("LSTM", "num_layers"),
-        output_size=config.getint("LSTM", "output_size", fallback=4),
+        output_size=config.getint("LSTM", "output_size", fallback=5),
     )
     lstm_model.to(device)
     if wandb_enabled:
@@ -568,6 +594,8 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         num_epochs=config.getint("LSTM", "num_epochs"),
         learning_rate=config.getfloat("LSTM", "learning_rate"),
         weight_decay=config.getfloat("LSTM", "weight_decay"),
+        optimizer_type=config.get("RNN", "optimizer_type", fallback="Adam"),
+        scheduler_type=config.get("RNN", "scheduler_type", fallback="plateau"),
         device=device,
         tensorboard_writer=tensorboard_data_sever
     )
