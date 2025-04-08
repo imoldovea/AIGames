@@ -126,6 +126,10 @@ class MazeBaseModel(nn.Module):
         # Record the start time
         start_time = time.time()
 
+        torch.manual_seed(42)
+        np.random.seed(42)
+        random.seed(42)
+
         # Check if we ar ein development mode.
         if config.getboolean("DEFAULT", "development_mode", fallback=False):
             logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
@@ -175,8 +179,6 @@ class MazeBaseModel(nn.Module):
         # Loss functions
         action_criterion = nn.CrossEntropyLoss()
         exit_criterion = nn.BCEWithLogitsLoss()  # Binary cross-entropy with logits for exit prediction
-
-        criterion = nn.CrossEntropyLoss()
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
         train_accuracies = {"train": [], "validation": []}  # Dictionary to store accuracies
@@ -303,7 +305,7 @@ class MazeBaseModel(nn.Module):
             # After finishing the training epoch and recording epoch_loss, do validation:
             validation_loss, validation_accuracy, exit_accuracy = self._validate_model(
                 val_loader=val_loader,
-                criterion=criterion,
+                criterion=(action_criterion, exit_criterion),
                 device=device,
                 epoch=epoch,
                 exit_weight=exit_weight  # ⬅ if you’re using weighted validation
@@ -441,9 +443,6 @@ def _validate_model(self, val_loader, criterion, device, exit_weight, epoch):
             if relative_position.ndim == 1:
                 relative_position = relative_position.unsqueeze(0)
 
-            # Convert steps_number to a tensor if needed
-            if not isinstance(steps_number, torch.Tensor):
-                steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
             # Ensure steps_number has the correct dimensions
             if steps_number.ndim == 0:
                 steps_number = steps_number.unsqueeze(0)  # Add batch dimension
