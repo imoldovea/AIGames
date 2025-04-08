@@ -67,7 +67,8 @@ class RNN2MazeSolver(MazeSolver):
         self.maze = maze
         self.device = torch.device(device)
         self.model = model
-        self.model_type = model.mode_type
+        self.model_type = model.model_type
+
         maze.set_algorithm(self.__class__.__name__)
         model.to(self.device)
         model.eval()
@@ -116,7 +117,7 @@ class RNN2MazeSolver(MazeSolver):
         path = [current_pos]
         step_number = 0
         max_steps = config.getint("DEFAULT", "max_steps")
-        while self.maze.exit != current_pos and len(path) < max_steps:
+        while not self.maze.at_exit() and len(path) < max_steps:
             step_number += 1
             step_number_normalized = step_number / max_steps
             local_context = self._compute_local_context(current_pos, self.DIRECTIONS)
@@ -133,7 +134,16 @@ class RNN2MazeSolver(MazeSolver):
                 # Perform inference using the trained model to predict the next move
                 output = self.model(input_tensor)
                 # Determine the action (direction) with the highest probability
-                action = torch.argmax(output, dim=1).item()
+                # Check if output is a tuple (new model with exit prediction)
+                if isinstance(output, tuple):
+                    action_logits, exit_logits = output
+                    if torch.sigmoid(exit_logits).item() > 0.5:
+                        logging.info(f"Exit predicted at step {step_number}")
+                    # Use action_logits for movement decisions
+                    action = torch.argmax(action_logits, dim=1).item()
+                else:
+                    # Legacy model without exit prediction
+                    action = torch.argmax(output, dim=1).item()
 
             # Calculate the move delta based on the predicted action
             move_delta = self.DIRECTIONS[action]
@@ -170,8 +180,8 @@ class RNN2MazeSolver(MazeSolver):
     def get_recurrent_activations(self):
         return self.activations.get('recurrent')
 
-    def _compute_current_activation(self, current_pos = None, relative_position = None,
-                                    step_number_normalized = None):
+    def _compute_current_activation(self, current_pos=None, relative_position=None,
+                                    step_number_normalized=None):
         """
         Computes the current activation of the model based on the local context.
 
@@ -180,8 +190,7 @@ class RNN2MazeSolver(MazeSolver):
            by calling _compute_local_context().
         2. Converts the local context (assumed to be a NumPy array) into a PyTorch tensor.
         3. Passes the tensor through the model (which is assumed to be a neural network) in evaluation mode.
-        4. Appends the resulting activation (converted to numpy array) to the activations list.
-        5. Returns the computed activation.
+        4. Returns the model's output activation.
         """
 
         # Step 1: Get the local context as a NumPy array.
@@ -199,7 +208,7 @@ class RNN2MazeSolver(MazeSolver):
         with torch.no_grad():
             current_activation = self.model(input_tensor)
 
-        # Step 5: Return the computed activation.
+        # Step 4: Return the computed activation.
         return current_activation
 
     def _compute_local_context(self, position, directions):

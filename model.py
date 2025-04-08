@@ -9,7 +9,8 @@ from base_model import MazeBaseModel
 
 
 class MazeRecurrentModel(MazeBaseModel):
-    def __init__(self, mode_type="RNN", input_size=7, hidden_size=128, num_layers=2, output_size=5):
+    def __init__(self, mode_type="RNN", input_size=7, hidden_size=128, num_layers=2, output_size=5,
+                 predict_exit=True):
         """
         Initializes the MazeRecurrentModel.
 
@@ -25,6 +26,7 @@ class MazeRecurrentModel(MazeBaseModel):
         self.mode_type = mode_type.upper()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.predict_exit = predict_exit
 
         if self.mode_type == "RNN":
             self.recurrent = nn.RNN(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers,
@@ -41,6 +43,7 @@ class MazeRecurrentModel(MazeBaseModel):
         self.fc = nn.Linear(hidden_size, output_size)
 
         # Additional output for exit prediction
+        # Initialize exit predictor only if predict_exit is True
         self.exit_predictor = nn.Sequential(
             nn.Linear(hidden_size, 64),
             nn.ReLU(),

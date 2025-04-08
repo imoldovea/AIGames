@@ -8,6 +8,7 @@ from configparser import ConfigParser
 
 import numpy as np
 import torch
+import wandb
 from numpy.f2py.auxfuncs import throw_error
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
@@ -15,7 +16,6 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
-import wandb
 from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
@@ -62,6 +62,14 @@ class MazeTrainingDataset(Dataset):
     the relative position, the target action, and the normalized step number.
     """
 
+    def __getitem__(self, idx):
+        local_context, relative_position, target_action, step_number, exit_target = self.data[idx]
+        step_number_normalized = step_number / self.max_steps if self.max_steps != 0 else 0
+        return (np.array(local_context, dtype=np.float32),
+                np.array(relative_position, dtype=np.float32),
+                target_action,
+                step_number_normalized,
+                np.array(exit_target, dtype=np.float32))
     def __init__(self, data):
         """
         Initializes the dataset.
@@ -80,14 +88,6 @@ class MazeTrainingDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(self, idx):
-        local_context, relative_position, target_action, step_number = self.data[idx]
-        step_number_normalized = step_number / self.max_steps
-        return (np.array(local_context, dtype=np.float32),
-                np.array(relative_position, dtype=np.float32),
-                target_action,
-                step_number_normalized)
-
 
 class ValidationDataset(MazeTrainingDataset):
     """
@@ -95,6 +95,15 @@ class ValidationDataset(MazeTrainingDataset):
     Ensures that the validation dataset is not empty and calculates
     the maximum steps required for normalized step calculations.
     """
+
+    def __getitem__(self, idx):
+        local_context, relative_position, target_action, step_number, exit_target = self.data[idx]
+        step_number_normalized = step_number / self.max_steps
+        return (np.array(local_context, dtype=np.float32),
+                np.array(relative_position, dtype=np.float32),
+                target_action,
+                step_number_normalized,
+                np.array(exit_target, dtype=np.float32))
 
     def __init__(self, data):
         """
@@ -114,19 +123,13 @@ class ValidationDataset(MazeTrainingDataset):
             raise ValueError("Validation dataset is empty.")
         else:
             # Calculate the maximum step count from the dataset.
-            max_steps = max(sample[2] for sample in data)
+            max_steps = max(sample[3] for sample in data)
             self.max_steps = max_steps
 
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(self, idx):
-        local_context, relative_position, target_action, step_number = self.data[idx]
-        step_number_normalized = step_number / self.max_steps if self.max_steps != 0 else 0
-        return (np.array(local_context, dtype=np.float32),
-                np.array(relative_position, dtype=np.float32),
-                target_action,
-                step_number_normalized)
+
 
 # -------------------------------
 # Training Utilities (Imitation Learning Setup)
@@ -150,14 +153,11 @@ class RNN2MazeTrainer:
         self.training_file_path = training_file_path
         self.validation_file_path = validation_file_path
 
-        # Load the configuration file to retrieve parameters for training.
-        config = ConfigParser()
-        config.read("config.properties")
-
         # Check if development mode is enabled, reducing the training dataset size.
         if config.getboolean("DEFAULT", "development_mode", fallback=False):
             logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
-            training_samples = 10
+            training_samples = 100
+            logging.warning(f"training mode. Using only {training_samples} training samples.")
         else:
             # Load the total number of training samples allowed.
             training_samples = config.getint("DEFAULT", "training_samples", fallback=100000)
@@ -241,13 +241,6 @@ class RNN2MazeTrainer:
                 if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
                 target_action = DIRECTION_TO_ACTION[move_delta]
-
-                # Check if next position is at the exit using the at_exit method
-                # We need to temporarily set the position to check if it's an exit
-                original_position = maze.current_position
-                maze.current_position = next_pos
-                at_exit = 1 if maze.at_exit() else 0
-                maze.current_position = original_position  # Restore original position
 
                 # Check if next position is at the exit using the at_exit method
                 at_exit = 1 if maze.at_exit(next_pos) else 0
@@ -560,8 +553,8 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         num_epochs=config.getint("GRU", "num_epochs"),
         learning_rate=config.getfloat("GRU", "learning_rate"),
         weight_decay=config.getfloat("GRU", "weight_decay"),
-        optimizer_type=config.get("RNN", "optimizer_type", fallback="Adam"),
-        scheduler_type=config.get("RNN", "scheduler_type", fallback="plateau"),
+        optimizer_type=config.get("GRU", "optimizer_type", fallback="Adam"),
+        scheduler_type=config.get("GRU", "scheduler_type", fallback="plateau"),
         device=device,
         tensorboard_writer=tensorboard_data_sever
     )
@@ -594,8 +587,8 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         num_epochs=config.getint("LSTM", "num_epochs"),
         learning_rate=config.getfloat("LSTM", "learning_rate"),
         weight_decay=config.getfloat("LSTM", "weight_decay"),
-        optimizer_type=config.get("RNN", "optimizer_type", fallback="Adam"),
-        scheduler_type=config.get("RNN", "scheduler_type", fallback="plateau"),
+        optimizer_type=config.get("LSTM", "optimizer_type", fallback="Adam"),
+        scheduler_type=config.get("LSTM", "scheduler_type", fallback="plateau"),
         device=device,
         tensorboard_writer=tensorboard_data_sever
     )
