@@ -117,11 +117,12 @@ class RNN2MazeSolver(MazeSolver):
         path = [current_pos]
         step_number = 0
         max_steps = config.getint("DEFAULT", "max_steps")
+        inv_max_steps = 1.0 / max_steps
         while not self.maze.at_exit() and len(path) < max_steps:
             step_number += 1
             if self.at_exit():  # Exit loop is maze exit found
                 break  # we're at exit, done
-            step_number_normalized = step_number / max_steps
+            step_number_normalized = step_number * inv_max_steps
             local_context = self._compute_local_context(current_pos, self.DIRECTIONS)
             # Compute the relative position as the offset from the starting point
             relative_position = (
@@ -273,7 +274,7 @@ def rnn2_solver(models, mazes, device):
     for model_name, model_obj in models:
         successful_solutions = 0  # Successful solution counter
         total_mazes = len(mazes)  # Total mazes to solve
-        all_model_acivations = []
+        all_model_activations = []
         # Step 5.b: Iterate through each maze
         for i, maze_data in enumerate(mazes):
             # Step 5.b.i: Create a Maze object
@@ -292,7 +293,7 @@ def rnn2_solver(models, mazes, device):
             # Step 5.b.iv: Solve the maze
             solution_path = solver.solve()
             activations = solver.get_recurrent_activations()
-            all_model_acivations.append(activations)
+            all_model_activations.append(activations)
 
             # Step 5.b.v: Set the solution and test its validity
             maze.set_solution(solution_path)
@@ -315,7 +316,7 @@ def rnn2_solver(models, mazes, device):
 
         if config.getboolean("MONITORING", "generate_activations", fallback=False):
             visualize_model_activations(
-                all_activations=all_model_acivations,
+                all_activations=all_model_activations,
                 output_folder=OUTPUT,
                 model_name=model_name,
                 video_filename=f"recurrent_activations_movie_{model_name}.mp4",

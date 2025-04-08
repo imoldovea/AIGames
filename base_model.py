@@ -213,18 +213,13 @@ class MazeBaseModel(nn.Module):
                 relative_position = relative_position.to(device)
 
                 # Forward pass
-                combined_input = torch.cat([local_context, relative_position], dim=-1)  # Combine inputs
+                combined_input = torch.cat([local_context, relative_position, steps_number.unsqueeze(1)], dim=-1)
+                combined_input = combined_input.unsqueeze(1)  # [batch_size, seq_len=1, input_size=7]
                 outputs = self.forward(combined_input)
 
                 target_action = target_action.to(device).long()
                 exit_target = exit_target.to(device).float()  # Float for BCE loss
 
-                # Convert local_context to PyTorch tensor and ensure it's at least 2D
-                local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
-                relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
-
-                # If local_context is 1D, convert it to 2D (batch_size, num_features)
-                local_context = local_context.view(-1, local_context.size(-1))
                 if relative_position.dim() == 1:
                     relative_position = relative_position.unsqueeze(0)
                 # If steps_number is 0D (a single scalar), make it 1D
@@ -253,17 +248,6 @@ class MazeBaseModel(nn.Module):
                 if steps_number.ndim == 1:
                     steps_number = steps_number.unsqueeze(1)  # Add feature dimension
 
-                # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
-                inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
-                inputs = inputs.to(device)
-
-                # Add sequence dimension for RNN input
-                inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
-
-                assert inputs.shape[-1] == 7, f"Expected input features to be 7, but got {inputs.shape[-1]}"
-                assert target_action.dim() == 1, (f"Expected target labels to be 1-dimensional, but got "
-                                                  f"{target_action.dim()} dimensions")
-
                 # Compute resource usage during the batch processing
                 cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
 
@@ -285,7 +269,7 @@ class MazeBaseModel(nn.Module):
                     total_loss = action_loss
 
                 # Use total_loss for both backpropagation and running loss calculation
-                running_loss += total_loss.item() * inputs.size(0)
+                running_loss += total_loss.item() * combined_input.size(0)
 
                 # 3. Backward pass (compute gradients)
                 optimizer.zero_grad()  # Clear previous gradients
@@ -306,8 +290,6 @@ class MazeBaseModel(nn.Module):
                 avg_gpu = sum(gpu_loads) / len(gpu_loads)
                 avg_ram = sum(ram_usages) / len(ram_usages)
 
-                #calculate loss
-                running_loss += total_loss.item() * inputs.size(0)
                 # Calculate training accuracy
                 _, predicted = torch.max(action_logits.data, 1)
                 total += target_action.size(0)
@@ -319,10 +301,13 @@ class MazeBaseModel(nn.Module):
             training_accuracy = correct / total if total > 0 else 0.0
 
             # After finishing the training epoch and recording epoch_loss, do validation:
-            validation_loss, validation_accuracy = self._validate_model(val_loader=val_loader,
-                                                                        criterion=criterion,
-                                                                        device=device,
-                                                                        epoch=epoch)
+            validation_loss, validation_accuracy, exit_accuracy = self._validate_model(
+                val_loader=val_loader,
+                criterion=criterion,
+                device=device,
+                epoch=epoch,
+                exit_weight=exit_weight  # ⬅ if you’re using weighted validation
+            )
 
             train_losses["train"].append(epoch_loss)
             train_losses["validation"].append(validation_loss)
@@ -338,6 +323,7 @@ class MazeBaseModel(nn.Module):
                 validation_loss=validation_loss,
                 training_accuracy=training_accuracy,
                 validation_accuracy=validation_accuracy,
+                exit_accuracy=exit_accuracy,
                 time_per_step=time_per_step,
                 cpu_load=avg_cpu,
                 gpu_load=avg_gpu,
@@ -376,8 +362,9 @@ class MazeBaseModel(nn.Module):
                 f" Learning Rate = {current_lr:.6f} | "
                 f"Early Stopping Counter = {early_stopping_counter}")
 
+            min_epochs = config.getint("DEFAULT", "min_epochs", fallback=5)
+            if epoch + 1 >= min_epochs and early_stopping_counter >= patience and current_lr < improvement_threshold:
             # Trigger early stopping if no improvement within set patience and the learning rate is sufficiently low.
-            if early_stopping_counter >= patience and current_lr < improvement_threshold:
                 logging.info(
                     f"Early Stopping triggered at Epoch {epoch + 1} due to lack of validation loss improvement")
                 break
@@ -394,51 +381,8 @@ class MazeBaseModel(nn.Module):
 
         return self
 
-    def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss=0,
-                          training_accuracy=0, validation_accuracy=0,
-                          time_per_step=0, cpu_load=0, gpu_load=0, ram_usage=0, tensorboard_writer=None):
-        """
-        Logs training information and updates tensorboard/histograms for monitoring.
 
-        Parameters:
-            epoch (int): Current epoch.
-            num_epochs (int): Total number of epochs.
-            epoch_loss (float): Training loss for the current epoch.
-            scheduler: Learning rate scheduler.
-            validation_loss (float): Validation loss for the current epoch.
-            training_accuracy (float): Training accuracy for the current epoch.
-            validation_accuracy (float): Validation accuracy for the current epoch.
-            tensorboard_writer: Optional TensorBoard writer for logging.
-        """
-        logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
-        logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {validation_loss:.4f}")
-        if config.getboolean("DEFAULT", "development_mode", fallback=False):
-            logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
-            num_epochs = 2
-
-        scheduler.step(epoch_loss)
-        with open(LOSS_FILE, "a", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss,
-                             training_accuracy, validation_accuracy, time.time(), time_per_step, cpu_load, gpu_load,
-                             ram_usage])
-
-        if config.getboolean("MONITORING", "tensorboard", fallback=False):
-            # Log to tensorboard
-            if tensorboard_writer:
-                tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
-                tensorboard_writer.add_scalar("Loss/validation", validation_loss, epoch)
-                tensorboard_writer.add_scalar("Accuracy/train", training_accuracy, epoch)
-                tensorboard_writer.add_scalar("Accuracy/validation", validation_accuracy, epoch)
-
-                # Log weights and gradients
-                for name, param in self.named_parameters():
-                    tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
-                    if param.grad is not None:
-                        tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
-
-
-def _validate_model(self, val_loader, criterion, device, epoch):
+def _validate_model(self, val_loader, criterion, device, exit_weight, epoch):
     """
     Runs the validation phase and logs metrics.
 
@@ -506,11 +450,6 @@ def _validate_model(self, val_loader, criterion, device, epoch):
             if steps_number.ndim == 1:
                 steps_number = steps_number.unsqueeze(1)  # Add feature dimension
 
-            # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
-            inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
-            # Add a sequence dimension for RNN input: (batch_size, sequence_length, num_features)
-            inputs = inputs.unsqueeze(1)
-
             # 1. Forward pass - handle both cases (with and without exit_predictor)
             outputs = self.forward(inputs)
 
@@ -525,7 +464,7 @@ def _validate_model(self, val_loader, criterion, device, epoch):
 
                     if target_exit is not None:
                         exit_loss = exit_criterion(exit_logits, target_exit)
-                        loss = action_loss + exit_loss
+                        loss = action_loss + exit_weight * exit_loss
                     else:
                         loss = action_loss
                 else:
@@ -559,9 +498,47 @@ def _validate_model(self, val_loader, criterion, device, epoch):
     average_val_loss = val_loss_sum / num_batches if num_batches > 0 else float('inf')
     action_accuracy = action_correct / action_total if action_total > 0 else 0.0
 
-    # Only return exit accuracy if we have exit data
-    if exit_total > 0:
-        exit_accuracy = exit_correct / exit_total
-        return average_val_loss, action_accuracy, exit_accuracy
-    else:
-        return average_val_loss, action_accuracy, None
+    exit_accuracy = exit_correct / exit_total if exit_total > 0 else 0.0
+
+    return average_val_loss, action_accuracy, exit_accuracy
+
+
+def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss=0,
+                      training_accuracy=0, validation_accuracy=0, exit_accuracy=0,
+                      time_per_step=0, cpu_load=0, gpu_load=0, ram_usage=0, tensorboard_writer=None):
+    """
+    Logs training information and updates tensorboard/histograms for monitoring.
+
+    Parameters:
+        epoch (int): Current epoch.
+        num_epochs (int): Total number of epochs.
+        epoch_loss (float): Training loss for the current epoch.
+        scheduler: Learning rate scheduler.
+        validation_loss (float): Validation loss for the current epoch.
+        training_accuracy (float): Training accuracy for the current epoch.
+        validation_accuracy (float): Validation accuracy for the current epoch.
+        tensorboard_writer: Optional TensorBoard writer for logging.
+    """
+    logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
+    logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {validation_loss:.4f}")
+    if config.getboolean("DEFAULT", "development_mode", fallback=False):
+        logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
+        num_epochs = 2
+
+    scheduler.step(epoch_loss)
+    with open(LOSS_FILE, "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            self.model_name, epoch + 1, epoch_loss, validation_loss,
+            training_accuracy, validation_accuracy, exit_accuracy,
+            time.time(), time_per_step, cpu_load, gpu_load, ram_usage
+        ])
+
+    if config.getboolean("MONITORING", "tensorboard", fallback=False):
+        # Log to tensorboard
+        if tensorboard_writer:
+            tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
+            tensorboard_writer.add_scalar("Loss/validation", validation_loss, epoch)
+            tensorboard_writer.add_scalar("Accuracy/train", training_accuracy, epoch)
+            tensorboard_writer.add_scalar("Accuracy/validation", validation_accuracy, epoch)
+            tensorboard_writer.add_scalar("Accuracy/exit", exit_accuracy, epoch)

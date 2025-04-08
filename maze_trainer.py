@@ -193,7 +193,9 @@ class RNN2MazeTrainer:
                 logging.error(f"Failed to process maze {i + 1}: {str(e)}")
                 raise RuntimeError(f"Processing maze {i + 1} failed.") from e
         # Sort mazes by solution length (shorter first)
-        solved_training_mazes.sort(key=lambda data: len(Maze(data).get_solution()))
+        shuffle = config.getboolean("DEFAULT", "shuffle_training", fallback=True)
+        if not shuffle:
+            solved_training_mazes.sort(key=lambda data: len(Maze(data).get_solution()))
         return solved_training_mazes
 
     @staticmethod
@@ -385,7 +387,7 @@ def load_models(allowed_models):
             model_path = os.path.join(INPUT, LSTM_MODEL_PATH)
             if os.path.exists(model_path):
                 lstm_model.load_state_dict(torch.load(model_path))
-            models.append(("RNN", lstm_model))
+            models.append(("LSTM", lstm_model))
 
     return models
 
@@ -408,7 +410,7 @@ def train_models(allowed_models):
             loss_writer = csv.writer(f)
             loss_writer.writerow(
                 ["model", "epoch", "training_loss", "validation_loss", "accuracy", "validation_accuracy",
-                 "time", "time_per_step", "cpu_load", "gpu_load", "ram_usage"])
+                 "exit_accuracy", "time", "time_per_step", "cpu_load", "gpu_load", "ram_usage"])
     except Exception as e:
         logging.error(f"Error setting up loss file: {e}")
 
@@ -442,9 +444,10 @@ def train_models(allowed_models):
             logging.info(f"Using {num_workers} workers for CPU training")
 
         # Assuming train_ds and batch_size are defined elsewhere
+        shuffle = config.getboolean("DEFAULT", "shuffle_training", fallback=False)
         dataloader = DataLoader(train_ds,
                                 batch_size,
-                                shuffle=True,
+                                shuffle=shuffle,
                                 pin_memory=True,
                                 num_workers=num_workers,
                                 persistent_workers=True,
