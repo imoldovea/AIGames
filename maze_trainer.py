@@ -8,7 +8,6 @@ from configparser import ConfigParser
 
 import numpy as np
 import torch
-from numpy.f2py.auxfuncs import throw_error
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
@@ -164,7 +163,7 @@ class RNN2MazeTrainer:
 
         if training_samples < 10:
             logging.error("Training samples must be at least 10.")
-            throw_error(
+            raise ValueError(
                 "Training samples must be at least 10 "
                 "Please adjust the training_samples parameter in the config file.")
 
@@ -195,7 +194,7 @@ class RNN2MazeTrainer:
         # Sort mazes by solution length (shorter first)
         shuffle = config.getboolean("DEFAULT", "shuffle_training", fallback=True)
         if not shuffle:
-            solved_training_mazes.sort(key=lambda data: len(Maze(data).get_solution()))
+            solved_training_mazes.sort(key=lambda maze: len(maze.get_solution()) if maze.get_solution() else 0)
         return solved_training_mazes
 
     @staticmethod
@@ -257,6 +256,7 @@ class RNN2MazeTrainer:
         validation_dataset = []
         for maze in tqdm(self.validation_mazes, desc="Creating validation dataset"):
             solution = maze.get_solution()
+            start_position = maze.start_position
             if maze.self_test():  # avoid validating on mazes with no solution
                 for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
                     steps_number = i

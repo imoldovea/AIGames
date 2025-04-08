@@ -7,10 +7,12 @@ import io
 import logging
 import os
 import pstats
+import random
 import time
 from configparser import ConfigParser
 from functools import wraps
 
+import numpy as np
 import psutil
 import torch
 import torch.nn as nn
@@ -133,7 +135,6 @@ class MazeBaseModel(nn.Module):
         # Check if we ar ein development mode.
         if config.getboolean("DEFAULT", "development_mode", fallback=False):
             logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
-            num_epochs
 
         exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=1.0)
         self.to(device)
