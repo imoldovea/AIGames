@@ -77,10 +77,12 @@ class MazeRecurrentModel(MazeBaseModel):
         """
         Forward pass for the model.
 
-        x: Tensor of shape [batch_size, seq_length, input_size].
+        x: Tensor of shape [batch_size, seq_length, input_size] where input_size is the
+           combined size of local_context and relative_position features.
         Returns:
-            Tensor of shape [batch_size, output_size].
+            Tuple of (action_logits, exit_logits)
         """
+
         batch_size = x.size(0)
         if self.mode_type == "LSTM":
             h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=x.device)

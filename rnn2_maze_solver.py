@@ -119,6 +119,8 @@ class RNN2MazeSolver(MazeSolver):
         max_steps = config.getint("DEFAULT", "max_steps")
         while not self.maze.at_exit() and len(path) < max_steps:
             step_number += 1
+            if self.at_exit():  # Exit loop is maze exit found
+                break  # we're at exit, done
             step_number_normalized = step_number / max_steps
             local_context = self._compute_local_context(current_pos, self.DIRECTIONS)
             # Compute the relative position as the offset from the starting point
@@ -130,7 +132,7 @@ class RNN2MazeSolver(MazeSolver):
             input_features = np.array(local_context + list(relative_position) + [step_number_normalized],
                                       dtype=np.float32)
             input_tensor = torch.tensor(input_features).unsqueeze(0).unsqueeze(0).to(self.device)
-            with torch.no_grad():
+            with (torch.no_grad()):
                 # Perform inference using the trained model to predict the next move
                 output = self.model(input_tensor)
                 # Determine the action (direction) with the highest probability
@@ -138,7 +140,7 @@ class RNN2MazeSolver(MazeSolver):
                 if isinstance(output, tuple):
                     action_logits, exit_logits = output
                     if torch.sigmoid(exit_logits).item() > 0.5:
-                        logging.info(f"Exit predicted at step {step_number}")
+                        logging.info(f"Exit predicted at next step {step_number + 1}")
                     # Use action_logits for movement decisions
                     action = torch.argmax(action_logits, dim=1).item()
                 else:

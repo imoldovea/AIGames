@@ -213,7 +213,8 @@ class MazeBaseModel(nn.Module):
                 relative_position = relative_position.to(device)
 
                 # Forward pass
-                outputs = self.forward(local_context, relative_position)
+                combined_input = torch.cat([local_context, relative_position], dim=-1)  # Combine inputs
+                outputs = self.forward(combined_input)
 
                 target_action = target_action.to(device).long()
                 exit_target = exit_target.to(device).float()  # Float for BCE loss
@@ -272,6 +273,7 @@ class MazeBaseModel(nn.Module):
                 action_logits, exit_logits = outputs
                 exit_logits = exit_logits.to(device)
 
+                # 2. Compute loss
                 action_loss = action_criterion(action_logits, target_action)
                 # Calculate exit prediction loss if target data is available
                 if exit_target is not None:
@@ -285,8 +287,14 @@ class MazeBaseModel(nn.Module):
                 # Use total_loss for both backpropagation and running loss calculation
                 running_loss += total_loss.item() * inputs.size(0)
 
+                # 3. Backward pass (compute gradients)
                 optimizer.zero_grad()  # Clear previous gradients
                 total_loss.backward()  # Backpropagate loss to calculate gradient
+
+                # 4. Gradient clipping (Place here, immediately after loss.backward())
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+
+                # 5. Optimizer step
                 optimizer.step()  # Update model weights
 
                 # Call resource usage after processing the batch
@@ -503,9 +511,10 @@ def _validate_model(self, val_loader, criterion, device, epoch):
             # Add a sequence dimension for RNN input: (batch_size, sequence_length, num_features)
             inputs = inputs.unsqueeze(1)
 
-            # Forward pass - handle both cases (with and without exit_predictor)
+            # 1. Forward pass - handle both cases (with and without exit_predictor)
             outputs = self.forward(inputs)
 
+            # 2. Compute loss
             if has_exit_prediction:
                 # Model returns a tuple of (action_logits, exit_logits)
                 action_logits, exit_logits = outputs

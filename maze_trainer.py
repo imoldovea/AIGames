@@ -8,7 +8,6 @@ from configparser import ConfigParser
 
 import numpy as np
 import torch
-import wandb
 from numpy.f2py.auxfuncs import throw_error
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
@@ -16,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
+import wandb
 from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
@@ -192,6 +192,8 @@ class RNN2MazeTrainer:
             except Exception as e:
                 logging.error(f"Failed to process maze {i + 1}: {str(e)}")
                 raise RuntimeError(f"Processing maze {i + 1} failed.") from e
+        # Sort mazes by solution length (shorter first)
+        solved_training_mazes.sort(key=lambda data: len(Maze(data).get_solution()))
         return solved_training_mazes
 
     @staticmethod
