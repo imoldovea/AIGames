@@ -14,4 +14,3 @@ fpdf
 pytest
 kaleido
 flask
-psutil
