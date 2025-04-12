@@ -180,7 +180,7 @@ def solver() -> None:
     """
     try:
         # Load the numpy file containing an array of mazes
-        with open('input/mazes.pkl', 'rb') as f:
+        with open('../input/mazes.pkl', 'rb') as f:
             mazes = pickle.load(f)
         logging.info(f"Loaded {len(mazes)} mazes.")
 

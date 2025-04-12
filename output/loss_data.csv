@@ -1,1 +1,0 @@
-model,epoch,training_loss,validation_loss,accuracy,validation_accuracy,exit_accuracy,time,time_per_step,cpu_load,gpu_load,ram_usage

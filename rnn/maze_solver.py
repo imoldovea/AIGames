@@ -1,9 +1,13 @@
 # maze_solver.py
 # MazeSolver
 
+import cProfile
+import io
+import pstats
 from abc import ABC, abstractmethod
+
 from maze import Maze
-import cProfile, pstats, io
+
 
 class MazeSolver(ABC):
     def __init__(self, maze: Maze):

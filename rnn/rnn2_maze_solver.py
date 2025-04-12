@@ -36,7 +36,7 @@ WALL = 1
 START = 3
 
 # File paths and configuration files
-PARAMETERS_FILE = "config.properties"
+PARAMETERS_FILE = "../config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")

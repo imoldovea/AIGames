@@ -1,6 +1,7 @@
 import cProfile
 import io
 import logging
+import os
 import pstats
 import traceback
 
@@ -51,10 +52,15 @@ def main():
     """
     Main function to load, solve, and save all mazes into a PDF.
     """
-    input_mazes = "input/mazes.pkl"
 
-    output_pdf = "output/solved_mazes.pdf"
-    output_mp4 = "output/solved_mazes.mp4"
+    # Determine the project root by using the absolute path of the current file
+    project_root = os.path.dirname(os.path.abspath(__file__))
+
+    # Construct absolute paths for PDF and MP4 outputs
+    output_pdf = os.path.join(project_root, "output", "solved_mazes.pdf")
+    output_mp4 = os.path.join(project_root, "output", "solved_mazes.mp4")
+    input_mazes = os.path.join(project_root, "input", "mazes.pkl")
+
     try:
         # Step 1: Load mazes
         mazes = load_mazes(input_mazes)

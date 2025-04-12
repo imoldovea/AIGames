@@ -16,22 +16,22 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
-from backtrack_maze_solver import BacktrackingMazeSolver
+from classical_algorithms.backtrack_maze_solver import BacktrackingMazeSolver
+from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
+from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
 # Import the unified model
 from model import MazeRecurrentModel
-from optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
-from pladge_maze_solver import PledgeMazeSolver
 
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
 
-PARAMETERS_FILE = "config.properties"
+PARAMETERS_FILE = "../config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
-OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
-INPUT = config.get("FILES", "INPUT", fallback="input/")
+OUTPUT = config.get("FILES", "OUTPUT", fallback="../output/")
+INPUT = config.get("FILES", "INPUT", fallback="../input/")
 
 RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
 GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
@@ -136,8 +136,8 @@ class RNN2MazeTrainer:
     for recurrent neural network models.
     """
 
-    def __init__(self, training_file_path="input/training_mazes.pkl",
-                 validation_file_path="input/validation_mazes.pkl"):
+    def __init__(self, training_file_path="/input/training_mazes.pkl",
+                 validation_file_path="/input/validation_mazes.pkl"):
         """
         Initializes the trainer by loading and processing training and validation mazes.
 

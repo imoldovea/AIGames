@@ -6,7 +6,7 @@ from collections import deque
 from numpy.f2py.auxfuncs import throw_error
 
 from maze import Maze
-from maze_solver import MazeSolver
+from rnn.maze_solver import MazeSolver
 from utils import setup_logging
 
 
@@ -76,7 +76,7 @@ def bfs_solver():
     """
     try:
         # Load mazes
-        with open('input/mazes.pkl', 'rb') as f:
+        with open('../input/mazes.pkl', 'rb') as f:
             mazes = pickle.load(f)
         logging.info(f"Loaded {len(mazes)} mazes.")
 

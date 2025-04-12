@@ -1,7 +1,7 @@
 import pytest
 
 from maze import Maze
-from rnn2_maze_solver import RNN2MazeSolver
+from rnn.rnn2_maze_solver import RNN2MazeSolver
 
 
 def test_rnn_solver_valid_solution():

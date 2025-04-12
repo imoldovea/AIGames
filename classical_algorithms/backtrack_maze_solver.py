@@ -5,7 +5,7 @@ import pickle
 import traceback
 
 from maze import Maze
-from maze_solver import MazeSolver
+from rnn.maze_solver import MazeSolver
 from utils import setup_logging
 
 
@@ -129,7 +129,7 @@ def backtracking_solver() -> None:
     """
     try:
         # Load the numpy file containing an array of mazes
-        with open('input/mazes.pkl', 'rb') as f:
+        with open('../input/mazes.pkl', 'rb') as f:
             mazes = pickle.load(f)
         logging.info(f"Loaded {len(mazes)} mazes.")
 

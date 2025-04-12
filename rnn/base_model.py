@@ -19,7 +19,7 @@ from torch import optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-PARAMETERS_FILE = "config.properties"
+PARAMETERS_FILE = "../config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
