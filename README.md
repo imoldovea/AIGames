@@ -10,4 +10,5 @@ The concept is to implement a solution working form the viewpoint of inside the 
 
 Next steps: 
 	- Implement a large language model solution
-Implement a genetic algorithm solution.  
+	- Implement a genetic algorithm solution.  
+
