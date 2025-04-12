@@ -1,0 +1,19 @@
+services:
+  maze-solver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: maze-solver
+    volumes:
+      - "C:/Docker Mount/app:/app"
+      - "C:/Docker Mount/output:/app/output"
+      - "C:/Docker Mount/input:/app/input"
+    ports:
+      - "8050:8050"
+      - "6006:6006"
+    container_name: maze-container
+    tty: true
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1  # Don't generate .pyc files
+      - PYTHONUNBUFFERED=1         # Stream output immediately
+      - TF_ENABLE_ONEDNN_OPTS=0
