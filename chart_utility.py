@@ -1,7 +1,6 @@
 # chart_utility.py
 
 import io
-import logging
 import os
 import subprocess
 from configparser import ConfigParser
@@ -10,9 +9,8 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
 import plotly.graph_objs as go
+import psutil
 import torch
 import torch.onnx
 from PIL import Image
@@ -26,74 +24,222 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 LOSS_FILE = f"{OUTPUT}loss_data.csv"
 
+import pandas as pd
+import logging
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.io as pio
 
-def save_latest_loss_chart():
-    df = pd.read_csv(LOSS_FILE)
 
-    # Ensure numeric values and handle potential conversion errors
-    df['epoch'] = pd.to_numeric(df['epoch'], errors='coerce')
-    df['training_loss'] = pd.to_numeric(df['training_loss'], errors='coerce')
-    df['validation_loss'] = pd.to_numeric(df['validation_loss'], errors='coerce')
-    df['accuracy'] = pd.to_numeric(df['accuracy'], errors='coerce')
-    df['validation_accuracy'] = pd.to_numeric(df['validation_accuracy'], errors='coerce')
-    df['exit_accuracy'] = pd.to_numeric(df['exit_accuracy'], errors='coerce')  # newly added line
+def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
+    # Ensure epoch is numeric (if needed)
+    try:
+        loss_data = pd.read_csv(LOSS_FILE)
+        loss_data['epoch'] = pd.to_numeric(loss_data['epoch'], errors='coerce')
+    except FileNotFoundError:
+        logging.error(f"Loss file not found: {LOSS_FILE}")
+        raise
+    except pd.errors.EmptyDataError:
+        logging.error(f"Loss file is empty: {LOSS_FILE}")
+        raise
+    except Exception as e:
+        logging.error(f"An error occurred while loading the loss data: {e}")
+        raise Exception(f"An error occurred while loading the loss data: {e}")
 
-    # Initialize plot
-    fig = go.Figure()
+    memory_info = psutil.virtual_memory()
 
-    # Plot existing metrics
-    fig.add_trace(go.Scatter(
-        x=df['epoch'],
-        y=df['training_loss'],
-        mode='lines+markers',
-        name='Training Loss'
-    ))
+    # Prepare aggregate metrics over epochs
+    training_loss = loss_data.groupby('epoch')['training_loss'].mean()
+    validation_loss = loss_data.groupby('epoch')['validation_loss'].mean()
+    accuracy = loss_data.groupby('epoch')['accuracy'].mean()
+    validation_accuracy = loss_data.groupby('epoch')['validation_accuracy'].mean()
+    time_per_step_avg = (loss_data.groupby('epoch')['time_per_step'].mean() / 60).round(0)
 
-    fig.add_trace(go.Scatter(
-        x=df['epoch'],
-        y=df['validation_loss'],
-        mode='lines+markers',
-        name='Validation Loss'
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=df['epoch'],
-        y=df['accuracy'],
-        mode='lines+markers',
-        name='Training Accuracy'
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=df['epoch'],
-        y=df['validation_accuracy'],
-        mode='lines+markers',
-        name='Validation Accuracy'
-    ))
-
-    # New trace for exit_accuracy
-    fig.add_trace(go.Scatter(
-        x=df['epoch'],
-        y=df['exit_accuracy'],
-        mode='lines+markers',
-        name='Exit Accuracy'
-    ))
-
-    # Update figure layout clearly showing all metrics
-    fig.update_layout(
-        title="Model Loss and Accuracy per Epoch",
-        xaxis_title="Epoch",
-        yaxis_title="Value",
-        legend_title="Metrics",
-        legend=dict(
-            x=1.02,
-            y=1,
-            traceorder="normal"
+    # Create a figure with 6 vertical subplots (separated Time per Step)
+    fig = make_subplots(
+        rows=6,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.05,
+        subplot_titles=(
+            "Training Loss",
+            "Validation Loss",
+            "Accuracy",
+            "Validation Accuracy",
+            "Time per Step",
+            "Resource Usage"
         )
     )
 
-    # Save plot to files (unchanged paths and methods)
-    fig.write_html(OUTPUT + "/latest_loss_chart.html")
-    fig.write_image(OUTPUT + "/latest_loss_chart.png")
+    # Chart 1: Training Loss
+    fig.add_trace(
+        go.Scatter(x=training_loss.index, y=training_loss.values, mode='lines+markers', name="Training Loss"),
+        row=1, col=1
+    )
+
+    # Chart 2: Validation Loss
+    fig.add_trace(
+        go.Scatter(x=validation_loss.index, y=validation_loss.values, mode='lines+markers', name="Validation Loss",
+                   marker=dict(color='orange')),
+        row=2, col=1
+    )
+
+    # Chart 3: Accuracy
+    fig.add_trace(
+        go.Scatter(x=accuracy.index, y=accuracy.values, mode='lines+markers', name="Accuracy",
+                   marker=dict(color='green')),
+        row=3, col=1
+    )
+
+    # Chart 4: Validation Accuracy
+    fig.add_trace(
+        go.Scatter(x=validation_accuracy.index, y=validation_accuracy.values, mode='lines+markers',
+                   name="Validation Accuracy", marker=dict(color='red')),
+        row=4, col=1
+    )
+
+    # Chart 5: Time per Step (dedicated chart)
+    models = loss_data['model'].unique()
+    colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+
+    # Add average time per step
+    fig.add_trace(
+        go.Scatter(
+            x=time_per_step_avg.index,
+            y=time_per_step_avg.values,
+            mode='lines+markers',
+            name="Time per Step (avg)",
+            marker=dict(symbol='diamond', color='blue')
+        ),
+        row=5, col=1
+    )
+
+    # Add individual model traces for time per step
+    for i, model in enumerate(models):
+        model_data = loss_data[loss_data['model'] == model]
+        time_per_step_sec = model_data['time_per_step']
+        # Convert time per step from seconds to minutes
+        time_per_step_min = (time_per_step_sec / 60.0).round(0)
+
+        fig.add_trace(
+            go.Scatter(
+                x=model_data['epoch'],
+                y=time_per_step_min,
+                mode='lines+markers',
+                name=f"Time per Step (minutes) ({model})",
+                marker=dict(color=colors[i % len(colors)])
+            ),
+            row=5, col=1
+        )
+
+    # Chart 6: Resource Usage
+    agg_cols = ['cpu_load', 'gpu_load', 'ram_usage']
+    resource_avg = loss_data.groupby('epoch')[agg_cols].mean()
+
+    fig.add_trace(
+        go.Scatter(
+            x=resource_avg.index,
+            y=resource_avg['cpu_load'],
+            mode='lines+markers',
+            name="CPU Load (avg)",
+            marker=dict(symbol='diamond', color='magenta')
+        ),
+        row=6, col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=resource_avg.index,
+            y=resource_avg['gpu_load'],
+            mode='lines+markers',
+            name="GPU Load (avg)",
+            marker=dict(symbol='diamond', color='cyan')
+        ),
+        row=6, col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=resource_avg.index,
+            y=(resource_avg['ram_usage'] / memory_info.total) * 100,
+            mode='lines+markers',
+            name="RAM Usage (avg)",
+            marker=dict(symbol='diamond', color='brown')
+        ),
+        row=6, col=1
+    )
+    fig.update_yaxes(range=[0, 100], row=6, col=1)
+
+    # Disable the global legend
+    fig.update_layout(
+        showlegend=False,
+        height=1400,  # Increased height for 6 charts
+        width=900,
+        title_text="Latest Loss Chart",
+        margin=dict(b=150)
+    )
+
+    # Custom annotations - updated for 6 charts
+    annotations = [
+        dict(
+            x=0.98, y=0.97, xref="paper", yref="paper",
+            text="<b>Training Loss</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.81, xref="paper", yref="paper",
+            text="<b>Validation Loss</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.65, xref="paper", yref="paper",
+            text="<b>Accuracy</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.49, xref="paper", yref="paper",
+            text="<b>Validation Accuracy</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.33, xref="paper", yref="paper",
+            text="<b>Time per Step</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=0.98, y=0.17, xref="paper", yref="paper",
+            text="<b>Resource Usage</b>", showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="right", yanchor="top"
+        ),
+        dict(
+            x=1.05, y=0.10, xref="paper", yref="paper",
+            text=(
+                "<b>Legend:</b><br>"
+                "<span style='color:magenta'>• Diamond: CPU Load (avg)</span><br>"
+                "<span style='color:cyan'>• Diamond: GPU Load (avg)</span><br>"
+                "<span style='color:brown'>• Diamond: RAM Usage (avg)</span>"
+            ),
+            showarrow=False,
+            font=dict(size=10, color="black"),
+            xanchor="left", yanchor="bottom"
+        )
+    ]
+    fig.update_layout(
+        width=1200,  # Increase this value as necessary
+        margin=dict(r=250)  # Increase right margin if required
+    )
+    fig.update_layout(annotations=annotations)
+
+    # Restore full-width for the last two charts
+    fig.update_xaxes(domain=[0.0, 1.0], row=5, col=1)
+    fig.update_xaxes(domain=[0.0, 1.0], row=6, col=1)
+
+    # Save to HTML
+    pio.write_html(fig, file=output_file_name, auto_open=True)
 
 def save_neural_network_diagram(models, output_dir="output/"):
     """

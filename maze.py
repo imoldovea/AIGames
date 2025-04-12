@@ -370,22 +370,13 @@ class Maze:
         self.valid_solution = True
         return True
 
-    def at_exit(self, position: tuple[int, int] = None) -> bool:
+    def at_exit(self):
         """
-        Checks if the provided position corresponds to the exit.
-        
-        Args:
-            position (tuple[int, int]): The position to check.
-        
-        Returns:
-            bool: True if the position is the exit, False otherwise.
+        Checks if the current position is the exit.
         """
         if self.exit is None:
             return False
-        if position is None:
-            return self.current_position == self.exit
-        else:
-            return position == self.exit
+        return self.current_position == self.exit
 
     def get_path(self):
         """

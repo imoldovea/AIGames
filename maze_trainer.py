@@ -8,13 +8,14 @@ from configparser import ConfigParser
 
 import numpy as np
 import torch
+import wandb
+from numpy.f2py.auxfuncs import throw_error
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import utils
-import wandb
 from backtrack_maze_solver import BacktrackingMazeSolver
 from maze import Maze
 # Import the unified model
@@ -25,8 +26,6 @@ from pladge_maze_solver import PledgeMazeSolver
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
-
-EXIT_IMPORTANCE_WEIGHT = 1
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -61,14 +60,6 @@ class MazeTrainingDataset(Dataset):
     the relative position, the target action, and the normalized step number.
     """
 
-    def __getitem__(self, idx):
-        local_context, relative_position, target_action, step_number, exit_target = self.data[idx]
-        step_number_normalized = step_number / self.max_steps if self.max_steps != 0 else 0
-        return (np.array(local_context, dtype=np.float32),
-                np.array(relative_position, dtype=np.float32),
-                target_action,
-                step_number_normalized,
-                np.array(exit_target, dtype=np.float32))
     def __init__(self, data):
         """
         Initializes the dataset.
@@ -87,6 +78,14 @@ class MazeTrainingDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+    def __getitem__(self, idx):
+        local_context, relative_position, target_action, step_number = self.data[idx]
+        step_number_normalized = step_number / self.max_steps
+        return (np.array(local_context, dtype=np.float32),
+                np.array(relative_position, dtype=np.float32),
+                target_action,
+                step_number_normalized)
+
 
 class ValidationDataset(MazeTrainingDataset):
     """
@@ -94,15 +93,6 @@ class ValidationDataset(MazeTrainingDataset):
     Ensures that the validation dataset is not empty and calculates
     the maximum steps required for normalized step calculations.
     """
-
-    def __getitem__(self, idx):
-        local_context, relative_position, target_action, step_number, exit_target = self.data[idx]
-        step_number_normalized = step_number / self.max_steps
-        return (np.array(local_context, dtype=np.float32),
-                np.array(relative_position, dtype=np.float32),
-                target_action,
-                step_number_normalized,
-                np.array(exit_target, dtype=np.float32))
 
     def __init__(self, data):
         """
@@ -122,13 +112,19 @@ class ValidationDataset(MazeTrainingDataset):
             raise ValueError("Validation dataset is empty.")
         else:
             # Calculate the maximum step count from the dataset.
-            max_steps = max(sample[3] for sample in data)
+            max_steps = max(sample[2] for sample in data)
             self.max_steps = max_steps
 
     def __len__(self):
         return len(self.data)
 
-
+    def __getitem__(self, idx):
+        local_context, relative_position, target_action, step_number = self.data[idx]
+        step_number_normalized = step_number / self.max_steps if self.max_steps != 0 else 0
+        return (np.array(local_context, dtype=np.float32),
+                np.array(relative_position, dtype=np.float32),
+                target_action,
+                step_number_normalized)
 
 # -------------------------------
 # Training Utilities (Imitation Learning Setup)
@@ -152,18 +148,21 @@ class RNN2MazeTrainer:
         self.training_file_path = training_file_path
         self.validation_file_path = validation_file_path
 
+        # Load the configuration file to retrieve parameters for training.
+        config = ConfigParser()
+        config.read("config.properties")
+
         # Check if development mode is enabled, reducing the training dataset size.
         if config.getboolean("DEFAULT", "development_mode", fallback=False):
             logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
-            training_samples = 100
-            logging.warning(f"training mode. Using only {training_samples} training samples.")
+            training_samples = 10
         else:
             # Load the total number of training samples allowed.
             training_samples = config.getint("DEFAULT", "training_samples", fallback=100000)
 
         if training_samples < 10:
             logging.error("Training samples must be at least 10.")
-            raise ValueError(
+            throw_error(
                 "Training samples must be at least 10 "
                 "Please adjust the training_samples parameter in the config file.")
 
@@ -191,10 +190,6 @@ class RNN2MazeTrainer:
             except Exception as e:
                 logging.error(f"Failed to process maze {i + 1}: {str(e)}")
                 raise RuntimeError(f"Processing maze {i + 1} failed.") from e
-        # Sort mazes by solution length (shorter first)
-        shuffle = config.getboolean("DEFAULT", "shuffle_training", fallback=True)
-        if not shuffle:
-            solved_training_mazes.sort(key=lambda maze: len(maze.get_solution()) if maze.get_solution() else 0)
         return solved_training_mazes
 
     @staticmethod
@@ -244,19 +239,12 @@ class RNN2MazeTrainer:
                 if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
                 target_action = DIRECTION_TO_ACTION[move_delta]
-
-                # Check if next position is at the exit using the at_exit method
-                at_exit = 1 if maze.at_exit(next_pos) else 0
-                weighted_exit = at_exit * EXIT_IMPORTANCE_WEIGHT
-
-                # Append the tuple with at_exit as an additional output parameter
-                dataset.append((local_context, relative_position, target_action, steps_number, weighted_exit))
-
+                # Append the tuple with the additional relative_position information
+                dataset.append((local_context, relative_position, target_action, steps_number))
 
         validation_dataset = []
         for maze in tqdm(self.validation_mazes, desc="Creating validation dataset"):
             solution = maze.get_solution()
-            start_position = maze.start_position
             if maze.self_test():  # avoid validating on mazes with no solution
                 for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
                     steps_number = i
@@ -266,14 +254,7 @@ class RNN2MazeTrainer:
                     if move_delta not in DIRECTION_TO_ACTION:
                         raise KeyError(f"Invalid move delta: {move_delta}")
                     target_action = DIRECTION_TO_ACTION[move_delta]
-
-                    # Check if next position is at the exit
-                    at_exit = 1 if maze.at_exit(next_pos) else 0
-                    weighted_exit = at_exit * EXIT_IMPORTANCE_WEIGHT
-
-                    validation_dataset.append(
-                        (local_context, relative_position, target_action, steps_number, weighted_exit))
-
+                    validation_dataset.append((local_context, relative_position, target_action, steps_number))
             else:
                 logging.warning(f"Maze {index + 1} failed validation.")
         return dataset, validation_dataset
@@ -387,7 +368,7 @@ def load_models(allowed_models):
             model_path = os.path.join(INPUT, LSTM_MODEL_PATH)
             if os.path.exists(model_path):
                 lstm_model.load_state_dict(torch.load(model_path))
-            models.append(("LSTM", lstm_model))
+            models.append(("RNN", lstm_model))
 
     return models
 
@@ -410,7 +391,7 @@ def train_models(allowed_models):
             loss_writer = csv.writer(f)
             loss_writer.writerow(
                 ["model", "epoch", "training_loss", "validation_loss", "accuracy", "validation_accuracy",
-                 "exit_accuracy", "time", "time_per_step", "cpu_load", "gpu_load", "ram_usage"])
+                 "time", "time_per_step", "cpu_load", "gpu_load", "ram_usage"])
     except Exception as e:
         logging.error(f"Error setting up loss file: {e}")
 
@@ -444,10 +425,9 @@ def train_models(allowed_models):
             logging.info(f"Using {num_workers} workers for CPU training")
 
         # Assuming train_ds and batch_size are defined elsewhere
-        shuffle = config.getboolean("DEFAULT", "shuffle_training", fallback=False)
         dataloader = DataLoader(train_ds,
                                 batch_size,
-                                shuffle=shuffle,
+                                shuffle=True,
                                 pin_memory=True,
                                 num_workers=num_workers,
                                 persistent_workers=True,
@@ -510,7 +490,7 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
         input_size=config.getint("RNN", "input_size", fallback=7),
         hidden_size=config.getint("RNN", "hidden_size"),
         num_layers=config.getint("RNN", "num_layers"),
-        output_size=config.getint("RNN", "output_size", fallback=5),
+        output_size=config.getint("RNN", "output_size", fallback=4),
     )
     rnn_model.to(device)
     if wandb_enabled:
@@ -523,8 +503,6 @@ def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever)
         num_epochs=config.getint("RNN", "num_epochs"),
         learning_rate=config.getfloat("RNN", "learning_rate"),
         weight_decay=config.getfloat("RNN", "weight_decay"),
-        optimizer_type=config.get("RNN", "optimizer_type", fallback="Adam"),
-        scheduler_type=config.get("RNN", "scheduler_type", fallback="plateau"),
         device=device,
         tensorboard_writer=tensorboard_data_sever
     )
@@ -545,7 +523,7 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         input_size=config.getint("GRU", "input_size", fallback=7),
         hidden_size=config.getint("GRU", "hidden_size"),
         num_layers=config.getint("GRU", "num_layers"),
-        output_size=config.getint("GRU", "output_size", fallback=5),
+        output_size=config.getint("GRU", "output_size", fallback=4),
     )
     gru_model.to(device)
     if wandb_enabled:
@@ -558,8 +536,6 @@ def _train_gru_model(device, dataloader, validation_ds , tensorboard_data_sever)
         num_epochs=config.getint("GRU", "num_epochs"),
         learning_rate=config.getfloat("GRU", "learning_rate"),
         weight_decay=config.getfloat("GRU", "weight_decay"),
-        optimizer_type=config.get("GRU", "optimizer_type", fallback="Adam"),
-        scheduler_type=config.get("GRU", "scheduler_type", fallback="plateau"),
         device=device,
         tensorboard_writer=tensorboard_data_sever
     )
@@ -579,7 +555,7 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         input_size=config.getint("LSTM", "input_size", fallback=7),
         hidden_size=config.getint("LSTM", "hidden_size"),
         num_layers=config.getint("LSTM", "num_layers"),
-        output_size=config.getint("LSTM", "output_size", fallback=5),
+        output_size=config.getint("LSTM", "output_size", fallback=4),
     )
     lstm_model.to(device)
     if wandb_enabled:
@@ -592,8 +568,6 @@ def _train_lstm_model(device, dataloader, validation_ds, tensorboard_data_sever)
         num_epochs=config.getint("LSTM", "num_epochs"),
         learning_rate=config.getfloat("LSTM", "learning_rate"),
         weight_decay=config.getfloat("LSTM", "weight_decay"),
-        optimizer_type=config.get("LSTM", "optimizer_type", fallback="Adam"),
-        scheduler_type=config.get("LSTM", "scheduler_type", fallback="plateau"),
         device=device,
         tensorboard_writer=tensorboard_data_sever
     )

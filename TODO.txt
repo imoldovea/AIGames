@@ -1,9 +1,5 @@
-- add cell already visited signal
-
-- Reinforcement learning (RL)
-- Randimize trnainf data set per epoch
-- fix network diagram?
-
+- fix network diagram
+-  Docker
 
 
 - LLM apprach
