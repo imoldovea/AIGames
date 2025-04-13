@@ -53,8 +53,7 @@ def main():
     Main function to load, solve, and save all mazes into a PDF.
     """
 
-    # Determine the project root by using the absolute path of the current file
-    project_root = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # Construct absolute paths for PDF and MP4 outputs
     output_pdf = os.path.join(project_root, "output", "solved_mazes.pdf")
