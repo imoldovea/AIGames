@@ -5,7 +5,7 @@ from dash import dcc, html, no_update
 from dash.dependencies import Input, Output
 
 # File path to the CSV file
-LOSS_FILE = '../output/loss_data.csv'
+LOSS_FILE = 'output/loss_data.csv'
 
 
 def load_loss_data():

@@ -27,11 +27,11 @@ WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTION_TO_ACTION = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
 
-PARAMETERS_FILE = "../config.properties"
+PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
-OUTPUT = config.get("FILES", "OUTPUT", fallback="../output/")
-INPUT = config.get("FILES", "INPUT", fallback="../input/")
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+INPUT = config.get("FILES", "INPUT", fallback="input/")
 
 RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
 GRU_MODEL_PATH = f"{INPUT}gru_model.pth"

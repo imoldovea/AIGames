@@ -147,7 +147,6 @@ class PledgeMazeSolver:
 # Example usage:
 if __name__ == "__main__":
     import numpy as np
-    import matplotlib.pyplot as plt
 
     # Create a simple 5x5 maze where 1 (or Maze.WALL) indicates a wall and 0 indicates a free cell.
     # For demonstration purposes, we assume the Maze class uses 1 for walls.
@@ -158,54 +157,3 @@ if __name__ == "__main__":
         [1, 1, 0, 1, 0],
         [0, 0, 0, 0, 0]
     ])
-
-
-    # Here is a dummy Maze implementation using available methods.
-    class Maze:
-        WALL = 1
-
-        def __init__(self, grid, start, exit_coords):
-            self.grid = grid
-            self.start_position = start
-            # current_position will be updated by the solver.
-            self.current_position = start
-            # When the exit is reached, the at_exit method should return True.
-            self._exit_coords = exit_coords
-            self._bounds_cache = {}
-
-        def is_within_bounds(self, position):
-            r, c = position
-            return 0 <= r < self.grid.shape[0] and 0 <= c < self.grid.shape[1]
-
-        def is_valid_move(self, position):
-            """
-            A move is valid if within bounds and not a wall.
-            """
-            if not self.is_within_bounds(position):
-                return False
-            r, c = position
-            return self.grid[r, c] != Maze.WALL
-
-        def at_exit(self):
-            """
-            Returns True if the current position is the exit.
-            """
-            return self.current_position == self._exit_coords
-
-
-    # Create a maze instance.
-    start = (0, 0)
-    exit_coords = (4, 4)
-    maze_instance = Maze(maze_grid, start, exit_coords)
-
-    solver = PledgeMazeSolver(maze_instance)
-    solution_path = solver.solve()
-    logging.info("Solution path: " + str(solution_path))
-
-    # Optionally, display the maze and the path.
-    maze_image = maze_grid.copy().astype(float)
-    for (r, c) in solution_path:
-        maze_image[r, c] = 0.5  # mark the path with a distinct value
-    plt.imshow(maze_image, cmap='gray')
-    plt.title("Maze with Pledge Algorithm Path")
-    plt.show()

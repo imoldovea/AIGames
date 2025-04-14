@@ -18,7 +18,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from torch.utils.tensorboard import SummaryWriter
 from torchviz import make_dot
 
-PARAMETERS_FILE = "../config.properties"
+PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
