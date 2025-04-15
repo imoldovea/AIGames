@@ -33,13 +33,21 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
 
-RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
-GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
-LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
-LOSS_FILE = f"{OUTPUT}loss_data.csv"
+RNN_MODEL = config.get("FILES", "RNN_MODEL", fallback="rnn_model.pth")
+GRU_MODEL = config.get("FILES", "RNN_MODEL", fallback="gru_model.pth")
+LSTM_MODEL = config.get("FILES", "RNN_MODEL", fallback="lstm_model.pth")
 
-TRAINING_MAZES_FILE = f"{INPUT}training_mazes.pkl"
-VALIDATION_MAZES_FILE = f"{INPUT}validation_mazes.pkl"
+RNN_MODEL_PATH = f"{INPUT}{RNN_MODEL}"
+GRU_MODEL_PATH = f"{INPUT}{GRU_MODEL}"
+LSTM_MODEL_PATH = f"{INPUT}{LSTM_MODEL}"
+LOSS_DATA = config.get("FILES", "LOSS_DATA", fallback="loss_data.csv")
+LOSS_FILE = f"{OUTPUT}{LOSS_DATA}"
+
+training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.pkl")
+validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.pkl")
+
+TRAINING_MAZES_FILE = f"{INPUT}{training_mazes}"
+VALIDATION_MAZES_FILE = f"{INPUT}{training_mazes}"
 wandb_enabled = config.getboolean("MONITORING", "wandb", fallback=True)
 
 # Mapping of available solver names to their classes

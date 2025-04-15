@@ -216,9 +216,13 @@ def generate(filename, number):
     logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
 
 def main():
-    generate(filename="training_mazes.pkl", number=num_mazes)
-    generate(filename="validation_mazes.pkl", number=num_mazes // 10)
-    generate(filename="mazes.pkl", number=10)
+    mazes = config.get("FILES", "MAZES", fallback="mazes.pkl")
+    training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.pkl")
+    validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.pkl")
+
+    generate(filename=training_mazes, number=num_mazes)
+    generate(filename=validation_mazes, number=num_mazes // 10)
+    generate(filename=mazes, number=10)
 
 if __name__ == "__main__":
     #setup logging

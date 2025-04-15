@@ -18,7 +18,7 @@ PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
 
-OUTPUT = os.path.join(os.path.dirname(__file__), "output") + os.sep
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 BRIGHT_PINK = (255, 0, 255)  # Bright pink/magenta color (B,G,R format)
 
 

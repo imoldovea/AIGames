@@ -22,7 +22,8 @@ PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
-LOSS_FILE = f"{OUTPUT}loss_data.csv"
+LOSS_DATA = config.get("FILES", "LOSS_DATA", fallback="loss_data.csv")
+LOSS_FILE = f"{OUTPUT}{LOSS_DATA}"
 
 import pandas as pd
 import logging

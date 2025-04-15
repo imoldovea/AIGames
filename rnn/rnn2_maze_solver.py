@@ -42,15 +42,20 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
 
-RNN_MODEL_PATH = f"{INPUT}rnn_model.pth"
-GRU_MODEL_PATH = f"{INPUT}gru_model.pth"
-LSTM_MODEL_PATH = f"{INPUT}lstm_model.pth"
+RNN_MODEL = config.get("FILES", "RNN_MODEL", fallback="rnn_model.pth")
+GRU_MODEL = config.get("FILES", "RNN_MODEL", fallback="gru_model.pth")
+LSTM_MODEL = config.get("FILES", "RNN_MODEL", fallback="lstm_model.pth")
+
+RNN_MODEL_PATH = f"{INPUT}{RNN_MODEL}"
+GRU_MODEL_PATH = f"{INPUT}{GRU_MODEL}"
+LSTM_MODEL_PATH = f"{INPUT}{LSTM_MODEL}"
 LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
 LOSS_FILE = f"{OUTPUT}loss_data.csv"
 MODELS_DIAGRAM = f"{OUTPUT}models_diagram.pdf"
 OUTPUT_PDF = f"{OUTPUT}solved_mazes.pdf"
 SECRETS = "secrets.properties"
-TEST_MAZES_FILE = f"{INPUT}mazes.pkl"
+MAZES = LSTM_MODEL = config.get("FILES", "MAZES", fallback="mazes.pkl")
+TEST_MAZES_FILE = f"{INPUT}{MAZES}"
 
 
 # -------------------------------

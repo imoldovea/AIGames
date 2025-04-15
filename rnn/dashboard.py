@@ -1,3 +1,5 @@
+from configparser import ConfigParser
+
 import dash
 import pandas as pd
 import plotly.express as px
@@ -5,8 +7,13 @@ from dash import dcc, html, no_update
 from dash.dependencies import Input, Output
 
 # File path to the CSV file
-LOSS_FILE = 'output/loss_data.csv'
-
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+'
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+LOSS_DATA = config.get("FILES", "LOSS_DATA", fallback="loss_data.csv")
+LOSS_FILE = f"{OUTPUT}{LOSS_DATA}"
 
 def load_loss_data():
     try:
