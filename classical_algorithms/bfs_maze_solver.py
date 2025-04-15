@@ -6,7 +6,7 @@ from collections import deque
 from numpy.f2py.auxfuncs import throw_error
 
 from maze import Maze
-from rnn.maze_solver import MazeSolver
+from maze_solver import MazeSolver
 from utils import setup_logging
 
 

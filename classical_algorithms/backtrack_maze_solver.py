@@ -5,7 +5,7 @@ import pickle
 import traceback
 
 from maze import Maze
-from rnn.maze_solver import MazeSolver
+from maze_solver import MazeSolver
 from utils import setup_logging
 
 
