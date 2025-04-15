@@ -124,6 +124,14 @@ class Maze:
         """
         return self.is_within_bounds(position) and not self.is_wall(position)
 
+    def reset(self):
+        """Reset maze to starting position for each new maze"""
+        self.current_position = self.start_position
+        self.path = [self.start_position]
+        self.visited_cells = set()
+        self.valid_solution = False
+        self.raw_movie = []
+
     def move(self, position: tuple[int, int], backtrack: bool = False) -> bool:
 
         """
