@@ -42,6 +42,8 @@ class MazeBaseModel(nn.Module):
         super(MazeBaseModel, self).__init__()
         self.model_name = "MazeBaseModel"  # Define the model name
         self.last_loss = 1
+        self.scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=patience)
+
 
     def forward(self, x):
         """
@@ -144,9 +146,6 @@ class MazeBaseModel(nn.Module):
 
         # Define optimizer, learning rate scheduler, and loss function
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
-        lr_factor = config.getfloat("DEFAULT", "lr_factor", fallback=0.7)
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=patience)
-        self.lr_scheduler = scheduler
         criterion = nn.CrossEntropyLoss()
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses

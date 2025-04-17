@@ -51,7 +51,7 @@ class MazeSolver(ABC):
         """
         if self.maze.exit is None:
             raise ValueError("Exit is not defined for the maze.")
-        if self.maze.position == self.maze.exit:
+        if self.maze.current_position == self.maze.exit:
             return 0.0
         current_r, current_c = self.maze.current_position
         exit_r, exit_c = self.maze.exit
