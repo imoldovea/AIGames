@@ -442,7 +442,8 @@ def train_models(allowed_models):
             pin_memory=True,
             num_workers=num_workers,
             persistent_workers=(num_workers > 0),
-            prefetch_factor=2
+            prefetch_factor=2,
+            collate_fn=lambda batch: tuple(torch.as_tensor(x) for x in zip(*batch))
         )
         logging.info(f"Number of workers: {num_workers}")
         logging.info(f'Using device: {device}')
