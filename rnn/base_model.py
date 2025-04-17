@@ -63,13 +63,13 @@ class MazeBaseModel(nn.Module):
     def _compute_resource_usage(self):
         """
         Computes system resource usage (CPU load, GPU load, and RAM usage).
-        
+
         Returns:
             cpu_load (float): CPU usage percentage.
             gpu_load (float): GPU memory utilization (if applicable).
             ram_usage (float): RAM usage in GB.
         """
-        
+
         cpu_load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
         gpu_load = torch.cuda.memory_allocated(0) / torch.cuda.max_memory_allocated(
             0) if torch.cuda.is_available() else 0.0
@@ -156,6 +156,8 @@ class MazeBaseModel(nn.Module):
         best_validation_loss = float("inf")
         early_stopping_counter = 0
 
+        # Number of steps to accumulate for calculating average time per step
+        # This helps provide a more stable time measurement
         ccumulation_steps = 2
 
         for epoch in range(num_epochs):
@@ -243,7 +245,9 @@ class MazeBaseModel(nn.Module):
                 total += target_action.size(0)
                 correct += (predicted == target_action).sum().item()
 
-            time_per_step = int((time.time() - start_time) / ccumulation_steps)
+            # Calculate average time per step in milliseconds for this epoch
+            # This helps users understand the processing delay
+            time_per_step = int(((time.time() - start_time) / ccumulation_steps) * 1000)
             #Back Epoch loop. Compute loss and accuracy
             epoch_loss = running_loss / int(len(dataloader.dataset))
             training_accuracy = correct / total if total > 0 else 0.0
@@ -291,9 +295,14 @@ class MazeBaseModel(nn.Module):
 
             logging.info(
                 f"Epoch {epoch + 1}: Train Loss = {epoch_loss:.4f} | Validation Loss = {validation_loss:.4f} |"
-                f" Traning Accuracy = {training_accuracy:.4f} | Validation Accuracy = {validation_accuracy:.4f} |"
+                f" Training Accuracy = {training_accuracy:.4f} | Validation Accuracy = {validation_accuracy:.4f} |"
                 f" Learning Rate = {current_lr:.6f} | "
                 f"Early Stopping Counter = {early_stopping_counter}")
+
+            # Log performance metrics to explain processing time and resource usage
+            logging.info(
+                f"Performance: Time per step = {time_per_step} ms | CPU Load = {avg_cpu}% | "
+                f"GPU Load = {avg_gpu}% | RAM Usage = {avg_ram} GB")
 
             # Trigger early stopping if no improvement within set patience and the learning rate is sufficiently low.
             if early_stopping_counter >= self.patience and current_lr < improvement_threshold:
@@ -327,6 +336,10 @@ class MazeBaseModel(nn.Module):
             validation_loss (float): Validation loss for the current epoch.
             training_accuracy (float): Training accuracy for the current epoch.
             validation_accuracy (float): Validation accuracy for the current epoch.
+            time_per_step (int): Average processing time per step in milliseconds.
+            cpu_load (float): Average CPU utilization percentage during training.
+            gpu_load (float): Average GPU memory utilization percentage (if available).
+            ram_usage (float): Average RAM usage in GB during training.
             tensorboard_writer: Optional TensorBoard writer for logging.
         """
         logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
