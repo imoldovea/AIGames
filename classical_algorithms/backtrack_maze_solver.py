@@ -16,6 +16,7 @@ class BacktrackingMazeSolver(MazeSolver):
         Args:
             maze (Maze): The maze to solve.
         """
+        super().__init__(maze)
         self.maze = maze
         maze.set_algorithm(self.__class__.__name__)
         # Cache for neighbor calculations

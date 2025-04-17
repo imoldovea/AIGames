@@ -10,6 +10,7 @@ import pstats
 import time
 from configparser import ConfigParser
 from functools import wraps
+from typing import Optional, Callable, Any, TypeVar  # *new* Import required typing classes
 
 import psutil
 import torch
@@ -18,6 +19,8 @@ import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+T = TypeVar('T', bound=Callable[..., Any])  # *new* Define T as a type variable for use in type annotations
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -28,7 +31,6 @@ INPUT = config.get("FILES", "INPUT", fallback="input/")
 TRAINING_PROGRESS_HTML = "training_progress.html"
 TRAINING_PROGRESS_PNG = "training_progress.png"
 LOSS_FILE = os.path.join(OUTPUT, "loss_data.csv")
-
 
 class MazeBaseModel(nn.Module):
     """
@@ -71,12 +73,12 @@ class MazeBaseModel(nn.Module):
         ram_usage = psutil.virtual_memory().used / (1024 ** 3)
         return round(cpu_load, 0), round(gpu_load, 0), round(ram_usage, 0)
 
-    def profile_method(output_file=None):
+    def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
         """Decorator for profiling a method"""
 
-        def decorator(func):
+        def decorator(func: T) -> T:
             @wraps(func)
-            def wrapper(self, *args, **kwargs):
+            def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
                 profiler = cProfile.Profile()
                 profiler.enable()
 
@@ -102,11 +104,11 @@ class MazeBaseModel(nn.Module):
         return decorator
 
     @profile_method(output_file=f"{OUTPUT}train_model_profile.prof")
-    def train_model(self, dataloader, val_loader, num_epochs=20, learning_rate=0.0001, weight_decay=0.001,
-                    device='cpu', tensorboard_writer=None):
+    def train_model(self, dataloader, num_epochs=20, learning_rate=0.0001, weight_decay=0.001,
+                    device='cpu', tensorboard_writer=None, val_loader=None):
         """
         Generic training loop using CrossEntropyLoss and Adam optimizer.
-    
+
         Parameters:
             dataloader (DataLoader): The data loader providing input data and labels for training.
             val_loader (ValDataLoader): The data loader providing input data and labels for validation.
@@ -115,7 +117,7 @@ class MazeBaseModel(nn.Module):
             weight_decay (float): Weight decay (L2 penalty) for regularization in the optimizer.
             device (str): The device (e.g., 'cpu' or 'cuda') used for training.
             tensorboard_writer: Optional TensorBoard writer for logging.
-    
+
         Returns:
             self: The trained model or its final loss after training.
         """
@@ -158,7 +160,7 @@ class MazeBaseModel(nn.Module):
 
         for epoch in range(num_epochs):
             # network performance monitoring
-            running_loss = 0.0
+            running_loss: float = 0.0
             correct = 0
             total = 0
 
@@ -241,9 +243,9 @@ class MazeBaseModel(nn.Module):
                 total += target_action.size(0)
                 correct += (predicted == target_action).sum().item()
 
-            time_per_step = (time.time() - start_time) / ccumulation_steps
+            time_per_step = int((time.time() - start_time) / ccumulation_steps)
             #Back Epoch loop. Compute loss and accuracy
-            epoch_loss = running_loss / len(dataloader.dataset)
+            epoch_loss = running_loss / int(len(dataloader.dataset))
             training_accuracy = correct / total if total > 0 else 0.0
 
             # After finishing the training epoch and recording epoch_loss, do validation:

@@ -402,7 +402,7 @@ def main():
 
         # Apply the model to the test data.
         mazes = load_mazes(TEST_MAZES_FILE)
-        solved_mazes, model_success_rates = rnn2_solver(models = models, mazes = mazes, device = device)
+        solved_mazes, model_success_rates = rnn2_solver(models=models, mazes=mazes, device=device.type)
         logging.info(f"Model success rates: {model_success_rates}")
 
         #Plot mazes
