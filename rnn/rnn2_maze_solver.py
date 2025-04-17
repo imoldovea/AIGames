@@ -348,7 +348,7 @@ def main():
             wandb_run_url = "WandB Disabled"
 
         if config.getboolean("MONITORING", "dashboard", fallback=True):
-            dashboard_process = subprocess.Popen(["python", "dashboard.py"])
+            dashboard_process = subprocess.Popen(["python", "rnn/dashboard.py"])
 
         for handler in logging.getLogger('werkzeug').handlers:
             logging.getLogger('werkzeug').removeHandler(handler)

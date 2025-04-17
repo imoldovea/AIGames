@@ -220,6 +220,11 @@ def main():
     training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.pkl")
     validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.pkl")
 
+    # delete data set cash
+    cache_path = os.path.join(OUTPUT, "dataset_cache.pkl")
+    if os.path.exists(cache_path):
+        os.remove(cache_path)
+
     generate(filename=training_mazes, number=num_mazes)
     generate(filename=validation_mazes, number=num_mazes // 10)
     generate(filename=mazes, number=10)

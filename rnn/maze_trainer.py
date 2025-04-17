@@ -4,6 +4,7 @@
 import csv
 import logging
 import os
+import pickle
 from configparser import ConfigParser
 
 import numpy as np
@@ -380,20 +381,13 @@ def load_models(allowed_models):
 
     return models
 
-
 def train_models(allowed_models):
-    """
-    Trains RNN, GRU, and LSTM models on maze-solving data.
-    Returns:
-        list: Tuples of model name and trained model.
-    """
     logging.debug("Starting training.")
-
     trained_models = []
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     batch_size = config.getint("DEFAULT", "batch_size", fallback=128)
 
-    #Delete previous tensorboard files.
+    # Delete previous tensorboard files.
     try:
         with open(LOSS_FILE, "w", newline="") as f:
             loss_writer = csv.writer(f)
@@ -406,58 +400,65 @@ def train_models(allowed_models):
     tensorboard_data_sever = SummaryWriter(log_dir=f"{OUTPUT}tensorboard_data")
 
     trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE, VALIDATION_MAZES_FILE)
-    dataset, validation_dataset= trainer.create_dataset()
+
+    # -------------------------------
+    # Added caching for dataset creation
+    # -------------------------------
+    cache_path = os.path.join(OUTPUT, "dataset_cache.pkl")
+    if os.path.exists(cache_path) and not config.getboolean("DEFAULT", "use_dataset_cache=True", fallback=False):
+        with open(cache_path, "rb") as f:
+            dataset, validation_dataset = pickle.load(f)
+            logging.info(f"Loading dataset from cache. Length:{len(dataset)}")
+    else:
+        dataset, validation_dataset = trainer.create_dataset()
+        with open(cache_path, "wb") as f:
+            pickle.dump((dataset, validation_dataset), f)
     logging.info(f"Created {len(dataset)} training samples.")
+
     train_ds = MazeTrainingDataset(dataset)
     validation_ds = ValidationDataset(validation_dataset)
 
-    # Determine a safe number of workers - much more conservative approach
-    # Start with a small number to avoid memory issues
+    # -------------------------------
+    # Adjust DataLoader worker count based on environment.
+    # -------------------------------
     try:
-        # Start with minimal workers
-        num_workers = 0  # Start with single-process loading
-
-        config_workers = config.getint("DEFAULT", "dataloader_workers", fallback=None)
-        if config_workers is not None:
-            num_workers = config_workers
+        # Starting with a safe baseline
+        num_workers = config.getint("DEFAULT", "dataloader_workers", fallback=0)
+        if num_workers:
             logging.info(f"Using {num_workers} workers from config")
-        # Otherwise try to determine a reasonable value
-        elif device.type == 'cuda':
-            # Use just 1-2 workers for GPU to avoid memory bottlenecks
-            max_workers = config.getint("DEFAULT", "max_num_workers", fallback=6)
-            num_workers = min(max_workers, os.cpu_count() or 1)
-            logging.info(f"Using {num_workers} workers for GPU training")
         else:
-            # For CPU training, use a smaller number of workers
-            num_workers = max(1, (os.cpu_count() or 1) // 4)
-            logging.info(f"Using {num_workers} workers for CPU training")
+            if device.type == 'cuda':
+                max_workers = config.getint("DEFAULT", "max_num_workers", fallback=2)
+                num_workers = min(max_workers, os.cpu_count() or 1)
+                logging.info(f"Using {num_workers} workers for GPU training")
+            else:
+                num_workers = max(1, (os.cpu_count() or 1) // 4)
+                logging.info(f"Using {num_workers} workers for CPU training")
 
-        # Assuming train_ds and batch_size are defined elsewhere
-        dataloader = DataLoader(train_ds,
-                                batch_size,
-                                shuffle=True,
-                                pin_memory=True,
-                                num_workers=num_workers,
-                                persistent_workers=True,
-                                prefetch_factor=2)
-
+        dataloader = DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            shuffle=True,
+            pin_memory=True,
+            num_workers=num_workers,
+            persistent_workers=(num_workers > 0),
+            prefetch_factor=2
+        )
         logging.info(f"Number of workers: {num_workers}")
         logging.info(f'Using device: {device}')
 
     except (MemoryError, RuntimeError) as e:
         logging.warning(f"Failed to create DataLoader with {num_workers} workers: {str(e)}")
         logging.info("Falling back to single-process loading")
-
-        # Fall back to single-process loading
         dataloader = DataLoader(
             train_ds,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=0,  # No multiprocessing
+            num_workers=0,
             pin_memory=False,
         )
 
-
+    # (Remaining training loop continues below as before ...)
     for model_name in allowed_models:
         if model_name == "GRU":
             gru_model = _train_gru_model(
@@ -484,11 +485,10 @@ def train_models(allowed_models):
             )
             trained_models.append(("RNN", rnn_model))
         else:
-            print(f"Model {model_name} is not recognized and will be skipped.")
+            logging.warning(f"Model {model_name} is not recognized and will be skipped.")
 
     tensorboard_data_sever.close()
     logging.info("Training complete.")
-
     return trained_models
 
 def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever) -> MazeRecurrentModel:
