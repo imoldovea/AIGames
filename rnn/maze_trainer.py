@@ -251,7 +251,7 @@ class RNN2MazeTrainer:
                 dataset.append((local_context, relative_position, target_action, steps_number))
 
         validation_dataset = []
-        for maze, index in tqdm(self.validation_mazes, desc="Creating validation dataset"):
+        for maze in tqdm(self.validation_mazes, desc="Creating validation dataset"):
             solution = maze.get_solution()
             if maze.self_test():  # avoid validating on mazes with no solution
                 for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
@@ -264,7 +264,7 @@ class RNN2MazeTrainer:
                     target_action = DIRECTION_TO_ACTION[move_delta]
                     validation_dataset.append((local_context, relative_position, target_action, steps_number))
             else:
-                logging.warning(f"Maze {index + 1} failed validation.")
+                logging.warning(f"Maze failed validation.")
         return dataset, validation_dataset
 
     def _compute_local_context(self, maze, position, directions):
