@@ -84,7 +84,7 @@ class RNN2MazeSolver(MazeSolver):
         if isinstance(recurrent, torch.nn.Module):
             recurrent.register_forward_hook(self.save_activation)
 
-    def save_activation(self, output):
+    def save_activation(self, module, input, output):
         if isinstance(output, tuple):
             activation_tensor = output[0]
         else:
