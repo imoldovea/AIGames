@@ -42,8 +42,9 @@ class MazeBaseModel(nn.Module):
         super(MazeBaseModel, self).__init__()
         self.model_name = "MazeBaseModel"  # Define the model name
         self.last_loss = 1
-        self.scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=patience)
 
+        # Set up early stopping patience to monitor overfitting
+        self.patience = config.getint("DEFAULT", "patience", fallback=5)
 
     def forward(self, x):
         """
@@ -135,17 +136,17 @@ class MazeBaseModel(nn.Module):
 
         self.to(device)
 
-        # Set up early stopping patience to monitor overfitting
-        patience = config.getint("DEFAULT", "patience", fallback=5)
         improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
         logging.info(
-            f"Early stopping patience set to {patience} epochs. Training will stop after {patience} "
+            f"Early stopping patience set to {self.patience} epochs. Training will stop after {self.patience} "
             f"if no improvement over {improvement_threshold}"
             f" epochs without improvement on training loss or validation loss."
         )
 
         # Define optimizer, learning rate scheduler, and loss function
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        lr_factor = config.getfloat("DEFAULT", "lr_factor", fallback=0.7)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=self.patience)
         criterion = nn.CrossEntropyLoss()
 
         train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
@@ -280,7 +281,7 @@ class MazeBaseModel(nn.Module):
             ram_usages.clear()
 
             # Stop is no improvement on loss function
-            current_lr = self.lr_scheduler.get_last_lr()[0]  # Get the current learning rate
+            current_lr = scheduler.get_last_lr()[0]  # Get the current learning rate
 
             if validation_loss < best_validation_loss * (1 - improvement_threshold):
                 best_validation_loss = validation_loss
@@ -295,7 +296,7 @@ class MazeBaseModel(nn.Module):
                 f"Early Stopping Counter = {early_stopping_counter}")
 
             # Trigger early stopping if no improvement within set patience and the learning rate is sufficiently low.
-            if early_stopping_counter >= patience and current_lr < improvement_threshold:
+            if early_stopping_counter >= self.patience and current_lr < improvement_threshold:
                 logging.info(
                     f"Early Stopping triggered at Epoch {epoch + 1} due to lack of validation loss improvement")
                 break
