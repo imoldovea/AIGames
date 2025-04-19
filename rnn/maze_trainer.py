@@ -5,13 +5,14 @@ import csv
 import logging
 import os
 import pickle
+import random
 from configparser import ConfigParser
 
 import numpy as np
 import torch
 import wandb
 from numpy.f2py.auxfuncs import throw_error
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -134,6 +135,24 @@ class ValidationDataset(MazeTrainingDataset):
                 np.array(relative_position, dtype=np.float32),
                 target_action,
                 step_number_normalized)
+
+
+# a custom sampler that reshuffles a subset of the training data each epoch.
+class ReshuffleSampler(Sampler):
+    def __init__(self, data_source, reshuffle_percentage):
+        self.data_source = data_source
+        self.reshuffle_fraction = reshuffle_percentage / 100.0
+
+    def __iter__(self):
+        n = len(self.data_source)
+        subset_size = int(n * self.reshuffle_fraction)
+        indices = list(range(n))
+        random.shuffle(indices)
+        return iter(indices[:subset_size])
+
+    def __len__(self):
+        return int(len(self.data_source) * self.reshuffle_fraction)
+
 
 # -------------------------------
 # Training Utilities (Imitation Learning Setup)
@@ -412,7 +431,8 @@ def train_models(allowed_models):
     # Added caching for dataset creation
     # -------------------------------
     cache_path = os.path.join(OUTPUT, "dataset_cache.pkl")
-    if os.path.exists(cache_path) and config.getboolean("DEFAULT", "use_dataset_cache", fallback=False):
+    if (os.path.exists(cache_path) and config.getboolean("DEFAULT", "use_dataset_cache", fallback=False)
+            and config.getint("DEFAULT", "data_reshuffle", fallback=0) == 0):
         with open(cache_path, "rb") as f:
             dataset, validation_dataset = pickle.load(f)
             logging.info(f"Loading dataset from cache. Length:{len(dataset)}")
