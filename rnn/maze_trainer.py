@@ -381,6 +381,10 @@ def load_models(allowed_models):
 
     return models
 
+
+def collate_fn(batch):
+    return tuple(torch.as_tensor(x) for x in zip(*batch))
+
 def train_models(allowed_models):
     logging.debug("Starting training.")
     trained_models = []
@@ -443,7 +447,7 @@ def train_models(allowed_models):
             num_workers=num_workers,
             persistent_workers=(num_workers > 0),
             prefetch_factor=2,
-            collate_fn=lambda batch: tuple(torch.as_tensor(x) for x in zip(*batch))
+            collate_fn=collate_fn
         )
         logging.info(f"Number of workers: {num_workers}")
         logging.info(f'Using device: {device}')
