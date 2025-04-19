@@ -412,18 +412,19 @@ def train_models(allowed_models):
     # Added caching for dataset creation
     # -------------------------------
     cache_path = os.path.join(OUTPUT, "dataset_cache.pkl")
-    if os.path.exists(cache_path) and config.getboolean("DEFAULT", "use_dataset_cache=True", fallback=False):
+    if os.path.exists(cache_path) and config.getboolean("DEFAULT", "use_dataset_cache", fallback=False):
         with open(cache_path, "rb") as f:
             dataset, validation_dataset = pickle.load(f)
             logging.info(f"Loading dataset from cache. Length:{len(dataset)}")
     else:
-        # delete data set cash
-        cache_path = os.path.join(OUTPUT, "dataset_cache.pkl")
+        # delete data set cache first
         if os.path.exists(cache_path):
             os.remove(cache_path)
         dataset, validation_dataset = trainer.create_dataset()
+        # create new cache
         with open(cache_path, "wb") as f:
             pickle.dump((dataset, validation_dataset), f)
+            logging.info(f"New dataloader cache saved {cache_path}")
     logging.info(f"Created {len(dataset)} training samples.")
 
     train_ds = MazeTrainingDataset(dataset)

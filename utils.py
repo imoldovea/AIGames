@@ -1,7 +1,7 @@
+import glob
 import logging
 import os
 import pickle
-import shutil
 import tempfile
 import traceback
 from configparser import ConfigParser
@@ -81,7 +81,10 @@ def setup_logging():
 
     #Delete all OUTPUT folder content
     if config.getboolean("DEFAULT", "retrain_model", fallback=True):
-        shutil.rmtree(OUTPUT, ignore_errors=True)
+        for pattern in ["*.html", "*.pdf", "*.mp4", "*.prof", "*.csv"]:
+            for filename in glob.glob(os.path.join(OUTPUT, pattern)):
+                os.remove(filename)
+
         os.makedirs(OUTPUT, exist_ok=True)
         logging.info(f"{OUTPUT}cleared...")
 

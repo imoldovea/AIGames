@@ -9,7 +9,7 @@ from dash.dependencies import Input, Output
 # File path to the CSV file
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
-'
+
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 LOSS_DATA = config.get("FILES", "LOSS_DATA", fallback="loss_data.csv")
