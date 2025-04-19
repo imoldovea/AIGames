@@ -1,6 +1,6 @@
 - reinforce exit achived
 - seq_len > 1: You giventire sequence (e.g. 10 the LSTM an e timesteps) in one forward call. It “unrolls” over those 10 steps, returning outputs at each step. This is what allows the LSTM to learn dependencies from earlier timesteps within the same batch item.
-
+- refesh samples on each trnaing run
 
 New Methid
 - LLM apprach

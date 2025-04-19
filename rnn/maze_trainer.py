@@ -164,7 +164,7 @@ class RNN2MazeTrainer:
         # Check if development mode is enabled, reducing the training dataset size.
         if config.getboolean("DEFAULT", "development_mode", fallback=False):
             logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
-            training_samples = 10
+            training_samples = 20
         else:
             # Load the total number of training samples allowed.
             training_samples = config.getint("DEFAULT", "training_samples", fallback=100000)
