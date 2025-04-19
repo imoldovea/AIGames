@@ -131,7 +131,7 @@ class MazeBaseModel(nn.Module):
 
         # Check if we ar ein development mode.
         if config.getboolean("DEFAULT", "development_mode", fallback=False):
-            logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
+            logging.warning("Development mode is enabled. Training with reduced data set.")
             num_epochs = 2
 
         self.to(device)

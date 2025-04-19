@@ -381,9 +381,12 @@ def load_models(allowed_models):
 
     return models
 
-
 def collate_fn(batch):
-    return tuple(torch.as_tensor(x) for x in zip(*batch))
+    # Unzip the batch into its separate components
+    batch = list(zip(*batch))
+    # For each component combine the list of numpy arrays into one numpy array and then convert to a tensor
+    return tuple(torch.as_tensor(np.array(x)) for x in batch)
+
 
 def train_models(allowed_models):
     logging.debug("Starting training.")
