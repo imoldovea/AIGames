@@ -467,16 +467,34 @@ def train_models(allowed_models):
                 num_workers = max(1, (os.cpu_count() or 1) // 4)
                 logging.info(f"Using {num_workers} workers for CPU training")
 
-        dataloader = DataLoader(
-            train_ds,
-            batch_size=batch_size,
-            shuffle=True,
-            pin_memory=True,
-            num_workers=num_workers,
-            persistent_workers=(num_workers > 0),
-            prefetch_factor=2,
-            collate_fn=collate_fn
-        )
+        # Use a custom sampler if data reshuffling is enabled.
+        reshuffle_percentage = config.getint("DEFAULT", "data_reshuffle", fallback=10)
+        if reshuffle_percentage > 0:
+            sampler = ReshuffleSampler(train_ds, reshuffle_percentage)
+            dataloader = DataLoader(
+                train_ds,
+                batch_size=batch_size,
+                sampler=sampler,
+                pin_memory=True,
+                num_workers=num_workers,
+                persistent_workers=(num_workers > 0),
+                prefetch_factor=2,
+                collate_fn=collate_fn
+            )
+            logging.info(f"Using a reshuffle sampler with {reshuffle_percentage}% of data per epoch")
+        else:
+            dataloader = DataLoader(
+                train_ds,
+                batch_size=batch_size,
+                shuffle=True,
+                pin_memory=True,
+                num_workers=num_workers,
+                persistent_workers=(num_workers > 0),
+                prefetch_factor=2,
+                collate_fn=collate_fn
+            )
+            logging.info("Using shuffling of the full dataset")
+
         logging.info(f"Number of workers: {num_workers}")
         logging.info(f'Using device: {device}')
 
