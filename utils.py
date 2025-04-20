@@ -203,7 +203,6 @@ def encode_video(frame_list, filename, fps_val, w, h):
     out.release()
     logging.info(f"Video saved as: {filename}")
 
-
 def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
     """
     Generates and saves a video of all mazes and their solutions using OpenCV.
@@ -217,15 +216,25 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
 
         frames = []
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # 1. CREATE INITIAL TITLE SCREEN (Moved outside the loop)
+        for _ in range(title_frames_count):
+            title_frame = np.ones((height, width, 3), dtype=np.uint8) * 255
+            cv2.putText(title_frame, "Maze Solver Solutions", (50, 100),  # More general title
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3)
+            # Removed maze-specific info from the initial title
+            cv2.putText(title_frame, f"Generated on: {now_str}", (50, 160),  # Adjusted position
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
+            frames.append(title_frame)
+
         maze_count = 1
+        last_frame = None  # Initialize last_frame
 
         for maze in solved_mazes:
             try:
                 # Retrieve maze frames and current positions
                 images = maze.get_raw_movie()  # Maze frames as NumPy arrays
-                # images = maze.get_frames()  # Online generation of frames, highlighting the current postion.
                 algorithm = maze.algorithm
-
                 # Current positions (list of tuples per frame, e.g., [(x1, y1), (x2, y2)...])
                 current_positions = maze.get_current_positions() if hasattr(maze, 'get_current_positions') else None
             except Exception as e:
@@ -233,23 +242,15 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
                 maze_count += 1
                 continue
 
-            # 1. CREATE TITLE SCREEN (as in the original code)
-            for _ in range(title_frames_count):
-                title_frame = np.ones((height, width, 3), dtype=np.uint8) * 255
-
-                cv2.putText(title_frame, f"Maze Solver", (50, 100),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3)
-                cv2.putText(title_frame, f"Maze #{maze_count}", (50, 160),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
-                cv2.putText(title_frame, f"Algorithm: {algorithm}", (50, 220),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
-                cv2.putText(title_frame, f"Generated on: {now_str}", (50, 280),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
-
-                frames.append(title_frame)
+            # Title screen generation is removed from here
 
             # 2. PROCESS MAZE FRAMES
             margin_height = 60  # pixels reserved at the top for text
+
+            if not images:  # Skip if no images were generated for the maze
+                logging.warning(f"No frames generated for maze #{maze_count}. Skipping.")
+                maze_count += 1
+                continue
 
             for idx, img in enumerate(images):
                 # Resize image to fit the frame height minus the margin
@@ -272,7 +273,8 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
                 if current_positions and idx < len(current_positions):
                     current_pos = current_positions[idx]  # Retrieve current position for this frame
 
-                    if current_pos:
+                    if current_pos and hasattr(maze, 'cols') and hasattr(maze,
+                                                                         'rows') and maze.cols > 0 and maze.rows > 0:  # Added checks
                         cx, cy = current_pos
                         # Adjust position for resizing or margins
                         px = start_x + int(cy * (resized_img.shape[1] / maze.cols))
@@ -282,30 +284,37 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
                 # Draw white rectangle for margin text
                 cv2.rectangle(frame_with_margin, (0, 0), (width, margin_height), (255, 255, 255), -1)
 
-                # Insert text in the margin
+                # Insert text in the margin (Kept here for per-maze info)
                 cv2.putText(frame_with_margin, f"Maze #{maze_count}", (10, 35),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
                 cv2.putText(frame_with_margin, f"Algorithm: {algorithm}", (250, 35),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
 
-                last_frame = frame_with_margin
+                last_frame = frame_with_margin  # Update last_frame within the image loop
                 frames.append(frame_with_margin)
+
             maze_count += 1
 
-        # 3. ADD PAUSE AFTER LAST FRAME
-        pause_frame_count = fps * 3
-        for _ in range(pause_frame_count):
-            frames.append(last_frame)
+        # 3. ADD PAUSE AFTER LAST FRAME (Only if there was a last frame)
+        if last_frame is not None:
+            pause_frame_count = fps * 3
+            for _ in range(pause_frame_count):
+                frames.append(last_frame)
+        else:
+            logging.warning("No frames were generated for any maze. Video will be empty.")
 
-        # 4. ENCODE TO VIDEO
-        p = Process(target=encode_video, args=(frames, output_filename, fps, width, height))
-        p.start()
-        p.join()
+        # 4. ENCODE TO VIDEO (Only if frames exist)
+        if frames:
+            p = Process(target=encode_video, args=(frames, output_filename, fps, width, height))
+            p.start()
+            p.join()
+            logging.info("Video encoding completed.")
+        else:
+            logging.error("No frames to encode. Video file will not be created.")
 
-        logging.info("Video encoding completed.")
+
     except Exception as e:
-        logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
-
+        logging.error(f"An error occurred during video generation: {e}\n\nStack Trace:{traceback.format_exc()}")
 
 def load_mazes(file_path="input/mazes.pkl"):
     """

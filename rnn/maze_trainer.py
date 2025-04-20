@@ -7,13 +7,12 @@ import os
 import pickle
 from configparser import ConfigParser
 
-import numpy as np
 import pandas as pd
 import torch
 import wandb
 from numpy.f2py.auxfuncs import throw_error
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Sampler
+from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -173,7 +172,85 @@ class ValidationDataset(Dataset):
         return self.samples[idx]
 
 
+from torch.utils.data import Sampler
+import numpy as np
+
+
+class CurriculumSampler(Sampler):
+    """
+    A PyTorch sampler that enables curriculum learning by gradually increasing the difficulty
+    of training samples over time.
+
+    How it works:
+    - Assumes the dataset is pre-sorted from easiest to hardest.
+    - Divides the dataset into N "difficulty phases" (e.g., 10 chunks).
+    - Starts training using only the first phase (e.g., easiest 10% of samples).
+    - Every few epochs, it unlocks an additional phase (e.g., next 10% of samples).
+    - Each epoch, it randomly samples within the currently unlocked portion.
+
+    Example:
+        - Dataset length: 1000 samples
+        - phase_count = 10 → 100 samples per phase
+        - epoch 0 → samples from 0:100
+        - epoch 1 → samples from 0:200
+        - epoch 2 → samples from 0:300
+        ...
+
+    Args:
+        dataset (Dataset): The training dataset (must be sorted by difficulty).
+        phase_count (int): Number of incremental curriculum phases (default: 10).
+        unlock_every_n_epochs (int): How often to unlock a new phase (default: every 1 epoch).
+    """
+
+    def __init__(self, dataset, phase_count=10, unlock_every_n_epochs=1):
+        """
+        Args:
+            dataset: The training dataset (already sorted by difficulty!).
+            phase_count: Into how many difficulty chunks we divide the dataset (default: 10 → 10% increments).
+            unlock_every_n_epochs: How often to unlock the next difficulty band.
+        """
+        self.dataset = dataset
+        self.num_samples = len(dataset)
+        self.phase_count = phase_count
+        self.unlock_every = unlock_every_n_epochs
+        self.current_epoch = 0
+
+        # Precompute difficulty boundaries
+        self.phase_size = self.num_samples // self.phase_count
+
+    def set_epoch(self, epoch):
+        self.current_epoch = epoch
+
+    def __iter__(self):
+        # Determine how many difficulty phases to include this epoch
+        phases_unlocked = min(self.phase_count, (self.current_epoch // self.unlock_every) + 1)
+        upper_bound = phases_unlocked * self.phase_size
+        indices = np.arange(0, upper_bound)
+        np.random.shuffle(indices)
+        return iter(indices.tolist())
+
+    def __len__(self):
+        return self.num_samples
+
 class RollingSubsetSampler(Sampler):
+    """
+    A Sampler that maintains a rolling subset of indices from a dataset.
+
+    In each iteration (epoch), a specified `fraction` of the active indices
+    are randomly selected and replaced with indices that were not part of
+    the active set in the previous iteration. The total number of indices
+    yielded in each iteration remains constant and equal to the size of the
+    original dataset.
+
+    This allows for gradual shifting of the data subset used per epoch,
+    ensuring variety while potentially focusing training on a dynamic window
+    of the full dataset over time.
+
+    Args:
+        dataset: The dataset to sample from.
+        fraction (float): The fraction of indices to replace in each iteration.
+                          Must be between 0 and 1. Defaults to 0.1 (10%).
+    """
     def __init__(self, dataset, fraction=0.1):
         self.dataset = dataset
         self.total_indices = list(range(len(dataset)))
@@ -184,11 +261,13 @@ class RollingSubsetSampler(Sampler):
     def __iter__(self):
         # Replace fraction of current active set
         num_replace = int(self.fraction * self.size)
-        old_samples = list(self.active_indices)
-        retained = set(np.random.choice(old_samples, size=self.size - num_replace, replace=False))
+        # Retain the lowest N% indices (favoring easier mazes)
+        old_samples = sorted(list(self.active_indices))
+        retained = set(old_samples[:self.size - num_replace])
 
-        available_pool = list(set(self.total_indices) - retained)
-        new_samples = set(np.random.choice(available_pool, size=num_replace, replace=False))
+        # Add harder ones next in line
+        available_pool = [i for i in self.total_indices if i not in retained]
+        new_samples = set(available_pool[:num_replace])
 
         self.active_indices = retained | new_samples
         return iter(list(self.active_indices))
@@ -261,6 +340,8 @@ class RNN2MazeTrainer:
             except Exception as e:
                 logging.error(f"Failed to process maze {i + 1}: {str(e)}")
                 raise RuntimeError(f"Processing maze {i + 1} failed.") from e
+        # curriculum learning: Sort by solution path length
+        solved_training_mazes.sort(key=lambda maze: len(maze.get_solution()))
         return solved_training_mazes
 
     @staticmethod
@@ -542,16 +623,25 @@ def train_models(allowed_models=None):
     logger.info(f"Training on {len(train_ds)} total samples")
 
     # Config flags
-    use_rolling = config.getboolean("DEFAULT", "use_rolling_sampler", fallback=False)
     subset_fraction = config.getfloat("DEFAULT", "subset_fraction", fallback=0.1)
     batch_size = config.getint("DEFAULT", "batch_size", fallback=64)
     num_workers = config.getint("DEFAULT", "max_num_workers", fallback=0)
-    shuffle_training = config.getboolean("DEFAULT", "shuffle_training", fallback=True)
 
+    sampler_option = config.get("DEFAULT", "sampler", fallback="None")
+    # Initialize sampler to None by default
+    sampler = None
+    # Check the sampler option string
+    if sampler_option == "RollingSubsetSampler":
+        # Ensure subset_fraction is defined before this block
+        sampler = RollingSubsetSampler(train_ds, fraction=subset_fraction)
+    elif sampler_option == "CurriculumSampler":
+        sampler = CurriculumSampler(train_ds)
+    elif sampler_option == "None":
+        sampler = None
+    else:
+        raise ValueError(f"Invalid sampler option: {sampler_option}")
+    shuffle = (sampler is None)
     # DataLoader config
-    sampler = RollingSubsetSampler(train_ds, fraction=subset_fraction) if use_rolling else None
-    shuffle = False if use_rolling else shuffle_training
-
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
                               num_workers=num_workers, collate_fn=collate_fn)
 

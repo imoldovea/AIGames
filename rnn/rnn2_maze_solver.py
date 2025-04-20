@@ -420,6 +420,9 @@ def main():
             logging.info("Closing Dash Dashboard...")
             dashboard_process = subprocess.Popen(["python", "dashboard.py"])
 
+        # save the running configuations
+        with open(f"{OUTPUT}config.properties", "w") as configfile:
+            config.write(configfile)
         logging.info("All done!")
 
     finally:
