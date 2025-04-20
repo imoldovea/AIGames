@@ -71,7 +71,7 @@ def update_graphs(n):
         df,
         x='epoch',
         y='train_loss',
-        color='model',
+        color='model_name',
         markers=True,
         title="Training Loss"
     )
@@ -79,23 +79,23 @@ def update_graphs(n):
         df,
         x='epoch',
         y='val_loss',
-        color='model',
+        color='model_name',
         markers=True,
         title="Validation Loss"
     )
     fig_accuracy = px.line(
         df,
         x='epoch',
-        y='accuracy_loss',
-        color='model',
+        y='train_acc',
+        color='model_name',
         markers=True,
         title="Accuracy"
     )
     fig_val_accuracy = px.line(
         df,
         x='epoch',
-        y='val_accuracy',
-        color='model',
+        y='val_acc',
+        color='model_name',
         markers=True,
         title="Validation Accuracy"
     )
@@ -103,7 +103,7 @@ def update_graphs(n):
         df,
         x='epoch',
         y='time_per_step',
-        color='model',
+        color='model_name',
         markers=True,
         title="Time Per Step"
     )
