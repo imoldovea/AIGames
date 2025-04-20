@@ -1,8 +1,6 @@
 
  adding an "exit prediction" output head
-🧬 implementing a genetic algorithm agent
-💡 building a curriculum learning setup
 
 New Methid
-- LLM apprach
+- LLM approach
 - Genetic algorithm learning
