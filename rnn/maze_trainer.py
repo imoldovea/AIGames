@@ -412,7 +412,7 @@ class RNN2MazeTrainer:
             sequence_inputs = []
             sequence_targets = []
             for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
-                local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
+                local_context = maze.context_map.get(current_pos, [WALL] * 4)
                 relative_position = (current_pos[0] - start_position[0],
                                      current_pos[1] - start_position[1])
                 step_norm = i / (len(solution) - 1)

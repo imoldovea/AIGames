@@ -34,9 +34,12 @@ class Maze:
             The constructor finds the starting marker, records its coordinates, replaces it with 0,
             and initializes the path with the starting position.
             """
-        self._solution = [] # To hold the maze solution as a list of coordinates
+        self._solution = []  # To hold the maze solution as a list of coordinates
         self.grid = np.array(grid, copy=True)
-        self.rows, self.cols = self.grid.shape
+        self.rows, self.cols = self.grid.shape  # Must be here before using self.rows
+
+        self._context_map = None
+
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         self.visited_cells = set()
@@ -71,6 +74,20 @@ class Maze:
         self.set_exit()
         self.self_test()
 
+    @property
+    def context_map(self):
+        if self._context_map is None:
+            self._context_map = {
+                (r, c): self._compute_local_context((r, c))
+                for r in range(self.rows)
+                for c in range(self.cols)
+                if self.grid[r, c] == self.CORRIDOR
+            }
+        return self._context_map
+
+    def clear_context_map(self):
+        self._context_map = None
+
     def _compute_complexity(self):
         """
         Computes the maze complexity score based on:
@@ -101,6 +118,22 @@ class Maze:
 
         complexity_score = norm_path + norm_area + norm_loops
         return round(complexity_score, 3)
+
+    def _compute_local_context(self, position):
+        """
+        Optimized local context computation for a given position.
+        Returns a list of 4 values (N, S, W, E) indicating wall/corridor.
+        """
+        r, c = position
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        context = []
+        for dr, dc in directions:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < self.rows and 0 <= nc < self.cols:
+                context.append(self.grid[nr, nc])
+            else:
+                context.append(self.WALL)  # Treat out of bounds as wall
+        return context
 
     def is_within_bounds(self, position):
         """
