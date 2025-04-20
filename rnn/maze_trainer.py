@@ -317,7 +317,7 @@ class RNN2MazeTrainer:
         self.training_mazes = self._load_and_process_training_mazes(training_file_path,training_samples)
         self.validation_mazes = self._load_and_process_training_mazes(validation_file_path,training_samples//10)
 
-    @profile_method(output_file=f"{OUTPUT}load_mazes_profile.prof")
+    @profile_method(output_file=f"load_mazes_profile")
     def _load_and_process_training_mazes(self, path, training_samples):
         """
         Loads and processes training mazes from the specified file path.
@@ -372,7 +372,7 @@ class RNN2MazeTrainer:
         maze.set_solution(solver.solve())
         return maze
 
-    @profile_method(output_file=f"{OUTPUT}create_dataset_profile.prof")
+    @profile_method(output_file=f"create_dataset_profile")
     def create_dataset(self):
         """
         Constructs a dataset for training a maze-navigating model.
@@ -473,34 +473,27 @@ class RNN2MazeTrainer:
     def _compute_local_context(self, maze, position, directions):
         """
         Generates the local context around a position in the maze.
-    
+
         Args:
             maze (Maze): The current maze grid.
             position (tuple): Current position coordinates (row, column).
             directions (list): Possible movement directions in the maze.
-    
+
         Returns:
             list: Values of the maze cells around the position, with invalid
                   cells marked as WALL.
         """
         r, c = position
-        directions = np.array(directions)
+        local_context = []
 
-        # Compute the coordinates of neighboring cells for each direction.
-        neighbors = directions + np.array([r, c])
+        for dr, dc in directions:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < maze.rows and 0 <= nc < maze.cols:
+                local_context.append(maze.grid[nr, nc])
+            else:
+                local_context.append(WALL)  # Out of bounds = wall
 
-        # Create a mask to retain only valid neighbors within the maze boundaries.
-        mask = np.apply_along_axis(maze.is_within_bounds, 1, neighbors)
-
-        # Initialize local context array, marking all as walls by default.
-        local_context = np.full(len(directions), WALL, dtype=maze.grid.dtype)
-
-        # For valid neighbors, update the local context with their values.
-        valid_neighbors = neighbors[mask]
-        local_context[mask] = maze.grid[valid_neighbors[:, 0], valid_neighbors[:, 1]]
-
-        return local_context.tolist()
-
+        return local_context
 
 # -------------------------------
 # Model Training Function

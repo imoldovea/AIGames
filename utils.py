@@ -348,18 +348,18 @@ def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
                 stats_obj = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
                 stats_obj.print_stats(30)  # Print top 30 time-consuming functions
 
-                # Optionally save the cProfile data if output_file is provided
+                # Optionally save the cProfile data if outputoutputoutputoutput_file is provided
                 if output_file:
-                    stats_obj.dump_stats(output_file)
-                    logging.info(f"Profile data saved to {output_file}")
+                    stats_obj.dump_stats(f"{OUTPUT}{output_file}.prof")
+                    logging.info(f"Profile data saved to {output_file}.prof")
 
                 # save profile results as output/profile_results.txt
-                with open(os.path.join(OUTPUT, "profile_results.txt"), "w") as f:
+                with open(f"{OUTPUT}{output_file}.txt", "w") as f:
                     f.write(s.getvalue())
-                logging.info(f"Profile results saved to {os.path.join(OUTPUT, 'profile_results.txt')}")
+                logging.info(f"Profile results saved to {output_file}.txt")
 
                 # Save profiling results as JSON in the OUTPUT directory
-                json_output = os.path.join(OUTPUT, "profile_results.json")
+                json_output = f"{OUTPUT}{output_file}.json"
                 stats_dict = {}
                 for func_desc, (call_count, rec_calls, total_time, cum_time, callers) in stats_obj.stats.items():
                     key = f"{func_desc[0]}:{func_desc[1]}:{func_desc[2]}"

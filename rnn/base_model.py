@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
 from tqdm import tqdm
+import json
 
 from utils import profile_method
 
@@ -25,6 +26,7 @@ INPUT = config.get("FILES", "INPUT", fallback="input/")
 TRAINING_PROGRESS_HTML = "training_progress.html"
 TRAINING_PROGRESS_PNG = "training_progress.png"
 LOSS_FILE = os.path.join(OUTPUT, "loss_data.csv")
+LOSS_JSON_FILE = os.path.join(OUTPUT, "loss_data.json")
 
 class MazeBaseModel(nn.Module):
     """
@@ -70,7 +72,7 @@ class MazeBaseModel(nn.Module):
         ram_usage = psutil.virtual_memory().used / (1024 ** 3)
         return round(cpu_load, 0), round(gpu_load, 0), round(ram_usage, 0)
 
-    @profile_method(output_file=f"{OUTPUT}train_model_profile.prof")
+    @profile_method(output_file=f"train_model_profile")
     def train_model(self, dataloader, num_epochs=20, learning_rate=0.0001, weight_decay=0.001,
                     device='cpu', tensorboard_writer=None, val_loader=None):
         logging.debug(f"Training {self.model_name} for {num_epochs} epochs on {device}...")
@@ -201,8 +203,6 @@ class MazeBaseModel(nn.Module):
                 logging.info(f"Early Stopping triggered at Epoch {epoch + 1}")
                 break
 
-
--
         training_duration = time.time() - start_time
         logging.info(f"Training time for model {self.model_name}: {training_duration:.2f} seconds")
         self.last_loss = train_losses["train"][-1] if train_losses["train"] else None
@@ -234,6 +234,34 @@ class MazeBaseModel(nn.Module):
                 writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss,
                                  training_accuracy, validation_accuracy, time.time(), time_per_step,
                                  cpu_load, gpu_load, ram_usage])
+        # Load or initialize existing JSON list
+        if os.path.exists(LOSS_JSON_FILE):
+            with open(LOSS_JSON_FILE, "r") as jf:
+                try:
+                    all_logs = json.load(jf)
+                except json.JSONDecodeError:
+                    all_logs = []
+        else:
+            all_logs = []
+
+        # Append new entry
+        all_logs.append({
+            "model_name": self.model_name,
+            "epoch": epoch + 1,
+            "train_loss": epoch_loss,
+            "val_loss": validation_loss,
+            "train_acc": training_accuracy,
+            "val_acc": validation_accuracy,
+            "timestamp": time.time(),
+            "time_per_step": time_per_step,
+            "cpu_load": cpu_load,
+            "gpu_load": gpu_load,
+            "ram_usage": ram_usage,
+        })
+
+        # Write updated list back
+        with open(LOSS_JSON_FILE, "w") as jf:
+            json.dump(all_logs, jf, indent=2)
 
         if tensorboard_writer:
             tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
@@ -286,7 +314,7 @@ class MazeBaseModel(nn.Module):
                 # Compute loss using the flattened tensors
                 loss = criterion(outputs_flat, targets_flat)
 
-                # ✅ Check for invalid loss values before backward
+                # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
                     logging.error(f"Invalid loss encountered {epoch + 1}")
                 val_loss_sum += loss.item()
