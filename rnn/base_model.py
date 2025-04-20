@@ -201,6 +201,8 @@ class MazeBaseModel(nn.Module):
                 logging.info(f"Early Stopping triggered at Epoch {epoch + 1}")
                 break
 
+
+-
         training_duration = time.time() - start_time
         logging.info(f"Training time for model {self.model_name}: {training_duration:.2f} seconds")
         self.last_loss = train_losses["train"][-1] if train_losses["train"] else None
