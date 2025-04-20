@@ -1,3 +1,5 @@
+import logging
+import os
 from configparser import ConfigParser
 
 import dash
@@ -17,12 +19,15 @@ LOSS_FILE = f"{OUTPUT}{LOSS_DATA}"
 
 def load_loss_data():
     try:
+        if not os.path.exists(LOSS_FILE):
+            raise FileNotFoundError(f"Loss file not found: {LOSS_FILE}")
         df = pd.read_csv(LOSS_FILE)
+
         df['epoch'] = pd.to_numeric(df['epoch'], errors='coerce')
-        df['training_loss'] = pd.to_numeric(df['training_loss'], errors='coerce')
-        df['validation_loss'] = pd.to_numeric(df['validation_loss'], errors='coerce')
-        df['accuracy'] = pd.to_numeric(df['accuracy'], errors='coerce')
-        df['validation_accuracy'] = pd.to_numeric(df['validation_accuracy'], errors='coerce')
+        df['train_loss'] = pd.to_numeric(df['train_loss'], errors='coerce')
+        df['val_loss'] = pd.to_numeric(df['val_loss'], errors='coerce')
+        df['train_acc'] = pd.to_numeric(df['train_acc'], errors='coerce')
+        df['val_acc'] = pd.to_numeric(df['val_acc'], errors='coerce')
         df['time_per_step'] = (pd.to_numeric(df['time_per_step'], errors='coerce') / 60).round(0)
     except Exception as e:
         print("Error loading CSV:", e)
@@ -55,7 +60,8 @@ app.layout = html.Div([
 )
 def update_graphs(n):
     df = load_loss_data()
-    if df.empty or 'model' not in df.columns:
+    if df.empty or 'model_name' not in df.columns:
+        logging.warning("No training data available yet. Waiting for loss_data.csv...")
         return no_update, no_update, no_update, no_update, no_update
 
     df = df.sort_values('epoch')
@@ -64,7 +70,7 @@ def update_graphs(n):
     fig_training = px.line(
         df,
         x='epoch',
-        y='training_loss',
+        y='train_loss',
         color='model',
         markers=True,
         title="Training Loss"
@@ -72,7 +78,7 @@ def update_graphs(n):
     fig_validation = px.line(
         df,
         x='epoch',
-        y='validation_loss',
+        y='val_loss',
         color='model',
         markers=True,
         title="Validation Loss"
@@ -80,7 +86,7 @@ def update_graphs(n):
     fig_accuracy = px.line(
         df,
         x='epoch',
-        y='accuracy',
+        y='accuracy_loss',
         color='model',
         markers=True,
         title="Accuracy"
@@ -88,7 +94,7 @@ def update_graphs(n):
     fig_val_accuracy = px.line(
         df,
         x='epoch',
-        y='validation_accuracy',
+        y='val_accuracy',
         color='model',
         markers=True,
         title="Validation Accuracy"

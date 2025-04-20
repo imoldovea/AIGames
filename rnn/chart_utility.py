@@ -50,10 +50,10 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
     memory_info = psutil.virtual_memory()
 
     # Prepare aggregate metrics over epochs
-    training_loss = loss_data.groupby('epoch')['training_loss'].mean()
-    validation_loss = loss_data.groupby('epoch')['validation_loss'].mean()
-    accuracy = loss_data.groupby('epoch')['accuracy'].mean()
-    validation_accuracy = loss_data.groupby('epoch')['validation_accuracy'].mean()
+    training_loss = loss_data.groupby('epoch')['train_loss'].mean()
+    validation_loss = loss_data.groupby('epoch')['val_loss'].mean()
+    accuracy = loss_data.groupby('epoch')['train_acc'].mean()
+    validation_accuracy = loss_data.groupby('epoch')['val_acc'].mean()
     time_per_step_avg = (loss_data.groupby('epoch')['time_per_step'].mean() / 60).round(0)
 
     # Create a figure with 6 vertical subplots (separated Time per Step)
@@ -100,7 +100,7 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
     )
 
     # Chart 5: Time per Step (dedicated chart)
-    models = loss_data['model'].unique()
+    models = loss_data['model_name'].unique()
     colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
     # Add average time per step
@@ -117,7 +117,7 @@ def save_latest_loss_chart(output_file_name=f"{OUTPUT}latest_loss_chart.html"):
 
     # Add individual model traces for time per step
     for i, model in enumerate(models):
-        model_data = loss_data[loss_data['model'] == model]
+        model_data = loss_data[loss_data['model_name'] == model]
         time_per_step_sec = model_data['time_per_step']
         # Convert time per step from seconds to minutes
         time_per_step_min = (time_per_step_sec / 60.0).round(0)

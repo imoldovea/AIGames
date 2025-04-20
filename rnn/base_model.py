@@ -17,7 +17,6 @@ import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 T = TypeVar('T', bound=Callable[..., Any])  # *new* Define T as a type variable for use in type annotations
@@ -109,162 +108,104 @@ class MazeBaseModel(nn.Module):
     @profile_method(output_file=f"{OUTPUT}train_model_profile.prof")
     def train_model(self, dataloader, num_epochs=20, learning_rate=0.0001, weight_decay=0.001,
                     device='cpu', tensorboard_writer=None, val_loader=None):
-        """
-        Generic training loop using CrossEntropyLoss and Adam optimizer.
-
-        Parameters:
-            dataloader (DataLoader): The data loader providing input data and labels for training.
-            val_loader (ValDataLoader): The data loader providing input data and labels for validation.
-            num_epochs (int): The number of epochs for training the model.
-            learning_rate (float): The learning rate for the optimizer.
-            weight_decay (float): Weight decay (L2 penalty) for regularization in the optimizer.
-            device (str): The device (e.g., 'cpu' or 'cuda') used for training.
-            tensorboard_writer: Optional TensorBoard writer for logging.
-
-        Returns:
-            self: The trained model or its final loss after training.
-        """
         logging.debug(f"Training {self.model_name} for {num_epochs} epochs on {device}...")
 
-        # Record the start time
         start_time = time.time()
-
-        # Check if we ar ein development mode.
         if config.getboolean("DEFAULT", "development_mode", fallback=False):
             logging.warning("Development mode is enabled. Training with reduced data set.")
             num_epochs = 2
 
         self.to(device)
-
         improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
         logging.info(
             f"Early stopping patience set to {self.patience} epochs. Training will stop after {self.patience} "
-            f"if no improvement over {improvement_threshold}"
-            f" epochs without improvement on training loss or validation loss."
+            f"if no improvement over {improvement_threshold} epochs."
         )
 
-        # Define optimizer, learning rate scheduler, and loss function
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
         lr_factor = config.getfloat("DEFAULT", "lr_factor", fallback=0.7)
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=self.patience)
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(ignore_index=-100)
 
-        train_losses = {"train": [], "validation": []}  # Dictionary to store both training and validation losses
-        train_accuracies = {"train": [], "validation": []}  # Dictionary to store accuracies
-
-        # Set up a counter and best loss value for early stopping
+        train_losses = {"train": [], "validation": []}
+        train_accuracies = {"train": [], "validation": []}
         best_validation_loss = float("inf")
         early_stopping_counter = 0
-
-        # Number of steps to accumulate for calculating average time per step
-        # This helps provide a more stable time measurement
-        ccumulation_steps = 2
+        accumulation_steps = 2
 
         for epoch in range(num_epochs):
-            # network performance monitoring
-            running_loss: float = 0.0
+            running_loss = 0.0
             correct = 0
             total = 0
 
-            cpu_loads = []
-            gpu_loads = []
-            ram_usages = []
-            avg_cpu = 0
-            avg_gpu = 0
-            avg_ram = 0
-
-            self.train()  # Put the model in training mode
-            # Loop through batches from the data loader
+            self.train()
             desc = f"Epoch {epoch + 1} Training Progress"
             iterator = tqdm(dataloader, desc=desc, leave=True)
 
-            start_time = time.time()
+            epoch_start = time.time()
             for iteration, batch in enumerate(iterator):
-                logging.debug(f"Training batch {iteration + 1} of {len(dataloader)}")
-                local_context, relative_position, target_action, steps_number = batch
+                # Assume `batch` is a tuple: (inputs, target_actions)
+                #   inputs   : shape (batch_size, seq_len, input_size)
+                #   target_actions : shape (batch_size, seq_len)
+                inputs, target_actions = batch
+                inputs = inputs.to(device)
+                target_actions = target_actions.to(device)
 
-                target_action = target_action.to(device).long()
-                # Convert local_context to PyTorch tensor and ensure it's at least 2D
-                local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
-                relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
+                # Forward pass produces outputs of shape [batch_size, seq_len, output_size]
+                outputs = self.forward(inputs)
 
-                # If local_context is 1D, convert it to 2D (batch_size, num_features)
-                local_context = local_context.view(-1, local_context.size(-1))
-                if relative_position.dim() == 1:
-                    relative_position = relative_position.unsqueeze(0)
+                # Validate shapes (optional assertions)
+                assert outputs.ndim == 3, f"Expected outputs to be 3D, got {outputs.shape}"
+                assert inputs.ndim == 3, f"Expected inputs to be 3D, got {inputs.shape}"
 
-                # Convert steps_number to PyTorch tensor and ensure it's at least 2D
-                steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
+                # Flatten the sequence dimension so that CrossEntropyLoss can be applied
+                batch_size, seq_len, output_size = outputs.shape
+                outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
+                targets_flat = target_actions.contiguous().view(batch_size * seq_len)
 
-                # If steps_number is 0D (a single scalar), make it 1D
-                if steps_number.dim() == 0:
-                    steps_number = steps_number.unsqueeze(0)  # Convert scalar to (1,)
+                loss = criterion(outputs_flat, targets_flat)
 
-                # Make sure steps_number is (batch_size, 1)
-                steps_number = steps_number.unsqueeze(1)  # Convert shape (1,) → (1, 1)
+                # ✅ Check for invalid loss values before backward
+                if torch.isnan(loss) or torch.isinf(loss):
+                    logging.error(f"⚠️ Invalid loss encountered at epoch {epoch + 1}, batch {iteration + 1}")
+                    raise ValueError(f"Invalid loss encountered {epoch + 1}, batch {iteration + 1}")
 
-                # Ensure both tensors are now 2D before concatenation
-                assert local_context.dim() == 2, f"local_context has wrong shape: {local_context.shape}"
-                assert steps_number.dim() == 2, f"steps_number has wrong shape: {steps_number.shape}"
+                # update progress bar with loss
+                iterator.set_postfix(loss=loss.item())
 
-                # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
-                inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
-                inputs.to(device)
-                # Add sequence dimension for RNN input
-                inputs = inputs.unsqueeze(1)  # Shape becomes (batch_size, sequence_length=1, num_features)
+                optimizer.zero_grad()
+                loss.backward()
+                # ✅ Add this line for gradient clipping (right after backward)
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
 
-                assert inputs.shape[-1] == 7, f"Expected input features to be 7, but got {inputs.shape[-1]}"
-                assert target_action.dim() == 1, (f"Expected target labels to be 1-dimensional, but got "
-                                                  f"{target_action.dim()} dimensions")
+                # ✅ Per-batch logging every 10 iterations
+                if iteration % 10 == 0:
+                    grad_norm = sum((p.grad.norm().item() ** 2 for p in self.parameters() if p.grad is not None)) ** 0.5
+                    logging.debug(
+                        f"Epoch {epoch + 1} | Batch {iteration + 1} | Loss: {loss.item():.4f} | GradNorm: {grad_norm:.4f}")
+                    if tensorboard_writer:
+                        step = epoch * len(dataloader) + iteration
+                        tensorboard_writer.add_scalar("BatchLoss/train", loss.item(), step)
+                        tensorboard_writer.add_scalar("GradientNorm/train", grad_norm, step)
 
-                # Compute resource usage during the batch processing
-                cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
+                optimizer.step()
 
-                # Forward pass
-                outputs = self.forward(inputs)  # Pass input through the model
-                outputs.to(device)
-                loss = criterion(outputs, target_action)  # Compute cross-entropy loss
+                running_loss += loss.item() * batch_size
+                _, predicted = torch.max(outputs_flat, 1)
+                total += targets_flat.size(0)
+                correct += (predicted == targets_flat).sum().item()
 
-                optimizer.zero_grad()  # Clear previous gradients
-                loss.backward()  # Backpropagate loss to calculate gradient
-                optimizer.step()  # Update model weights
-
-                # Call resource usage after processing the batch
-                cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
-                cpu_loads.append(cpu_load)
-                gpu_loads.append(gpu_load)
-                ram_usages.append(ram_usage)
-                avg_cpu = sum(cpu_loads) / len(cpu_loads)
-                avg_gpu = sum(gpu_loads) / len(gpu_loads)
-                avg_ram = sum(ram_usages) / len(ram_usages)
-
-                # calculate loss
-                running_loss += loss.item() * inputs.size(0)
-                # Calculate training accuracy
-                _, predicted = torch.max(outputs.data, 1)
-                total += target_action.size(0)
-                correct += (predicted == target_action).sum().item()
-
-            # Calculate average time per step in milliseconds for this epoch
-            # This helps users understand the processing delay
-            time_per_step = int(((time.time() - start_time) / ccumulation_steps) * 1000)
-            #Back Epoch loop. Compute loss and accuracy
-            epoch_loss = running_loss / int(len(dataloader.dataset))
+            epoch_loss = running_loss / len(dataloader.dataset)
             training_accuracy = correct / total if total > 0 else 0.0
 
-            # After finishing the training epoch and recording epoch_loss, do validation:
-            # validation_loss=self._validate_model(val_loader = val_loader,criterion =  criterion, device = device, epoch = epoch)
-            validation_loss, validation_accuracy = self._validate_model(val_loader=val_loader,
-                                                                        criterion=criterion,
-                                                                        device=device,
-                                                                        epoch=epoch)
+            # Validate model (using val_loader with similar reshaping steps)...
+            validation_loss, validation_accuracy = self._validate_model(val_loader, criterion, device, epoch)
 
             train_losses["train"].append(epoch_loss)
             train_losses["validation"].append(validation_loss)
             train_accuracies["train"].append(training_accuracy)
             train_accuracies["validation"].append(validation_accuracy)
 
-            # Monitoring
             self._monitor_training(
                 epoch=epoch,
                 num_epochs=num_epochs,
@@ -273,23 +214,14 @@ class MazeBaseModel(nn.Module):
                 validation_loss=validation_loss,
                 training_accuracy=training_accuracy,
                 validation_accuracy=validation_accuracy,
-                time_per_step=time_per_step,
-                cpu_load=avg_cpu,
-                gpu_load=avg_gpu,
-                ram_usage=avg_ram,
+                time_per_step=int(((time.time() - epoch_start) / accumulation_steps) * 1000),
                 tensorboard_writer=tensorboard_writer,
             )
-            # Reset the accumulators for the next set of iterations
-            cpu_loads.clear()
-            gpu_loads.clear()
-            ram_usages.clear()
 
-            # Stop is no improvement on loss function
-            current_lr = scheduler.get_last_lr()[0]  # Get the current learning rate
-
+            current_lr = scheduler.get_last_lr()[0]
             if validation_loss < best_validation_loss * (1 - improvement_threshold):
                 best_validation_loss = validation_loss
-                early_stopping_counter = 0  # Reset if improvement is achieved
+                early_stopping_counter = 0
             else:
                 early_stopping_counter += 1
 
@@ -297,90 +229,71 @@ class MazeBaseModel(nn.Module):
                 f"Epoch {epoch + 1}: Train Loss = {epoch_loss:.4f} | Validation Loss = {validation_loss:.4f} |"
                 f" Training Accuracy = {training_accuracy:.4f} | Validation Accuracy = {validation_accuracy:.4f} |"
                 f" Learning Rate = {current_lr:.6f} | "
-                f"Early Stopping Counter = {early_stopping_counter}")
+                f"Early Stopping Counter = {early_stopping_counter}"
+            )
 
-            # Log performance metrics to explain processing time and resource usage
-            logging.info(
-                f"Performance: Time per step = {time_per_step} ms | CPU Load = {avg_cpu}% | "
-                f"GPU Load = {avg_gpu}% | RAM Usage = {avg_ram} GB")
-
-            # Trigger early stopping if no improvement within set patience and the learning rate is sufficiently low.
             if early_stopping_counter >= self.patience and current_lr < improvement_threshold:
-                logging.info(
-                    f"Early Stopping triggered at Epoch {epoch + 1} due to lack of validation loss improvement")
+                logging.info(f"Early Stopping triggered at Epoch {epoch + 1}")
                 break
 
-        # After training is complete, record the end time and compute the duration
         training_duration = time.time() - start_time
-
-        # Log the training duration. This uses the logging module, so make sure your logging is configured as desired.
         logging.info(f"Training time for model {self.model_name}: {training_duration:.2f} seconds")
-
-
         self.last_loss = train_losses["train"][-1] if train_losses["train"] else None
-        logging.info(f"Training Complete for {self._get_name()}. Final Loss: {self.last_loss}")
-
+        logging.info(f"Training Complete for {self.model_name}. Final Loss: {self.last_loss}")
         return self
 
     def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss=0,
                           training_accuracy=0, validation_accuracy=0,
-                          time_per_step=0, cpu_load=0, gpu_load=0, ram_usage=0, tensorboard_writer=None):
-        """
-        Logs training information and updates tensorboard/histograms for monitoring.
+                          time_per_step=0, tensorboard_writer=None):
+        # Retrieve actual resource usage
+        cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
 
-        Parameters:
-            epoch (int): Current epoch.
-            num_epochs (int): Total number of epochs.
-            epoch_loss (float): Training loss for the current epoch.
-            scheduler: Learning rate scheduler.
-            validation_loss (float): Validation loss for the current epoch.
-            training_accuracy (float): Training accuracy for the current epoch.
-            validation_accuracy (float): Validation accuracy for the current epoch.
-            time_per_step (int): Average processing time per step in milliseconds.
-            cpu_load (float): Average CPU utilization percentage during training.
-            gpu_load (float): Average GPU memory utilization percentage (if available).
-            ram_usage (float): Average RAM usage in GB during training.
-            tensorboard_writer: Optional TensorBoard writer for logging.
-        """
         logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss:.4f}")
         logging.debug(f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {validation_loss:.4f}")
-        if config.getboolean("DEFAULT", "development_mode", fallback=False):
-            logging.warning("Development mode is enabled. Training mazes will be loaded from the development folder.")
-            num_epochs = 2
 
+        # Update learning rate and log resource usage
         scheduler.step(epoch_loss)
         with open(LOSS_FILE, "a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss,
-                             training_accuracy, validation_accuracy, time.time(), time_per_step, cpu_load, gpu_load,
-                             ram_usage])
+            write_header = not os.path.exists(LOSS_FILE) or os.path.getsize(LOSS_FILE) == 0
+            with open(LOSS_FILE, "a", newline="") as f:
+                writer = csv.writer(f)
+                if write_header:
+                    writer.writerow([
+                        "model_name", "epoch", "train_loss", "val_loss",
+                        "train_acc", "val_acc", "timestamp", "time_per_step",
+                        "cpu_load", "gpu_load", "ram_usage"
+                    ])
+                writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss,
+                                 training_accuracy, validation_accuracy, time.time(), time_per_step,
+                                 cpu_load, gpu_load, ram_usage])
 
-        if config.getboolean("MONITORING", "tensorboard", fallback=False):
-            # Log to tensorboard
-            if tensorboard_writer:
-                tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
-                tensorboard_writer.add_scalar("Loss/validation", validation_loss, epoch)
-                tensorboard_writer.add_scalar("Accuracy/train", training_accuracy, epoch)
-                tensorboard_writer.add_scalar("Accuracy/validation", validation_accuracy, epoch)
+        if tensorboard_writer:
+            tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
+            tensorboard_writer.add_scalar("Loss/validation", validation_loss, epoch)
+            tensorboard_writer.add_scalar("Accuracy/train", training_accuracy, epoch)
+            tensorboard_writer.add_scalar("Accuracy/validation", validation_accuracy, epoch)
+            tensorboard_writer.add_scalar("Resource/CPU_load", cpu_load, epoch)
+            tensorboard_writer.add_scalar("Resource/GPU_load", gpu_load, epoch)
+            tensorboard_writer.add_scalar("Resource/RAM_usage", ram_usage, epoch)
 
-                # Log weights and gradients
-                for name, param in self.named_parameters():
-                    tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
-                    if param.grad is not None:
-                        tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
+            for name, param in self.named_parameters():
+                tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
+                if param.grad is not None:
+                    tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
 
     def _validate_model(self, val_loader, criterion, device, epoch):
         """
-        Runs the validation phase and logs metrics.
-
+        Runs the validation phase using sequence inputs.
         Parameters:
-            val_loader: Validation DataLoader.
+            val_loader: Validation DataLoader, yielding batches of (inputs, target_actions)
+                        where inputs: [batch_size, seq_len, input_size]
+                        and target_actions: [batch_size, seq_len]
             criterion: Loss function.
-            device: Device to use (e.g. 'cpu' or 'cuda').
-            epoch: Current epoch (for logging purposes).
-
+            device (str): Device to use (e.g. 'cpu' or 'cuda').
+            epoch (int): Current epoch (for logging purposes).
         Returns:
-            Average validation loss.
+            A tuple of (average validation loss, validation accuracy)
         """
         self.eval()  # Set model to evaluation mode
         val_loss_sum = 0.0
@@ -390,51 +303,34 @@ class MazeBaseModel(nn.Module):
 
         with torch.no_grad():
             for batch in val_loader:
-                local_context, relative_position, target_action, steps_number = batch
+                # Each batch is a tuple (inputs, target_actions)
+                inputs, target_actions = batch
+                inputs = inputs.to(device)  # shape: (batch_size, seq_len, input_size)
+                target_actions = target_actions.to(device)  # shape: (batch_size, seq_len)
 
-                # Convert target_action to a tensor ensuring it has a batch dimension
-                if isinstance(target_action, (list, tuple)):
-                    target_action = torch.tensor(target_action, dtype=torch.long).to(device)
-                else:
-                    target_action = torch.tensor([target_action], dtype=torch.long, device=device)
-
-                # Ensure local_context is a tensor and at least 2D
-                if not isinstance(local_context, torch.Tensor):
-                    local_context = torch.as_tensor(local_context, dtype=torch.float32, device=device)
-                if local_context.ndim == 1:
-                    local_context = local_context.unsqueeze(0)
-                # Convert relative_position to a tensor if needed
-                if not isinstance(relative_position, torch.Tensor):
-                    relative_position = torch.as_tensor(relative_position, dtype=torch.float32, device=device)
-                if relative_position.ndim == 1:
-                    relative_position = relative_position.unsqueeze(0)
-
-                # Ensure steps_number is a tensor with shape (batch_size, 1)
-                if not isinstance(steps_number, torch.Tensor):
-                    steps_number = torch.as_tensor(steps_number, dtype=torch.float32, device=device)
-                if steps_number.ndim == 0:
-                    steps_number = steps_number.unsqueeze(0)
-                if steps_number.ndim == 1:
-                    steps_number = steps_number.unsqueeze(1)
-
-                # Concatenate features: local_context (4 values) + relative_position (2 values) + steps_number (1 value)
-                inputs = torch.cat((local_context, relative_position, steps_number), dim=1)
-                # Add a sequence dimension for RNN input: (batch_size, sequence_length, num_features)
-                inputs = inputs.unsqueeze(1)
-
-                # Forward pass
+                # Forward pass: expecting outputs of shape (batch_size, seq_len, output_size)
                 outputs = self.forward(inputs)
-                loss = criterion(outputs, target_action)
+
+                # Flatten the outputs and targets to shape [batch_size * seq_len, ...]
+                batch_size, seq_len, output_size = outputs.shape
+                outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
+                targets_flat = target_actions.contiguous().view(batch_size * seq_len)
+
+                # Compute loss using the flattened tensors
+                loss = criterion(outputs_flat, targets_flat)
+
+                # ✅ Check for invalid loss values before backward
+                if torch.isnan(loss) or torch.isinf(loss):
+                    logging.error(f"Invalid loss encountered {epoch + 1}")
                 val_loss_sum += loss.item()
                 num_batches += 1
 
-                # Calculate accuracy
-                _, predicted = torch.max(outputs.data, 1)
-                total += target_action.size(0)
-                correct += (predicted == target_action).sum().item()
+                # Calculate accuracy over the flattened outputs as well
+                _, predicted = torch.max(outputs_flat, 1)
+                total += targets_flat.size(0)
+                correct += (predicted == targets_flat).sum().item()
 
-        # After the validation loop
-        average_val_loss = val_loss_sum / num_batches if num_batches > 0 else float('inf')
+        average_val_loss = val_loss_sum / num_batches if num_batches > 0 else float("inf")
         validation_accuracy = correct / total if total > 0 else 0.0
 
         return average_val_loss, validation_accuracy

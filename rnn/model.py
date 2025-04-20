@@ -7,7 +7,8 @@ import torch.nn as nn
 
 from base_model import MazeBaseModel
 
-
+# implement len>1 to remember te path
+REN_GR_1 = True
 class MazeRecurrentModel(MazeBaseModel):
     def __init__(self, mode_type="RNN", input_size=7, hidden_size=128, num_layers=2, output_size=4):
         """
@@ -58,7 +59,7 @@ class MazeRecurrentModel(MazeBaseModel):
 
         x: Tensor of shape [batch_size, seq_length, input_size].
         Returns:
-            Tensor of shape [batch_size, output_size].
+            Tensor of shape [batch_size, seq_length, output_size].
         """
         batch_size = x.size(0)
         if self.mode_type == "LSTM":
@@ -68,6 +69,6 @@ class MazeRecurrentModel(MazeBaseModel):
         else:
             h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=x.device)
             out, _ = self.recurrent(x, h0)
-        out = out[:, -1, :]  # Use the last time-step's output
-        out = self.fc(out)
+
+        out = self.fc(out)  # Apply output layer to all time steps
         return out

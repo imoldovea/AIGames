@@ -120,7 +120,7 @@ class RNN2MazeSolver(MazeSolver):
         current_pos = self.maze.start_position
         path = [current_pos]
         step_number = 0
-        max_steps = config.getint("DEFAULT", "max_steps")
+        max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
         while self.maze.exit != current_pos and len(path) < max_steps:
             step_number += 1
             step_number_normalized = step_number / max_steps
@@ -138,7 +138,7 @@ class RNN2MazeSolver(MazeSolver):
                 # Perform inference using the trained model to predict the next move
                 output = self.model(input_tensor)
                 # Determine the action (direction) with the highest probability
-                action = torch.argmax(output, dim=1).item()
+                action = torch.argmax(output[0, -1], dim=0).item()
 
             # Calculate the move delta based on the predicted action
             move_delta = self.DIRECTIONS[action]

@@ -1,17 +1,18 @@
 # maze_trainer.py
 # MazeTrainingDataset and RNN2MazeTrainer
 
-import csv
+import json
 import logging
 import os
 import pickle
-import random
 from configparser import ConfigParser
 
 import numpy as np
+import pandas as pd
 import torch
 import wandb
 from numpy.f2py.auxfuncs import throw_error
+from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Sampler
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
@@ -24,6 +25,7 @@ from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
 # Import the unified model
 from model import MazeRecurrentModel
+from utils import setup_logging
 
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -71,87 +73,128 @@ class MazeTrainingDataset(Dataset):
     """
 
     def __init__(self, data):
-        """
-        Initializes the dataset.
+        self.samples = []
 
-        Args:
-            data (list): List of tuples containing:
-                - local_context (list): State of maze cells around the current position.
-                - target_action (int): Action to take (0: up, 1: down, 2: left, 3: right).
-                - step_number (int): Step number in the solution path.
-        """
-        self.data = data
-        # Get the maximum number of steps allowed for a maze solution from the configuration.
-        max_steps = config.getint("DEFAULT", "max_steps")
-        self.max_steps = max_steps
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        local_context, relative_position, target_action, step_number = self.data[idx]
-        step_number_normalized = step_number / self.max_steps
-        return (np.array(local_context, dtype=np.float32),
-                np.array(relative_position, dtype=np.float32),
-                target_action,
-                step_number_normalized)
-
-
-class ValidationDataset(MazeTrainingDataset):
-    """
-    Subclass of MazeTrainingDataset used for handling validation datasets.
-    Ensures that the validation dataset is not empty and calculates
-    the maximum steps required for normalized step calculations.
-    """
-
-    def __init__(self, data):
-        """
-        Initializes the validation dataset.
-
-        Args:
-            data (list): List of tuples containing:
-                - local_context (list): State of maze cells around the current position.
-                - target_action (int): Action to take (0: up, 1: down, 2: left, 3: right).
-                - step_number (int): Step number in the solution path.
-        """
-        super().__init__(data)  # Call the parent dataset initializations
-        self.data = data
-        if len(data) == 0:
-            # Validation datasets must not be empty, raise an error if empty.
-            self.max_steps = 0
-            raise ValueError("Validation dataset is empty.")
+        # Case A: already-windowed data
+        if len(data) > 0 and isinstance(data[0], tuple) and isinstance(data[0][0], np.ndarray):
+            for inputs_np, targets_np in data:
+                # convert numpy arrays to tensors
+                self.samples.append((
+                    torch.tensor(inputs_np, dtype=torch.float32),
+                    torch.tensor(targets_np, dtype=torch.int64)
+                ))
         else:
-            # Calculate the maximum step count from the dataset.
-            max_steps = max(sample[2] for sample in data)
-            self.max_steps = max_steps
+            # Case B: raw sequences → sliding‑window
+            seq_len = config.getint("DEFAULT", "max_steps", fallback=40)
+            self.max_steps = None
+
+            for sequence in data:
+                # each sequence is a list of tuples:
+                #   (local_context:list[4], relative_position:tuple[2], target_action:int, step_number:int)
+                if len(sequence) >= seq_len:
+                    for i in range(len(sequence) - seq_len + 1):
+                        window = sequence[i: i + seq_len]
+                        inputs_list, targets_list = [], []
+
+                        for local_ctx, rel_pos, action, step_num in window:
+                            # establish max_steps for normalization
+                            if self.max_steps is None:
+                                # pick last step_number of first window (or at least 1)
+                                self.max_steps = window[-1][-1] or 1
+
+                            step_norm = step_num / self.max_steps
+                            feature = np.array(local_ctx + list(rel_pos) + [step_norm],
+                                               dtype=np.float32)
+                            inputs_list.append(feature)
+                            targets_list.append(action)
+
+                        # stack into arrays of shape (seq_len, input_size)
+                        inputs_np = np.stack(inputs_list)
+                        targets_np = np.array(targets_list, dtype=np.int64)
+
+                        self.samples.append((inputs_np, targets_np))
+
+        if len(self.samples) == 0:
+            raise RuntimeError("MazeTrainingDataset initialized with zero samples!")
 
     def __len__(self):
-        return len(self.data)
+        return len(self.samples)
 
     def __getitem__(self, idx):
-        local_context, relative_position, target_action, step_number = self.data[idx]
-        step_number_normalized = step_number / self.max_steps if self.max_steps != 0 else 0
-        return (np.array(local_context, dtype=np.float32),
-                np.array(relative_position, dtype=np.float32),
-                target_action,
-                step_number_normalized)
+        return self.samples[idx]
 
 
-# a custom sampler that reshuffles a subset of the training data each epoch.
-class ReshuffleSampler(Sampler):
-    def __init__(self, data_source, reshuffle_percentage):
-        self.data_source = data_source
-        self.reshuffle_fraction = reshuffle_percentage / 100.0
+class ValidationDataset(Dataset):
+    """
+    Wraps either:
+      A) pre-windowed List[ (inputs_np, targets_np) ],
+      B) raw sequences to be windowed exactly like MazeTrainingDataset does.
+    """
+    def __init__(self, data):
+        if not data:
+            raise ValueError("Validation dataset is empty.")
+        self.samples = []
+
+        # A) already-windowed?
+        if isinstance(data[0], tuple) and isinstance(data[0][0], np.ndarray):
+            for inputs_np, targets_np in data:
+                self.samples.append((
+                    torch.tensor(inputs_np, dtype=torch.float32),
+                    torch.tensor(targets_np, dtype=torch.int64)
+                ))
+        else:
+            # B) fall back to sliding-window (identical to MazeTrainingDataset)
+            seq_len = config.getint("DEFAULT", "max_steps", fallback=40)
+            max_steps = None
+            for sequence in data:
+                if len(sequence) >= seq_len:
+                    for i in range(len(sequence) - seq_len + 1):
+                        window = sequence[i: i + seq_len]
+                        inputs_list, targets_list = [], []
+                        for local_ctx, rel_pos, action, step_num in window:
+                            if max_steps is None:
+                                max_steps = window[-1][-1] or 1
+                            step_norm = step_num / max_steps
+                            feat = np.array(local_ctx + list(rel_pos) + [step_norm],
+                                            dtype=np.float32)
+                            inputs_list.append(feat)
+                            targets_list.append(action)
+                        inp_np = np.stack(inputs_list)
+                        tgt_np = np.array(targets_list, dtype=np.int64)
+                        self.samples.append((inp_np, tgt_np))
+
+        if not self.samples:
+            raise RuntimeError("ValidationDataset initialized with zero samples!")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+
+class RollingSubsetSampler(Sampler):
+    def __init__(self, dataset, fraction=0.1):
+        self.dataset = dataset
+        self.total_indices = list(range(len(dataset)))
+        self.fraction = fraction
+        self.size = len(dataset)
+        self.active_indices = set(np.random.choice(self.total_indices, size=self.size, replace=False))
 
     def __iter__(self):
-        n = len(self.data_source)
-        subset_size = int(n * self.reshuffle_fraction)
-        indices = list(range(n))
-        random.shuffle(indices)
-        return iter(indices[:subset_size])
+        # Replace fraction of current active set
+        num_replace = int(self.fraction * self.size)
+        old_samples = list(self.active_indices)
+        retained = set(np.random.choice(old_samples, size=self.size - num_replace, replace=False))
+
+        available_pool = list(set(self.total_indices) - retained)
+        new_samples = set(np.random.choice(available_pool, size=num_replace, replace=False))
+
+        self.active_indices = retained | new_samples
+        return iter(list(self.active_indices))
 
     def __len__(self):
-        return int(len(self.data_source) * self.reshuffle_fraction)
+        return self.size
 
 
 # -------------------------------
@@ -252,39 +295,94 @@ class RNN2MazeTrainer:
     def create_dataset(self):
         """
         Constructs a dataset for training a maze-navigating model.
+        Uses caching logic only if use_dataset_cache = True and use_rolling_sampler = False.
+        Deletes any existing cache if use_dataset_cache = False.
+        Returns:
+            Tuple[List[Tuple[np.ndarray, np.ndarray]], List[Tuple[np.ndarray, np.ndarray]]]
         """
-        logging.info("Creating dataset.")
+        cache_path = os.path.join(INPUT, "training_dataset_cache.pkl")
+        val_cache_path = os.path.join(INPUT, "validation_dataset_cache.pkl")
+
+        use_cache = config.getboolean("DEFAULT", "use_dataset_cache", fallback=False)
+        use_rolling = config.getboolean("DEFAULT", "use_rolling_sampler", fallback=False)
+
+        # Remove old cache if caching is disabled
+        if not use_cache:
+            for path in [cache_path, val_cache_path]:
+                if os.path.exists(path):
+                    os.remove(path)
+                    logging.info(f"Deleted dataset cache file: {path}")
+
+        # Try to use cache if allowed
+        if use_cache and not use_rolling and os.path.exists(cache_path) and os.path.exists(val_cache_path):
+            logging.info("Using cached dataset files.")
+            with open(cache_path, "rb") as f:
+                dataset = pickle.load(f)
+            with open(val_cache_path, "rb") as f:
+                validation_dataset = pickle.load(f)
+            return dataset, validation_dataset
+
+        # Else: create from scratch
+        logging.info("Building dataset from scratch.")
         dataset = []
         for maze in tqdm(self.training_mazes, desc="Creating training dataset"):
             solution = maze.get_solution()
             start_position = maze.start_position
+            sequence_inputs = []
+            sequence_targets = []
             for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
-                steps_number = i
                 local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
-                # Calculate relative position as (dx, dy)
-                relative_position = (current_pos[0] - start_position[0], current_pos[1] - start_position[1])
+                relative_position = (current_pos[0] - start_position[0],
+                                     current_pos[1] - start_position[1])
+                step_norm = i / (len(solution) - 1)
+                input_features = local_context + list(relative_position) + [step_norm]
+                sequence_inputs.append(input_features)
+
                 move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
                 if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
                 target_action = DIRECTION_TO_ACTION[move_delta]
-                # Append the tuple with the additional relative_position information
-                dataset.append((local_context, relative_position, target_action, steps_number))
+                sequence_targets.append(target_action)
+
+            sample_inputs = np.array(sequence_inputs, dtype=np.float32)
+            sample_targets = np.array(sequence_targets, dtype=np.int64)
+            dataset.append((sample_inputs, sample_targets))
 
         validation_dataset = []
         for maze in tqdm(self.validation_mazes, desc="Creating validation dataset"):
+            start_position = maze.start_position
             solution = maze.get_solution()
-            if maze.self_test():  # avoid validating on mazes with no solution
+            if maze.self_test():
+                sequence_inputs = []
+                sequence_targets = []
                 for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
-                    steps_number = i
                     local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
-                    relative_position = (current_pos[0] - start_position[0], current_pos[1] - start_position[1])
+                    relative_position = (current_pos[0] - start_position[0],
+                                         current_pos[1] - start_position[1])
+                    step_norm = i / (len(solution) - 1)
+                    input_features = local_context + list(relative_position) + [step_norm]
+                    sequence_inputs.append(input_features)
+
                     move_delta = (next_pos[0] - current_pos[0], next_pos[1] - current_pos[1])
                     if move_delta not in DIRECTION_TO_ACTION:
                         raise KeyError(f"Invalid move delta: {move_delta}")
                     target_action = DIRECTION_TO_ACTION[move_delta]
-                    validation_dataset.append((local_context, relative_position, target_action, steps_number))
+                    sequence_targets.append(target_action)
+
+                sample_inputs = np.array(sequence_inputs, dtype=np.float32)
+                sample_targets = np.array(sequence_targets, dtype=np.int64)
+                validation_dataset.append((sample_inputs, sample_targets))
             else:
-                logging.warning(f"Maze failed validation.")
+                logging.warning("Maze failed validation.")
+
+        # Cache the newly built datasets
+        if use_cache and not use_rolling:
+            with open(cache_path, "wb") as f:
+                pickle.dump(dataset, f)
+            with open(val_cache_path, "wb") as f:
+                pickle.dump(validation_dataset, f)
+            logging.info("Cached training and validation datasets.")
+
         return dataset, validation_dataset
 
     def _compute_local_context(self, maze, position, directions):
@@ -396,150 +494,129 @@ def load_models(allowed_models):
             model_path = os.path.join(INPUT, LSTM_MODEL_PATH)
             if os.path.exists(model_path):
                 lstm_model.load_state_dict(torch.load(model_path))
-            models.append(("RNN", lstm_model))
+            models.append(("LSTM", lstm_model))
 
     return models
 
+
 def collate_fn(batch):
-    # Unzip the batch into its separate components
-    batch = list(zip(*batch))
-    # For each component combine the list of numpy arrays into one numpy array and then convert to a tensor
-    return tuple(torch.as_tensor(np.array(x)) for x in batch)
+    """
+    Custom collate function for batching variable-length maze sequences.
+
+    This function:
+    - Unpacks a batch of (input_sequence, target_sequence) pairs
+    - Converts sequences to PyTorch tensors
+    - Pads all sequences in the batch to match the longest one
+    - Uses padding_value=-100 for targets so CrossEntropyLoss can ignore them
+
+    Returns:
+        inputs_padded (Tensor): [batch_size, max_seq_len, input_size]
+        targets_padded (Tensor): [batch_size, max_seq_len] with -100 padding
+    """
+    inputs, targets = zip(*batch)
+
+    # Convert list of arrays to list of tensors
+    inputs = [inp.clone().detach().float() if isinstance(inp, torch.Tensor) else torch.tensor(inp, dtype=torch.float32)
+              for inp in inputs]
+    targets = [tgt.clone().detach().long() if isinstance(tgt, torch.Tensor) else torch.tensor(tgt, dtype=torch.long)
+               for tgt in targets]
+
+    # Pad sequences to same length
+    inputs_padded = pad_sequence(inputs, batch_first=True)  # → (batch, max_seq_len, input_size)
+    targets_padded = pad_sequence(targets, batch_first=True, padding_value=-100)  # → (batch, max_seq_len)
+
+    return inputs_padded, targets_padded
 
 
-def train_models(allowed_models):
-    logging.debug("Starting training.")
-    trained_models = []
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    batch_size = config.getint("DEFAULT", "batch_size", fallback=128)
+def train_models(allowed_models=None):
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    summary_data = []  # traning metadata
 
-    # Delete previous tensorboard files.
-    try:
-        with open(LOSS_FILE, "w", newline="") as f:
-            loss_writer = csv.writer(f)
-            loss_writer.writerow(
-                ["model", "epoch", "training_loss", "validation_loss", "accuracy", "validation_accuracy",
-                 "time", "time_per_step", "cpu_load", "gpu_load", "ram_usage"])
-    except Exception as e:
-        logging.error(f"Error setting up loss file: {e}")
-
-    tensorboard_data_sever = SummaryWriter(log_dir=f"{OUTPUT}tensorboard_data")
-
+    # Load dataset
     trainer = RNN2MazeTrainer(TRAINING_MAZES_FILE, VALIDATION_MAZES_FILE)
+    train_data, val_data = trainer.create_dataset()
+    train_ds = MazeTrainingDataset(train_data)
+    val_ds = ValidationDataset(val_data)
+    logger.info(f"Training on {len(train_ds)} total samples")
 
-    # -------------------------------
-    # Added caching for dataset creation
-    # -------------------------------
-    cache_path = os.path.join(OUTPUT, "dataset_cache.pkl")
-    if (os.path.exists(cache_path) and config.getboolean("DEFAULT", "use_dataset_cache", fallback=False)
-            and config.getint("DEFAULT", "data_reshuffle", fallback=0) == 0):
-        with open(cache_path, "rb") as f:
-            dataset, validation_dataset = pickle.load(f)
-            logging.info(f"Loading dataset from cache. Length:{len(dataset)}")
-    else:
-        # delete data set cache first
-        if os.path.exists(cache_path):
-            os.remove(cache_path)
-        dataset, validation_dataset = trainer.create_dataset()
-        # create new cache
-        with open(cache_path, "wb") as f:
-            pickle.dump((dataset, validation_dataset), f)
-            logging.info(f"New dataloader cache saved {cache_path}")
-    logging.info(f"Created {len(dataset)} training samples.")
+    # Config flags
+    use_rolling = config.getboolean("DEFAULT", "use_rolling_sampler", fallback=False)
+    subset_fraction = config.getfloat("DEFAULT", "subset_fraction", fallback=0.1)
+    batch_size = config.getint("DEFAULT", "batch_size", fallback=64)
+    num_workers = config.getint("DEFAULT", "max_num_workers", fallback=0)
+    shuffle_training = config.getboolean("DEFAULT", "shuffle_training", fallback=True)
 
-    train_ds = MazeTrainingDataset(dataset)
-    validation_ds = ValidationDataset(validation_dataset)
+    # DataLoader config
+    sampler = RollingSubsetSampler(train_ds, fraction=subset_fraction) if use_rolling else None
+    shuffle = False if use_rolling else shuffle_training
 
-    # -------------------------------
-    # Adjust DataLoader worker count based on environment.
-    # -------------------------------
-    try:
-        # Starting with a safe baseline
-        num_workers = config.getint("DEFAULT", "dataloader_workers", fallback=0)
-        if num_workers:
-            logging.info(f"Using {num_workers} workers from config")
-        else:
-            if device.type == 'cuda':
-                max_workers = config.getint("DEFAULT", "max_num_workers", fallback=2)
-                num_workers = min(max_workers, os.cpu_count() or 1)
-                logging.info(f"Using {num_workers} workers for GPU training")
-            else:
-                num_workers = max(1, (os.cpu_count() or 1) // 4)
-                logging.info(f"Using {num_workers} workers for CPU training")
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
+                              num_workers=num_workers, collate_fn=collate_fn)
 
-        # Use a custom sampler if data reshuffling is enabled.
-        reshuffle_percentage = config.getint("DEFAULT", "data_reshuffle", fallback=10)
-        if reshuffle_percentage > 0:
-            sampler = ReshuffleSampler(train_ds, reshuffle_percentage)
-            dataloader = DataLoader(
-                train_ds,
-                batch_size=batch_size,
-                sampler=sampler,
-                pin_memory=True,
-                num_workers=num_workers,
-                persistent_workers=(num_workers > 0),
-                prefetch_factor=2,
-                collate_fn=collate_fn
-            )
-            logging.info(f"Using a reshuffle sampler with {reshuffle_percentage}% of data per epoch")
-        else:
-            dataloader = DataLoader(
-                train_ds,
-                batch_size=batch_size,
-                shuffle=True,
-                pin_memory=True,
-                num_workers=num_workers,
-                persistent_workers=(num_workers > 0),
-                prefetch_factor=2,
-                collate_fn=collate_fn
-            )
-            logging.info("Using shuffling of the full dataset")
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers,
+                            collate_fn=collate_fn)
 
-        logging.info(f"Number of workers: {num_workers}")
-        logging.info(f'Using device: {device}')
+    # Fallback to config if no model list provided
+    if allowed_models is None:
+        models_config = config.get("DEFAULT", "models", fallback="GRU,LSTM,RNN")
+        allowed_models = [m.strip().upper() for m in models_config.split(",")]
 
-    except (MemoryError, RuntimeError) as e:
-        logging.warning(f"Failed to create DataLoader with {num_workers} workers: {str(e)}")
-        logging.info("Falling back to single-process loading")
-        dataloader = DataLoader(
-            train_ds,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=0,
-            pin_memory=False,
+    trained_models = []
+
+    for model_name in allowed_models:
+        logging.info(f"Training model: {model_name}")
+        model = MazeRecurrentModel(
+            mode_type=model_name,
+            input_size=config.getint(model_name, "input_size", fallback=7),
+            hidden_size=config.getint(model_name, "hidden_size"),
+            num_layers=config.getint(model_name, "num_layers"),
+            output_size=config.getint(model_name, "output_size", fallback=4),
+        ).to(device)
+
+        if wandb_enabled:
+            wandb.watch(model, log="all", log_freq=1000)
+
+        model = model.train_model(
+            dataloader=train_loader,
+            val_loader=val_loader,
+            num_epochs=config.getint(model_name, "num_epochs"),
+            learning_rate=config.getfloat(model_name, "learning_rate"),
+            weight_decay=config.getfloat(model_name, "weight_decay"),
+            device=device,
+            tensorboard_writer=SummaryWriter(log_dir=f"{OUTPUT}/tensorboard_data/{model_name}")
         )
 
-    # (Remaining training loop continues below as before ...)
-    for model_name in allowed_models:
-        if model_name == "GRU":
-            gru_model = _train_gru_model(
-                device=device,
-                dataloader=dataloader,
-                validation_ds=validation_ds,
-                tensorboard_data_sever=tensorboard_data_sever
-            )
-            trained_models.append(("GRU", gru_model))
-        elif model_name == "LSTM":
-            lstm_model = _train_lstm_model(
-                device=device,
-                dataloader=dataloader,
-                validation_ds=validation_ds,
-                tensorboard_data_sever=tensorboard_data_sever
-            )
-            trained_models.append(("LSTM", lstm_model))
-        elif model_name == "RNN":
-            rnn_model = _train_rnn_model(
-                device=device,
-                dataloader=dataloader,
-                validation_ds=validation_ds,
-                tensorboard_data_sever=tensorboard_data_sever
-            )
-            trained_models.append(("RNN", rnn_model))
-        else:
-            logging.warning(f"Model {model_name} is not recognized and will be skipped.")
+        trained_models.append((model_name, model))
+        model_path = os.path.join(INPUT, config.get("FILES", f"{model_name}_MODEL",
+                                                    fallback=f"{model_name.lower()}_model.pth"))
+        torch.save(model.state_dict(), model_path)
+        logging.info(f"Saved {model_name} model to {model_path}")
 
-    tensorboard_data_sever.close()
-    logging.info("Training complete.")
+        summary_data.append({
+            "model": model_name,
+            "final_train_loss": model.last_loss,
+            "final_val_loss": model.validation_loss if hasattr(model, "validation_loss") else None,
+            "final_train_acc": model.training_accuracy if hasattr(model, "training_accuracy") else None,
+            "final_val_acc": model.validation_accuracy if hasattr(model, "validation_accuracy") else None,
+            "output_file": model_path
+        })
+        if wandb_enabled:
+            wandb.log({f"{model_name}_final_loss": model.last_loss})
+    summary_csv = os.path.join(OUTPUT, "summary_metrics.csv")
+    summary_json = os.path.join(OUTPUT, "summary_metrics.json")
+
+    # Save to CSV
+    df = pd.DataFrame(summary_data)
+    df.to_csv(summary_csv, index=False)
+
+    # Save to JSON
+    with open(summary_json, "w") as f:
+        json.dump(summary_data, f, indent=4)
+
+    logging.info(f"Saved model training summary to {summary_csv} and {summary_json}")
+
     return trained_models
 
 def _train_rnn_model(device, dataloader, validation_ds , tensorboard_data_sever) -> MazeRecurrentModel:
