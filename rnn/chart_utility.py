@@ -49,8 +49,8 @@ def save_latest_loss_chart():
         rows=5, cols=1, shared_xaxes=True, vertical_spacing=0.05,
         subplot_titles=[
             "Training Loss", "Validation Loss",
-            "Training Accuracy", "Validation Accuracy",
-            "Time per Step"
+            "Training Accuracy %", "Validation Accuracy %",
+            "Time per Step (min)"
         ]
     )
 

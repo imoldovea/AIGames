@@ -95,7 +95,7 @@ def update_graphs(n):
         line_dash='model_name',
         symbol='model_name',
         markers=True,
-        title="Accuracy"
+        title="Training Accuracy %"
     )
     fig_val_accuracy = px.line(
         df,
@@ -105,7 +105,7 @@ def update_graphs(n):
         line_dash='model_name',
         symbol='model_name',
         markers=True,
-        title="Validation Accuracy"
+        title="Validation Accuracy %"
     )
     fig_time_per_step = px.line(
         df,
@@ -113,7 +113,7 @@ def update_graphs(n):
         y='time_per_step',
         color='model_name',
         markers=True,
-        title="Time Per Step"
+        title="Time Per Step (min)"
     )
     fig_time_per_step.update_yaxes(title_text="time_per_step (minutes)")
 
