@@ -7,6 +7,7 @@ import os
 import pickle
 from configparser import ConfigParser
 
+import numpy as np
 import pandas as pd
 import torch
 import wandb
@@ -14,6 +15,7 @@ from numpy.f2py.auxfuncs import throw_error
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
+from torch.utils.data import Sampler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -122,7 +124,6 @@ class MazeTrainingDataset(Dataset):
     def __getitem__(self, idx):
         return self.samples[idx]
 
-
 class ValidationDataset(Dataset):
     """
     Wraps either:
@@ -172,10 +173,6 @@ class ValidationDataset(Dataset):
         return self.samples[idx]
 
 
-from torch.utils.data import Sampler
-import numpy as np
-
-
 class CurriculumSampler(Sampler):
     """
     A PyTorch sampler that enables curriculum learning by gradually increasing the difficulty
@@ -220,6 +217,7 @@ class CurriculumSampler(Sampler):
 
     def set_epoch(self, epoch):
         self.current_epoch = epoch
+
 
     def __iter__(self):
         # Determine how many difficulty phases to include this epoch
@@ -457,12 +455,16 @@ class RNN2MazeTrainer:
                 logging.warning("Maze failed validation.")
 
         # Cache the newly built datasets
+        # Always cache validation dataset
+        with open(val_cache_path, "wb") as f:
+            pickle.dump(validation_dataset, f)
+            logging.info("Cached validation dataset.")
+
+        # Conditionally cache training set
         if use_cache and not use_rolling:
             with open(cache_path, "wb") as f:
                 pickle.dump(dataset, f)
-            with open(val_cache_path, "wb") as f:
-                pickle.dump(validation_dataset, f)
-            logging.info("Cached training and validation datasets.")
+            logging.info("Cached training dataset.")
 
         return dataset, validation_dataset
 

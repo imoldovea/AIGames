@@ -1,18 +1,26 @@
+import cProfile
 import glob
+import io
+import json
 import logging
 import os
 import pickle
+import pstats
 import tempfile
 import traceback
 from configparser import ConfigParser
 from datetime import datetime
+from functools import wraps
 from multiprocessing import Process
+from typing import Optional, Callable, Any, TypeVar
 
 import cv2
 import flask.cli
 import numpy as np
 from PIL import Image
 from fpdf import FPDF
+
+T = TypeVar('T', bound=Callable[..., Any])  # *new* Define T as a type variable for use in type annotations
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -87,6 +95,9 @@ def setup_logging():
 
         os.makedirs(OUTPUT, exist_ok=True)
         logging.info(f"{OUTPUT}cleared...")
+    # delete the content of output/debug.log
+    with open(f"{OUTPUT}debug.log", "w") as f:
+        f.write("")
 
 # Define a custom PDF class (optional, for adding a header)
 class PDF(FPDF):
@@ -315,6 +326,61 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
 
     except Exception as e:
         logging.error(f"An error occurred during video generation: {e}\n\nStack Trace:{traceback.format_exc()}")
+
+
+# Python
+def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
+    """Decorator for profiling a method only when profiling_enabled is True in config.properties"""
+
+    def decorator(func: T) -> T:
+        @wraps(func)
+        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            if config.getboolean("DEFAULT", "profiling_enabled", fallback=False):
+                profiler = cProfile.Profile()
+                profiler.enable()
+
+                result = func(self, *args, **kwargs)
+
+                profiler.disable()
+
+                # Print stats
+                s = io.StringIO()
+                stats_obj = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+                stats_obj.print_stats(30)  # Print top 30 time-consuming functions
+
+                # Optionally save the cProfile data if output_file is provided
+                if output_file:
+                    stats_obj.dump_stats(output_file)
+                    logging.info(f"Profile data saved to {output_file}")
+
+                # save profile results as output/profile_results.txt
+                with open(os.path.join(OUTPUT, "profile_results.txt"), "w") as f:
+                    f.write(s.getvalue())
+                logging.info(f"Profile results saved to {os.path.join(OUTPUT, 'profile_results.txt')}")
+
+                # Save profiling results as JSON in the OUTPUT directory
+                json_output = os.path.join(OUTPUT, "profile_results.json")
+                stats_dict = {}
+                for func_desc, (call_count, rec_calls, total_time, cum_time, callers) in stats_obj.stats.items():
+                    key = f"{func_desc[0]}:{func_desc[1]}:{func_desc[2]}"
+                    stats_dict[key] = {
+                        "call_count": call_count,
+                        "recursive_calls": rec_calls,
+                        "total_time": total_time,
+                        "cumulative_time": cum_time,
+                        "callers": {f"{caller[0]}:{caller[1]}:{caller[2]}": count for caller, count in callers.items()}
+                    }
+                with open(json_output, "w") as f:
+                    json.dump(stats_dict, f, indent=4)
+                logging.info(f"Profile JSON data saved to {json_output}")
+
+            else:
+                result = func(self, *args, **kwargs)
+            return result
+
+        return wrapper
+
+    return decorator
 
 def load_mazes(file_path="input/mazes.pkl"):
     """

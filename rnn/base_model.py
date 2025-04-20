@@ -1,16 +1,11 @@
 # base_model.py
 # MazeBaseModel
 
-import cProfile
 import csv
-import io
 import logging
 import os
-import pstats
 import time
 from configparser import ConfigParser
-from functools import wraps
-from typing import Optional, Callable, Any, TypeVar  # *new* Import required typing classes
 
 import psutil
 import torch
@@ -19,7 +14,7 @@ import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
 from tqdm import tqdm
 
-T = TypeVar('T', bound=Callable[..., Any])  # *new* Define T as a type variable for use in type annotations
+from utils import profile_method
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -75,36 +70,6 @@ class MazeBaseModel(nn.Module):
         ram_usage = psutil.virtual_memory().used / (1024 ** 3)
         return round(cpu_load, 0), round(gpu_load, 0), round(ram_usage, 0)
 
-    def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
-        """Decorator for profiling a method"""
-
-        def decorator(func: T) -> T:
-            @wraps(func)
-            def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-                profiler = cProfile.Profile()
-                profiler.enable()
-
-                result = func(self, *args, **kwargs)
-
-                profiler.disable()
-
-                # Print stats
-                s = io.StringIO()
-                ps = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
-                ps.print_stats(30)  # Print top 30 time-consuming functions
-                print(s.getvalue())
-
-                # Optionally save to file
-                if output_file:
-                    ps.dump_stats(output_file)
-                    print(f"Profile data saved to {output_file}")
-
-                return result
-
-            return wrapper
-
-        return decorator
-
     @profile_method(output_file=f"{OUTPUT}train_model_profile.prof")
     def train_model(self, dataloader, num_epochs=20, learning_rate=0.0001, weight_decay=0.001,
                     device='cpu', tensorboard_writer=None, val_loader=None):
@@ -119,7 +84,7 @@ class MazeBaseModel(nn.Module):
         improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
         logging.info(
             f"Early stopping patience set to {self.patience} epochs. Training will stop after {self.patience} "
-            f"if no improvement over {improvement_threshold} epochs."
+            f"if no improvement over {improvement_threshold} ."
         )
 
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
