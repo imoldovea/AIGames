@@ -16,6 +16,7 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 LOSS_DATA = config.get("FILES", "LOSS_DATA", fallback="loss_data.csv")
 LOSS_FILE = f"{OUTPUT}{LOSS_DATA}"
+LOSS_CHART = f"{OUTPUT}loss_chart.html"
 
 def load_loss_data():
     try:
@@ -30,7 +31,6 @@ def load_loss_data():
         df['val_acc'] = pd.to_numeric(df['val_acc'], errors='coerce')
         df['time_per_step'] = (pd.to_numeric(df['time_per_step'], errors='coerce') / 60).round(0)
     except Exception as e:
-        print("Error loading CSV:", e)
         df = pd.DataFrame()
     return df
 
@@ -61,7 +61,7 @@ app.layout = html.Div([
 def update_graphs(n):
     df = load_loss_data()
     if df.empty or 'model_name' not in df.columns:
-        logging.warning("No training data available yet. Waiting for loss_data.csv...")
+        logging.debug("No training data available yet. Waiting for loss_data.csv...")
         return no_update, no_update, no_update, no_update, no_update
 
     df = df.sort_values('epoch')
@@ -72,6 +72,8 @@ def update_graphs(n):
         x='epoch',
         y='train_loss',
         color='model_name',
+        line_dash='model_name',
+        symbol='model_name',
         markers=True,
         title="Training Loss"
     )
@@ -80,6 +82,8 @@ def update_graphs(n):
         x='epoch',
         y='val_loss',
         color='model_name',
+        line_dash='model_name',
+        symbol='model_name',
         markers=True,
         title="Validation Loss"
     )
@@ -88,6 +92,8 @@ def update_graphs(n):
         x='epoch',
         y='train_acc',
         color='model_name',
+        line_dash='model_name',
+        symbol='model_name',
         markers=True,
         title="Accuracy"
     )
@@ -96,6 +102,8 @@ def update_graphs(n):
         x='epoch',
         y='val_acc',
         color='model_name',
+        line_dash='model_name',
+        symbol='model_name',
         markers=True,
         title="Validation Accuracy"
     )
@@ -113,8 +121,9 @@ def update_graphs(n):
     for fig in (fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step):
         fig.update_layout(
             xaxis_title="Epoch",
+            showlegend=True,
             legend=dict(
-                x=1.02,  # Place the legend to the right of the plot
+                x=1.02,
                 y=1,
                 traceorder="normal"
             )
