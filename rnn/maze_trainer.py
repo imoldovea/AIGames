@@ -26,7 +26,7 @@ from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
 # Import the unified model
 from model import MazeRecurrentModel
-from utils import setup_logging
+from utils import setup_logging, profile_method
 
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -317,6 +317,7 @@ class RNN2MazeTrainer:
         self.training_mazes = self._load_and_process_training_mazes(training_file_path,training_samples)
         self.validation_mazes = self._load_and_process_training_mazes(validation_file_path,training_samples//10)
 
+    @profile_method(output_file=f"{OUTPUT}load_mazes_profile.prof")
     def _load_and_process_training_mazes(self, path, training_samples):
         """
         Loads and processes training mazes from the specified file path.
@@ -371,6 +372,7 @@ class RNN2MazeTrainer:
         maze.set_solution(solver.solve())
         return maze
 
+    @profile_method(output_file=f"{OUTPUT}create_dataset_profile.prof")
     def create_dataset(self):
         """
         Constructs a dataset for training a maze-navigating model.
