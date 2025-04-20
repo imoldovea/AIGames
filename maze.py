@@ -45,6 +45,7 @@ class Maze:
         self.raw_movie = []
         self.algorithm = None
         self.valid_solution = False
+        self.complexity = self._compute_complexity()
 
         # cash
         self._bounds_cache = {}
@@ -69,6 +70,37 @@ class Maze:
         # Exit can be defined later using set_exit()
         self.set_exit()
         self.self_test()
+
+    def _compute_complexity(self):
+        """
+        Computes the maze complexity score based on:
+          - Normalized solution path length
+          - Maze area
+          - Estimated number of loops
+
+        Returns:
+            float: Complexity score in the range [0, ~3+] (unbounded upper)
+        """
+        # A. Path length (if available)
+        if self._solution and isinstance(self._solution, list):
+            path_length = len(self._solution)
+        else:
+            path_length = 0  # fallback for unsolved mazes
+
+        # B. Maze area
+        area = self.rows * self.cols
+
+        # C. Loops = empty cells not on the path and not visited
+        empty_cells = np.count_nonzero(self.grid == self.CORRIDOR)
+        loop_estimate = max(0, empty_cells - path_length)
+
+        # Normalize components to bring them into similar scale
+        norm_path = path_length / (self.rows + self.cols)  # relative to perimeter
+        norm_area = area / (18 * 18)  # relative to max maze size from config
+        norm_loops = loop_estimate / 10  # empirical scaling
+
+        complexity_score = norm_path + norm_area + norm_loops
+        return round(complexity_score, 3)
 
     def is_within_bounds(self, position):
         """
@@ -286,6 +318,9 @@ class Maze:
         else:
             self._solution = solution
             self.valid_solution = self.test_solution()
+        if self.valid_solution:
+            # recompute complexity score
+            self._compute_complexity()
 
     def self_test(self) -> bool:
         """

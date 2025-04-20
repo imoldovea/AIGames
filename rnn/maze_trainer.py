@@ -340,7 +340,7 @@ class RNN2MazeTrainer:
                 logging.error(f"Failed to process maze {i + 1}: {str(e)}")
                 raise RuntimeError(f"Processing maze {i + 1} failed.") from e
         # curriculum learning: Sort by solution path length
-        solved_training_mazes.sort(key=lambda maze: len(maze.get_solution()))
+        solved_training_mazes.sort(key=lambda maze: maze.complexity)
         return solved_training_mazes
 
     @staticmethod
