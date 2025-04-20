@@ -165,9 +165,9 @@ class MazeBaseModel(nn.Module):
 
                 loss = criterion(outputs_flat, targets_flat)
 
-                # ✅ Check for invalid loss values before backward
+                # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
-                    logging.error(f"⚠️ Invalid loss encountered at epoch {epoch + 1}, batch {iteration + 1}")
+                    logging.error(f"Invalid loss encountered at epoch {epoch + 1}, batch {iteration + 1}")
                     raise ValueError(f"Invalid loss encountered {epoch + 1}, batch {iteration + 1}")
 
                 # update progress bar with loss
@@ -175,10 +175,10 @@ class MazeBaseModel(nn.Module):
 
                 optimizer.zero_grad()
                 loss.backward()
-                # ✅ Add this line for gradient clipping (right after backward)
+                # Add this line for gradient clipping (right after backward)
                 torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
 
-                # ✅ Per-batch logging every 10 iterations
+                #Per-batch logging every 10 iterations
                 if iteration % 10 == 0:
                     grad_norm = sum((p.grad.norm().item() ** 2 for p in self.parameters() if p.grad is not None)) ** 0.5
                     logging.debug(
