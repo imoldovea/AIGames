@@ -49,34 +49,29 @@ class MazeBaseModel(nn.Module):
         applying special handling for padding and the exit class.
 
         This function:
-        - Masks out padding values (set to -100)
+        - Masks out padding values (-100)
         - Converts valid class indices [0–4] into one-hot vectors
-        - Applies an `exit_weight` multiplier to the "exit" class (index 4)
-        - Ensures padding positions contribute nothing to the loss
+        - Applies `exit_weight` to the "exit" class (index 4)
+        - Sets all padded rows to 0s (ignored in loss)
 
         Args:
-            targets_flat (Tensor): Flattened 1D tensor of class indices (length: batch_size * seq_len),
-                                   where valid values are in [0, 4] and padding is -100.
-            exit_weight (float): Multiplier for the "exit" class to emphasize it during training.
+            targets_flat (Tensor): Flattened 1D tensor of class indices, may contain -100 for padding
+            exit_weight (float): Multiplier for the exit class logits
 
         Returns:
-            one_hot (Tensor): A float tensor of shape [batch_size * seq_len, 5],
-                              with one-hot vectors for valid targets and all-zeros for padded entries.
-
-        Raises:
-            ValueError: If any non-padding values are outside the allowed range [0, 4].
+            Tensor: One-hot encoded target tensor of shape [batch_size * seq_len, 5]
         """
         valid_mask = targets_flat != -100
         targets_clipped = targets_flat.clone()
-        targets_clipped[~valid_mask] = 0  # placeholder
+        targets_clipped[~valid_mask] = 0  # dummy class for padding
 
-        # ✅ Check only on valid (non-padded) values
+        # ✅ Only validate values that are NOT padding
         if (targets_clipped[valid_mask] < 0).any() or (targets_clipped[valid_mask] > 4).any():
             raise ValueError(f"Found invalid target value(s): {targets_clipped[valid_mask].unique()}")
 
         one_hot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
         one_hot[~valid_mask] = 0
-        one_hot[:, 4] *= exit_weight
+        one_hot[:, 4] *= exit_weight  # boost exit neuron
         return one_hot
 
     def forward(self, x):
@@ -184,9 +179,6 @@ class MazeBaseModel(nn.Module):
 
                         target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
 
-                        if (targets_flat < -1).any() or (targets_flat > 4).any():
-                            raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
-
                         loss = criterion(outputs_flat, target_onehot)
                 else:
                     # Standard forward and loss computation (no AMP)
@@ -209,9 +201,6 @@ class MazeBaseModel(nn.Module):
                     exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
 
                     target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
-
-                    if (targets_flat < -1).any() or (targets_flat > 4).any():
-                        raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
 
                     # Compute loss in standard precision
                     loss = criterion(outputs_flat, target_onehot)
