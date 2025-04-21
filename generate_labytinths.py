@@ -1,3 +1,5 @@
+import concurrent.futures
+import glob
 import logging
 import os
 import pickle
@@ -14,7 +16,7 @@ from classical_algorithms.grpah_maze_solver import AStarMazeSolver
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
-from utils import setup_logging
+from utils import setup_logging, profile_method
 
 PATH = 0
 WALL = 1
@@ -220,6 +222,7 @@ def plot_maze(maze):
     plt.show()
 
 
+@profile_method(output_file=f"generate_maze")
 def generate(filename, number, solve=False):
     """
     Generate a specified number of mazes and optionally solve them.
@@ -245,40 +248,58 @@ def generate(filename, number, solve=False):
     """
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
-
     mazes = []
-    for i in tqdm.tqdm(range(number), desc="Generating mazes"):
-        width, height = random.choice(range(min_size, max_size, 2)), random.choice(range(min_size, max_size, 2))
-        maze_array = generate_maze(width, height)
-        maze = Maze(maze_array)
-        if solve:
-            maze.animate = False
-            maze.save_movie = False
 
-            # Retrieve the solver name from the configuration (defaulting to BacktrackingMazeSolver)
-            solver_obj = config.get("DEFAULT", "solver", fallback="BacktrackingMazeSolver")
-            solver_class = solver_mapping.get(solver_obj)
-            solver = solver_class(maze)
-            try:
-                solution = solver.solve()
-                maze.set_solution(solution)
-            except Exception as e:
-                logging.error(f"An error occurred: {e}\n\nStack Trace:{e.format_exc()}")
-            if maze.test_solution(): mazes.append(maze)
-        else:
-            mazes.append(maze)
+    # max_workers = max(round(os.cpu_count()), 1)
+    max_workers = 1
+
+    # Use a process pool for parallel generation
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit tasks to the pool
+        futures = [executor.submit(generate_single_maze, min_size, max_size, solve)
+                   for _ in range(number)]
+        for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=number, desc="Generating mazes"):
+            maze = future.result()
+            if maze is not None:
+                mazes.append(maze)
+
     save_mazes(OUTPUT_FOLDER, filename, mazes)
     logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
+
+
+def generate_single_maze(min_size, max_size, solve):
+    # Select random dimensions
+    width = random.choice(range(min_size, max_size, 2))
+    height = random.choice(range(min_size, max_size, 2))
+    maze_array = generate_maze(width, height)
+    maze = Maze(maze_array)
+    if solve:
+        maze.animate = False
+        maze.save_movie = False
+        solver_obj = config.get("DEFAULT", "solver", fallback="BacktrackingMazeSolver")
+        solver_class = solver_mapping.get(solver_obj)
+        solver = solver_class(maze)
+        try:
+            solution = solver.solve()
+            maze.set_solution(solution)
+        except Exception as e:
+            logging.error(f"An error occurred: {e}")
+        if maze.test_solution():
+            return maze
+        else:
+            # You may decide to discard mazes that fail the test.
+            return None
+    else:
+        return maze
 
 def main():
     mazes = config.get("FILES", "MAZES", fallback="mazes.pkl")
     training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.pkl")
     validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.pkl")
 
-    # delete data set cash
-    cache_path = os.path.join(OUTPUT, "dataset_cache.pkl")
-    if os.path.exists(cache_path):
-        os.remove(cache_path)
+    for pattern in ["*.pkl"]:
+        for filename in glob.glob(os.path.join(INPUT, pattern)):
+            os.remove(filename)
 
     generate(filename=training_mazes, number=num_mazes, solve=True)
     generate(filename=validation_mazes, number=num_mazes // 10, solve=True)

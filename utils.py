@@ -328,54 +328,52 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
         logging.error(f"An error occurred during video generation: {e}\n\nStack Trace:{traceback.format_exc()}")
 
 
-# Python
 def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
-    """Decorator for profiling a method only when profiling_enabled is True in config.properties"""
+    """Decorator for profiling a method or function only when profiling_enabled is True in config.properties"""
 
     def decorator(func: T) -> T:
         @wraps(func)
-        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             if config.getboolean("DEFAULT", "profiling_enabled", fallback=False):
                 profiler = cProfile.Profile()
                 profiler.enable()
 
-                result = func(self, *args, **kwargs)
+                result = func(*args, **kwargs)
 
                 profiler.disable()
 
                 # Print stats
                 s = io.StringIO()
                 stats_obj = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
-                stats_obj.print_stats(30)  # Print top 30 time-consuming functions
+                stats_obj.print_stats(30)
 
-                # Optionally save the cProfile data if outputoutputoutputoutput_file is provided
+                # Optionally save the cProfile data if output_file is provided
                 if output_file:
                     stats_obj.dump_stats(f"{OUTPUT}{output_file}.prof")
                     logging.info(f"Profile data saved to {output_file}.prof")
 
-                # save profile results as output/profile_results.txt
-                with open(f"{OUTPUT}{output_file}.txt", "w") as f:
-                    f.write(s.getvalue())
-                logging.info(f"Profile results saved to {output_file}.txt")
+                    with open(f"{OUTPUT}{output_file}.txt", "w") as f:
+                        f.write(s.getvalue())
+                    logging.info(f"Profile results saved to {output_file}.txt")
 
-                # Save profiling results as JSON in the OUTPUT directory
-                json_output = f"{OUTPUT}{output_file}.json"
-                stats_dict = {}
-                for func_desc, (call_count, rec_calls, total_time, cum_time, callers) in stats_obj.stats.items():
-                    key = f"{func_desc[0]}:{func_desc[1]}:{func_desc[2]}"
-                    stats_dict[key] = {
-                        "call_count": call_count,
-                        "recursive_calls": rec_calls,
-                        "total_time": total_time,
-                        "cumulative_time": cum_time,
-                        "callers": {f"{caller[0]}:{caller[1]}:{caller[2]}": count for caller, count in callers.items()}
-                    }
-                with open(json_output, "w") as f:
-                    json.dump(stats_dict, f, indent=4)
-                logging.info(f"Profile JSON data saved to {json_output}")
-
+                    # Save profiling results as JSON in the OUTPUT directory
+                    json_output = f"{OUTPUT}{output_file}.json"
+                    stats_dict = {}
+                    for func_desc, (call_count, rec_calls, total_time, cum_time, callers) in stats_obj.stats.items():
+                        key = f"{func_desc[0]}:{func_desc[1]}:{func_desc[2]}"
+                        stats_dict[key] = {
+                            "call_count": call_count,
+                            "recursive_calls": rec_calls,
+                            "total_time": total_time,
+                            "cumulative_time": cum_time,
+                            "callers": {f"{caller[0]}:{caller[1]}:{caller[2]}": count for caller, count in
+                                        callers.items()}
+                        }
+                    with open(json_output, "w") as f:
+                        json.dump(stats_dict, f, indent=4)
+                    logging.info(f"Profile JSON data saved to {json_output}")
             else:
-                result = func(self, *args, **kwargs)
+                result = func(*args, **kwargs)
             return result
 
         return wrapper
