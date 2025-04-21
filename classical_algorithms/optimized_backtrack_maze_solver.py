@@ -195,7 +195,7 @@ def solver() -> None:
             solution = solver.solve()
 
             if solution:
-                logging.debug(f"Maze {i + 1} solution)
+                logging.debug(f"Maze {i + 1} solution")
             else:
                 logging.debug(f"No solution found for maze {i + 1}.")
 
