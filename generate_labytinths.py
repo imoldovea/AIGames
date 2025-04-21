@@ -224,7 +224,7 @@ def plot_maze(maze):
 
 
 @profile_method(output_file=f"generate_maze")
-def generate(filename, number, solve=False, ):
+def generate(filename, number, solve=False):
     """
     Generate a specified number of mazes and optionally solve them.
 
