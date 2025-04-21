@@ -13,6 +13,7 @@ from classical_algorithms.bfs_maze_solver import BFSMazeSolver
 from classical_algorithms.grpah_maze_solver import AStarMazeSolver
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
+from maze import Maze
 from utils import setup_logging
 
 PATH = 0
@@ -87,6 +88,7 @@ def generate_maze(width: int, height: int) -> np.ndarray:
     maze = find_exit(maze, width, height)
 
     maze = add_loops(maze)
+
     return maze
 
 
@@ -219,13 +221,36 @@ def plot_maze(maze):
 
 
 def generate(filename, number, solve=False):
+    """
+    Generate a specified number of mazes and optionally solve them.
+
+    This function generates a set of maze instances with random dimensions within a specified range.
+    Each maze can be solved using a solver defined in the configuration, and if solving is successful,
+    the solution is tested before adding the maze to the output list. The generated mazes are then saved
+    to an output folder.
+
+    :param filename: str
+        The name of the file where the mazes will be saved.
+
+    :param number: int
+        The number of mazes to generate.
+
+    :param solve: bool, optional (default=False)
+        A flag indicating whether to attempt solving each maze. If True,
+        the function uses a solver specified in the configuration to find and
+        test solutions for the generated mazes before saving them.
+
+    :return: None
+
+    """
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
 
     mazes = []
     for i in tqdm.tqdm(range(number), desc="Generating mazes"):
         width, height = random.choice(range(min_size, max_size, 2)), random.choice(range(min_size, max_size, 2))
-        maze = generate_maze(width, height)
+        maze_array = generate_maze(width, height)
+        maze = Maze(maze_array)
         if solve:
             maze.animate = False
             maze.save_movie = False
