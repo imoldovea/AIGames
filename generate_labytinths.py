@@ -223,7 +223,7 @@ def plot_maze(maze):
 
 
 @profile_method(output_file=f"generate_maze")
-def generate(filename, number, solve=False):
+def generate(filename, number, solve=False, assynchronous=False):
     """
     Generate a specified number of mazes and optionally solve them.
 
@@ -246,20 +246,27 @@ def generate(filename, number, solve=False):
     :return: None
 
     """
+    logging.info(f"Generating {filename}, {number} solved {solve} mazes...")
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
     mazes = []
 
-    # max_workers = max(round(os.cpu_count()), 1)
-    max_workers = 1
+    if assynchronous:
+        # max_workers = max(round(os.cpu_count()), 1)
+        max_workers = 10
 
-    # Use a process pool for parallel generation
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Submit tasks to the pool
-        futures = [executor.submit(generate_single_maze, min_size, max_size, solve)
-                   for _ in range(number)]
-        for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=number, desc="Generating mazes"):
-            maze = future.result()
+        # Use a process pool for parallel generation
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Submit tasks to the pool
+            futures = [executor.submit(generate_single_maze, min_size, max_size, solve)
+                       for _ in range(number)]
+            for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=number, desc="Generating mazes"):
+                maze = future.result()
+                if maze is not None:
+                    mazes.append(maze)
+    else:
+        for _ in tqdm.trange(number, desc="Generating mazes"):
+            maze = generate_single_maze(min_size, max_size, solve)
             if maze is not None:
                 mazes.append(maze)
 
@@ -300,6 +307,7 @@ def main():
     for pattern in ["*.pkl"]:
         for filename in glob.glob(os.path.join(INPUT, pattern)):
             os.remove(filename)
+            logging.info(f"{filename} removed")
 
     generate(filename=training_mazes, number=num_mazes, solve=True)
     generate(filename=validation_mazes, number=num_mazes // 10, solve=True)
