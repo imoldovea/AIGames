@@ -2,6 +2,7 @@
 # MazeBaseModel
 
 import csv
+import json
 import logging
 import os
 import time
@@ -12,8 +13,8 @@ import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
+from torch.cuda.amp import GradScaler
 from tqdm import tqdm
-import json
 
 from utils import profile_method
 
@@ -82,6 +83,9 @@ class MazeBaseModel(nn.Module):
             logging.warning("Development mode is enabled. Training with reduced data set.")
             num_epochs = 2
 
+        use_amp = torch.cuda.is_available()
+        scaler = GradScaler() if use_amp else None
+
         self.to(device)
         improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
         logging.info(
@@ -119,18 +123,30 @@ class MazeBaseModel(nn.Module):
                 target_actions = target_actions.to(device)
 
                 # Forward pass produces outputs of shape [batch_size, seq_len, output_size]
-                outputs = self.forward(inputs)
+                if use_amp:
+                    # Enable automatic mixed precision context for faster GPU training and reduced memory usage
+                    with torch.amp.autocast(device_type='cuda'):
+                        # Forward pass through the model (with float16 precision where safe)
+                        outputs = self.forward(inputs)
 
-                # Validate shapes (optional assertions)
-                assert outputs.ndim == 3, f"Expected outputs to be 3D, got {outputs.shape}"
-                assert inputs.ndim == 3, f"Expected inputs to be 3D, got {inputs.shape}"
+                        # Validate shape and flatten the output for CrossEntropyLoss
+                        batch_size, seq_len, output_size = outputs.shape
+                        outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
+                        targets_flat = target_actions.contiguous().view(batch_size * seq_len)
 
-                # Flatten the sequence dimension so that CrossEntropyLoss can be applied
-                batch_size, seq_len, output_size = outputs.shape
-                outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
-                targets_flat = target_actions.contiguous().view(batch_size * seq_len)
+                        # Compute the loss (CrossEntropy expects flat inputs and targets)
+                        loss = criterion(outputs_flat, targets_flat)
+                else:
+                    # Standard forward and loss computation (no AMP)
+                    outputs = self.forward(inputs)
 
-                loss = criterion(outputs_flat, targets_flat)
+                    # Flatten outputs and targets for CrossEntropyLoss
+                    batch_size, seq_len, output_size = outputs.shape
+                    outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
+                    targets_flat = target_actions.contiguous().view(batch_size * seq_len)
+
+                    # Compute loss in standard precision
+                    loss = criterion(outputs_flat, targets_flat)
 
                 # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
@@ -141,9 +157,29 @@ class MazeBaseModel(nn.Module):
                 iterator.set_postfix(loss=loss.item())
 
                 optimizer.zero_grad()
-                loss.backward()
-                # Add this line for gradient clipping (right after backward)
-                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+
+                if use_amp:
+                    # Use AMP-safe backward pass: scales the loss to prevent underflow
+                    scaler.scale(loss).backward()
+
+                    # Unscale the gradients before clipping, only every 5 batches
+                    if iteration % 5 == 0:
+                        scaler.unscale_(optimizer)
+                        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+
+                    # Step with the unscaled gradients and update the scaler
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    # Standard backward pass without AMP
+                    loss.backward()
+
+                    # Clip gradients every 5 batches to save compute
+                    if iteration % 5 == 0:
+                        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+
+                    # Standard optimizer step
+                    optimizer.step()
 
                 #Per-batch logging every 10 iterations
                 if iteration % 10 == 0:
@@ -154,8 +190,6 @@ class MazeBaseModel(nn.Module):
                         step = epoch * len(dataloader) + iteration
                         tensorboard_writer.add_scalar("BatchLoss/train", loss.item(), step)
                         tensorboard_writer.add_scalar("GradientNorm/train", grad_norm, step)
-
-                optimizer.step()
 
                 running_loss += loss.item() * batch_size
                 _, predicted = torch.max(outputs_flat, 1)

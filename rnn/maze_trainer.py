@@ -383,6 +383,9 @@ class RNN2MazeTrainer:
             maze.set_solution(solver.solve())
             maze.animate = False
             maze.save_movie = False
+
+            # Precompute context map and attach it
+            maze.context_map = self._build_context_map(maze)
         return maze
 
     @profile_method(output_file=f"create_dataset_profile")
@@ -450,7 +453,8 @@ class RNN2MazeTrainer:
                 sequence_inputs = []
                 sequence_targets = []
                 for i, (current_pos, next_pos) in enumerate(zip(solution[:-1], solution[1:])):
-                    local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
+                    # local_context = self._compute_local_context(maze, current_pos, DIRECTIONS)
+                    local_context = maze.context_map.get(current_pos, [WALL] * 4)  # use context cache
                     relative_position = (current_pos[0] - start_position[0],
                                          current_pos[1] - start_position[1])
                     step_norm = i / (len(solution) - 1)
@@ -485,28 +489,54 @@ class RNN2MazeTrainer:
 
     def _compute_local_context(self, maze, position, directions):
         """
-        Generates the local context around a position in the maze.
+        Vectorized version of local context computation using NumPy.
 
         Args:
-            maze (Maze): The current maze grid.
-            position (tuple): Current position coordinates (row, column).
-            directions (list): Possible movement directions in the maze.
+            maze (Maze): Maze object with .grid attribute (2D numpy array)
+            position (tuple): (row, col) position in the maze
+            directions (list): List of (dr, dc) direction offsets
 
         Returns:
-            list: Values of the maze cells around the position, with invalid
-                  cells marked as WALL.
+            list: Values of the 4 surrounding cells, defaulting to WALL if out of bounds
         """
         r, c = position
-        local_context = []
+        rows, cols = maze.grid.shape
+        dr_dc = np.array(directions)
+        positions = dr_dc + np.array([r, c])  # shape: (4, 2)
 
-        for dr, dc in directions:
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < maze.rows and 0 <= nc < maze.cols:
-                local_context.append(maze.grid[nr, nc])
-            else:
-                local_context.append(WALL)  # Out of bounds = wall
+        # Check which are in bounds
+        in_bounds = (
+                (positions[:, 0] >= 0) & (positions[:, 0] < rows) &
+                (positions[:, 1] >= 0) & (positions[:, 1] < cols)
+        )
 
-        return local_context
+        # Clip indices to valid range, so we can use them safely
+        clamped = np.clip(positions, [0, 0], [rows - 1, cols - 1])
+
+        # Use fancy indexing to get neighbor values
+        neighbor_vals = maze.grid[clamped[:, 0], clamped[:, 1]]
+
+        # Apply WALL where out of bounds
+        context = np.where(in_bounds, neighbor_vals, WALL)
+
+        return context.tolist()
+
+    def _build_context_map(self, maze, directions=DIRECTIONS):
+        """
+        Precomputes the local context for every position in the maze.
+
+        Args:
+            maze (Maze): Maze instance with a grid
+            directions (list): Direction deltas [(dr, dc), ...]
+
+        Returns:
+            dict: {position: local_context} for each valid cell
+        """
+        context_map = {}
+        for r in range(maze.rows):
+            for c in range(maze.cols):
+                context_map[(r, c)] = self._compute_local_context(maze, (r, c), directions)
+        return context_map
 
 # -------------------------------
 # Model Training Function
@@ -607,8 +637,8 @@ def collate_fn(batch):
     inputs, targets = zip(*batch)
 
     # Convert list of arrays to list of tensors
-    inputs = [torch.tensor(inp, dtype=torch.float32) for inp in inputs]
-    targets = [torch.tensor(tgt, dtype=torch.long) for tgt in targets]
+    inputs = [inp.clone().detach().float() for inp in inputs]
+    targets = [tgt.clone().detach().long() for tgt in targets]
 
     # Pad sequences to same length
     inputs_padded = pad_sequence(inputs, batch_first=True)  # → (batch, max_seq_len, input_size)
