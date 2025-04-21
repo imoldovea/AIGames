@@ -83,12 +83,12 @@ class RNN2MazeSolver(MazeSolver):
         if isinstance(recurrent, torch.nn.Module):
             recurrent.register_forward_hook(self.save_activation)
 
-    def save_activation(self, module, input, output):
-        if isinstance(output, tuple):
-            activation_tensor = output[0]
-        else:
-            activation_tensor = output
-        self.activations['recurrent'].append(activation_tensor.detach().cpu().numpy())
+    # def save_activation(self, module, input, output):
+    #     if isinstance(output, tuple):
+    #         activation_tensor = output[0]
+    #     else:
+    #         activation_tensor = output
+    #     self.activations['recurrent'].append(activation_tensor.detach().cpu().numpy())
 
     def solve(self):
         """
@@ -135,7 +135,9 @@ class RNN2MazeSolver(MazeSolver):
             input_tensor = torch.tensor(input_features).unsqueeze(0).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 # Perform inference using the trained model to predict the next move
-                output = self.model(input_tensor)
+                output, hidden_activations = self.model(input_tensor, return_activations=True)
+                self.activations['recurrent'].append(hidden_activations.squeeze(0).cpu().numpy())
+
                 # Determine the action (direction) with the highest probability
                 action = torch.argmax(output[0, -1], dim=0).item()
 

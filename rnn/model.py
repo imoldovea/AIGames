@@ -53,22 +53,28 @@ class MazeRecurrentModel(MazeBaseModel):
             elif 'bias' in name:
                 nn.init.zeros_(param)
 
-    def forward(self, x):
+    def forward(self, x, return_activations=False):
         """
         Forward pass for the model.
-
-        x: Tensor of shape [batch_size, seq_length, input_size].
+        x: Tensor of shape [batch_size, seq_length, input_size]
+        return_activations (bool): If True, also return the recurrent output (hidden states)
         Returns:
-            Tensor of shape [batch_size, seq_length, output_size].
+            logits (Tensor): [batch_size, seq_length, output_size]
+            activations (Tensor): [batch_size, seq_length, hidden_size] (optional)
         """
         batch_size = x.size(0)
+        device = x.device
+
         if self.mode_type == "LSTM":
-            h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=x.device)
-            c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=x.device)
-            out, _ = self.recurrent(x, (h0, c0))
+            h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=device)
+            c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=device)
+            out, _ = self.recurrent(x, (h0, c0))  # out shape: [batch, seq_len, hidden_size]
         else:
-            h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=x.device)
+            h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=device)
             out, _ = self.recurrent(x, h0)
 
-        out = self.fc(out)  # Apply output layer to all time steps
-        return out
+        logits = self.fc(out)  # shape: [batch, seq_len, output_size]
+
+        if return_activations:
+            return logits, out  # return both predictions and LSTM/GRU/RNN hidden states
+        return logits
