@@ -21,6 +21,8 @@ from tqdm import tqdm
 
 import utils
 from classical_algorithms.backtrack_maze_solver import BacktrackingMazeSolver
+from classical_algorithms.bfs_maze_solver import BFSMazeSolver
+from classical_algorithms.grpah_maze_solver import AStarMazeSolver
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
@@ -59,7 +61,9 @@ wandb_enabled = config.getboolean("MONITORING", "wandb", fallback=True)
 solver_mapping = {
     'BacktrackingMazeSolver': BacktrackingMazeSolver,
     'OptimizedBacktrackingMazeSolver': OptimizedBacktrackingMazeSolver,
-    'PledgeMazeSolver': PledgeMazeSolver
+    'PledgeMazeSolver': PledgeMazeSolver,
+    'BFSMazeSolver': BFSMazeSolver,
+    'AStarMazeSolver': AStarMazeSolver,
 }
 
 
@@ -335,7 +339,13 @@ class RNN2MazeTrainer:
         # Using tqdm to display progress bar - slicing the list to ensure we only process training_samples
         for i, maze_data in enumerate(tqdm(training_mazes[:training_samples], desc="Load training mazes")):
             try:
-                solved_training_mazes.append(self._process_maze(maze_data, i))
+                solved_maze = self._process_maze(maze_data, i)
+                # only add valid and solved mazes to the list.
+                if solved_maze.self_test() and solved_maze.valid_solution:
+                    solved_training_mazes.append(solved_maze)
+                else:
+                    logging.warning(f"Maze {i + 1} failed validation.")
+                solved_training_mazes.append()
             except Exception as e:
                 logging.error(f"Failed to process maze {i + 1}: {str(e)}")
                 raise RuntimeError(f"Processing maze {i + 1} failed.") from e
@@ -360,16 +370,20 @@ class RNN2MazeTrainer:
         if not maze.self_test():
             logging.warning(f"Maze {index + 1} failed validation.")
 
-        # Retrieve the solver name from the configuration (defaulting to BacktrackingMazeSolver)
-        solver_obj = config.get("DEFAULT", "solver", fallback="BacktrackingMazeSolver")
-        solver_cls = solver_mapping.get(solver_obj)
-        if not solver_cls:
-            raise RuntimeError(f"Solver '{solver_obj}' not found. Available solvers: {list(solver_mapping.keys())}")
+        # solve the maze if not already solved
+        if not maze.test_solution():
+            # Retrieve the solver name from the configuration (defaulting to BacktrackingMazeSolver)
+            solver_obj = config.get("DEFAULT", "solver", fallback="BacktrackingMazeSolver")
+            solver_cls = solver_mapping.get(solver_obj)
+            if not solver_cls:
+                raise RuntimeError(f"Solver '{solver_obj}' not found. Available solvers: {list(solver_mapping.keys())}")
 
-        # Instantiate and use the solver.
-        solver = solver_cls(maze)
+            # Instantiate and use the solver.
+            solver = solver_cls(maze)
 
-        maze.set_solution(solver.solve())
+            maze.set_solution(solver.solve())
+            maze.animate = False
+            maze.save_movie = False
         return maze
 
     @profile_method(output_file=f"create_dataset_profile")

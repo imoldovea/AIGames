@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 
+from classical_algorithms.backtrack_maze_solver import BacktrackingMazeSolver
+from classical_algorithms.bfs_maze_solver import BFSMazeSolver
+from classical_algorithms.grpah_maze_solver import AStarMazeSolver
+from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
+from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from utils import setup_logging
 
 PATH = 0
@@ -20,6 +25,15 @@ config = ConfigParser()
 config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
+
+# Mapping of available solver names to their classes
+solver_mapping = {
+    'BacktrackingMazeSolver': BacktrackingMazeSolver,
+    'OptimizedBacktrackingMazeSolver': OptimizedBacktrackingMazeSolver,
+    'PledgeMazeSolver': PledgeMazeSolver,
+    'BFSMazeSolver': BFSMazeSolver,
+    'AStarMazeSolver': AStarMazeSolver,
+}
 
 num_mazes = config.getint("MAZE", "num_mazes")
 
@@ -203,7 +217,8 @@ def plot_maze(maze):
     plt.axis('off')  # Hides axes for better visualization
     plt.show()
 
-def generate(filename, number):
+
+def generate(filename, number, solve=False):
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
 
@@ -211,7 +226,22 @@ def generate(filename, number):
     for i in tqdm.tqdm(range(number), desc="Generating mazes"):
         width, height = random.choice(range(min_size, max_size, 2)), random.choice(range(min_size, max_size, 2))
         maze = generate_maze(width, height)
-        mazes.append(maze)
+        if solve:
+            maze.animate = False
+            maze.save_movie = False
+
+            # Retrieve the solver name from the configuration (defaulting to BacktrackingMazeSolver)
+            solver_obj = config.get("DEFAULT", "solver", fallback="BacktrackingMazeSolver")
+            solver_class = solver_mapping.get(solver_obj)
+            solver = solver_class(maze)
+            try:
+                solution = solver.solve()
+                maze.set_solution(solution)
+            except Exception as e:
+                logging.error(f"An error occurred: {e}\n\nStack Trace:{e.format_exc()}")
+            if maze.test_solution(): mazes.append(maze)
+        else:
+            mazes.append(maze)
     save_mazes(OUTPUT_FOLDER, filename, mazes)
     logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
 
@@ -225,9 +255,9 @@ def main():
     if os.path.exists(cache_path):
         os.remove(cache_path)
 
-    generate(filename=training_mazes, number=num_mazes)
-    generate(filename=validation_mazes, number=num_mazes // 10)
-    generate(filename=mazes, number=10)
+    generate(filename=training_mazes, number=num_mazes, solve=True)
+    generate(filename=validation_mazes, number=num_mazes // 10, solve=True)
+    generate(filename=mazes, number=10, solve=False)
 
 if __name__ == "__main__":
     #setup logging
