@@ -1,3 +1,4 @@
+ solve mazes when generated
  adding an "exit prediction" output head
 
 New Methid

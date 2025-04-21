@@ -1,7 +1,0 @@
-services:
-  maze-solver:
-    image: your-registry/maze-solver:latest
-    restart: unless-stopped
-    volumes:
-      - /path/on/server/output:/app/output
-      - /path/on/server/input:/app/input

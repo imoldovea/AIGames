@@ -137,7 +137,7 @@ def backtracking_solver() -> None:
         # Iterate through each maze in the array
         for i, maze_matrix in enumerate(mazes):
             maze = Maze(maze_matrix)
-            logging.debug(f"Solving maze {i + 1}...")
+            # logging.debug(f"Solving maze {i + 1}...")
 
             # Instantiate the backtracking maze solver
             solver = BacktrackingMazeSolver(maze)
@@ -162,6 +162,6 @@ if __name__ == '__main__':
     # Setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
-    logger.debug("Logging is configured.")
+    #logger.debug("Logging is configured.")
 
     backtracking_solver()
