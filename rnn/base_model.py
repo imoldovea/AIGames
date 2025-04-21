@@ -392,7 +392,9 @@ class MazeBaseModel(nn.Module):
                 targets_flat = target_actions.contiguous().view(batch_size * seq_len)
 
                 # Compute loss using the flattened tensors
-                loss = criterion(outputs_flat, targets_flat)
+                exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+                target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
+                loss = criterion(outputs_flat, target_onehot)
 
                 # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
@@ -401,7 +403,11 @@ class MazeBaseModel(nn.Module):
                 num_batches += 1
 
                 # Calculate accuracy over the flattened outputs as well
-                _, predicted = torch.max(outputs_flat, 1)
+                mask = targets_flat != -100
+                _, predicted = torch.max(outputs_flat, dim=1)
+                predicted = predicted[mask]
+
+                targets_flat = targets_flat[mask]
                 total += targets_flat.size(0)
                 correct += (predicted == targets_flat).sum().item()
 
