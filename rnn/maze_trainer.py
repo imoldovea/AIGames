@@ -341,11 +341,10 @@ class RNN2MazeTrainer:
             try:
                 solved_maze = self._process_maze(maze_data, i)
                 # only add valid and solved mazes to the list.
-                if solved_maze.self_test() and solved_maze.valid_solution:
+                if solved_maze.valid_solution:
                     solved_training_mazes.append(solved_maze)
                 else:
                     logging.warning(f"Maze {i + 1} failed validation.")
-                solved_training_mazes.append()
             except Exception as e:
                 logging.error(f"Failed to process maze {i + 1}: {str(e)}")
                 raise RuntimeError(f"Processing maze {i + 1} failed.") from e
@@ -608,10 +607,8 @@ def collate_fn(batch):
     inputs, targets = zip(*batch)
 
     # Convert list of arrays to list of tensors
-    inputs = [inp.clone().detach().float() if isinstance(inp, torch.Tensor) else torch.tensor(inp, dtype=torch.float32)
-              for inp in inputs]
-    targets = [tgt.clone().detach().long() if isinstance(tgt, torch.Tensor) else torch.tensor(tgt, dtype=torch.long)
-               for tgt in targets]
+    inputs = [torch.tensor(inp, dtype=torch.float32) for inp in inputs]
+    targets = [torch.tensor(tgt, dtype=torch.long) for tgt in targets]
 
     # Pad sequences to same length
     inputs_padded = pad_sequence(inputs, batch_first=True)  # → (batch, max_seq_len, input_size)
@@ -654,12 +651,23 @@ def train_models(allowed_models=None):
         raise ValueError(f"Invalid sampler option: {sampler_option}")
     shuffle = (sampler is None)
     # DataLoader config
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
-                              num_workers=num_workers, collate_fn=collate_fn)
-
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-                            collate_fn=collate_fn)
-
+    train_loader = DataLoader(train_ds,
+                              batch_size=batch_size,
+                              shuffle=shuffle,
+                              sampler=sampler,
+                              num_workers=num_workers,
+                              collate_fn=collate_fn,
+                              pin_memory=True,
+                              persistent_workers=(num_workers > 0)  # only allowed if num_workers > 0
+                              )
+    val_loader = DataLoader(val_ds,
+                            batch_size=batch_size,
+                            shuffle=False,
+                            num_workers=num_workers,
+                            collate_fn=collate_fn,
+                            pin_memory=True,
+                            persistent_workers=(num_workers > 0)  # only allowed if num_workers > 0
+                            )
     # Fallback to config if no model list provided
     if allowed_models is None:
         models_config = config.get("DEFAULT", "models", fallback="GRU,LSTM,RNN")

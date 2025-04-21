@@ -20,7 +20,6 @@ import torch
 import wandb
 from chart_utility import (save_latest_loss_chart, save_neural_network_diagram, visualize_model_weights,
                            visualize_model_activations)
-from maze import Maze  # Assumes maze.py exists
 from maze_solver import MazeSolver
 from maze_trainer import get_models  # Training function from maze_trainer.py
 from utils import load_mazes, save_mazes_as_pdf, setup_logging
@@ -271,7 +270,7 @@ def rnn2_solver(models, mazes, device):
         # Step 5.b: Iterate through each maze
         for i, maze_data in enumerate(mazes):
             # Step 5.b.i: Create a Maze object
-            maze = Maze(maze_data)
+            maze = maze_data
             maze.save_movie = True
 
             if config.getboolean("MONITORING", "save_solution_movie", fallback=False):

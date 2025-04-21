@@ -279,6 +279,8 @@ def generate_single_maze(min_size, max_size, solve):
     height = random.choice(range(min_size, max_size, 2))
     maze_array = create_maze(width, height)
     maze = Maze(maze_array)
+    if not maze.self_test():
+        return None
     if solve:
         maze.animate = False
         maze.save_movie = False
