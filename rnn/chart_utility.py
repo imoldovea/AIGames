@@ -135,8 +135,8 @@ def save_neural_network_diagram(models, output_dir="output/"):
                 dot = make_dot(output, params=dict(model.named_parameters()))
 
                 # Draw the graph and add it as a page in the PDF
-                figure = plt.figure(figsize=(12, 8))
-                plt.title(f"Model: {model}")
+                figure = plt.figure(figsize=(16, 12), dpi=300)  # Increased size and DPI
+                plt.title(f"Model: {model}", fontsize=14)
                 plt.axis("off")
                 # png_data = dot.pipe(format="png")
 
@@ -146,8 +146,12 @@ def save_neural_network_diagram(models, output_dir="output/"):
 
                     dot.save(temp_dot_file)
                     # Use subprocess to call dot directly
-                    subprocess.run(["dot", "-Tpng", temp_dot_file, "-o", temp_png_file],
-                                   check=True, timeout=60)
+                    subprocess.run([
+                        "dot", "-Tpng",
+                        "-Gdpi=300",  # Set higher DPI
+                        temp_dot_file,
+                        "-o", temp_png_file
+                    ], check=True, timeout=60)
 
                     # Read the PNG file back
                     with open(temp_png_file, 'rb') as f:
@@ -204,6 +208,7 @@ def visualize_model_weights(models, output_folder=OUTPUT, base_title="Model Diag
     logging.debug("Visualizing model weights...")
     pdf_filename = f"{output_folder}model_weights_diagrams.pdf"
 
+    matplotlib.rcParams.update({'font.size': 12, 'font.family': 'sans-serif'})
     with PdfPages(pdf_filename) as pdf:
         for idx, item in enumerate(models):
             # Extract model name and object if item is a tuple, else assume it's the model object.
