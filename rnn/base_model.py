@@ -43,6 +43,20 @@ class MazeBaseModel(nn.Module):
         # Set up early stopping patience to monitor overfitting
         self.patience = config.getint("DEFAULT", "patience", fallback=5)
 
+    def _build_one_hot_target(self, targets_flat, exit_weight):
+        if (targets_flat < -1).any() or (targets_flat > 4).any():
+            raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
+
+        valid_mask = targets_flat != -100
+        targets_clipped = targets_flat.clone()
+        targets_clipped[~valid_mask] = 0  # temporary placeholder
+
+        one_hot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
+        one_hot[~valid_mask] = 0  # zero out the padding
+        one_hot[:, 4] *= exit_weight
+
+        return one_hot
+
     def forward(self, x):
         """
         This method should be overridden by subclasses.
@@ -145,16 +159,8 @@ class MazeBaseModel(nn.Module):
 
                         # apply exit_weight to valid samples only
                         exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
-                        if (targets_flat < -1).any() or (targets_flat > 4).any():
-                            raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
 
-                        valid_mask = targets_flat != -100
-                        targets_clipped = targets_flat.clone()
-                        targets_clipped[~valid_mask] = 0
-
-                        target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
-                        target_onehot[~valid_mask] = 0
-                        target_onehot[:, 4] *= exit_weight
+                        target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
 
                         if (targets_flat < -1).any() or (targets_flat > 4).any():
                             raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
@@ -179,16 +185,8 @@ class MazeBaseModel(nn.Module):
                     target_onehot[~valid_mask] = 0  # restore padding as all-zeros
 
                     exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
-                    if (targets_flat < -1).any() or (targets_flat > 4).any():
-                        raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
 
-                    valid_mask = targets_flat != -100
-                    targets_clipped = targets_flat.clone()
-                    targets_clipped[~valid_mask] = 0
-
-                    target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
-                    target_onehot[~valid_mask] = 0
-                    target_onehot[:, 4] *= exit_weight
+                    target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
 
                     if (targets_flat < -1).any() or (targets_flat > 4).any():
                         raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
