@@ -135,7 +135,31 @@ class MazeBaseModel(nn.Module):
                         targets_flat = target_actions.contiguous().view(batch_size * seq_len)
 
                         # Compute the loss (CrossEntropy expects flat inputs and targets)
-                        loss = criterion(outputs_flat, targets_flat)
+                        # mask out invalid indices (e.g., -100)
+                        valid_mask = targets_flat != -100
+                        targets_clipped = targets_flat.clone()
+                        targets_clipped[~valid_mask] = 0  # temporarily set to safe class
+
+                        target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
+                        target_onehot[~valid_mask] = 0  # restore padding as all-zeros
+
+                        # apply exit_weight to valid samples only
+                        exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+                        if (targets_flat < -1).any() or (targets_flat > 4).any():
+                            raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
+
+                        valid_mask = targets_flat != -100
+                        targets_clipped = targets_flat.clone()
+                        targets_clipped[~valid_mask] = 0
+
+                        target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
+                        target_onehot[~valid_mask] = 0
+                        target_onehot[:, 4] *= exit_weight
+
+                        if (targets_flat < -1).any() or (targets_flat > 4).any():
+                            raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
+
+                        loss = criterion(outputs_flat, target_onehot)
                 else:
                     # Standard forward and loss computation (no AMP)
                     outputs = self.forward(inputs)
@@ -146,10 +170,29 @@ class MazeBaseModel(nn.Module):
                     targets_flat = target_actions.contiguous().view(batch_size * seq_len)
 
                     # Convert targets to one-hot with shape [batch_size * seq_len, 5]
-                    target_onehot = torch.nn.functional.one_hot(targets_flat, num_classes=5).float()
-                    # Put more weight on the exit action
+                    # mask out invalid indices (e.g., -100)
+                    valid_mask = targets_flat != -100
+                    targets_clipped = targets_flat.clone()
+                    targets_clipped[~valid_mask] = 0  # temporarily set to safe class
+
+                    target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
+                    target_onehot[~valid_mask] = 0  # restore padding as all-zeros
+
                     exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+                    if (targets_flat < -1).any() or (targets_flat > 4).any():
+                        raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
+
+                    valid_mask = targets_flat != -100
+                    targets_clipped = targets_flat.clone()
+                    targets_clipped[~valid_mask] = 0
+
+                    target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
+                    target_onehot[~valid_mask] = 0
                     target_onehot[:, 4] *= exit_weight
+
+                    if (targets_flat < -1).any() or (targets_flat > 4).any():
+                        raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
+
                     # Compute loss in standard precision
                     loss = criterion(outputs_flat, target_onehot)
 

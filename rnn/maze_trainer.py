@@ -717,7 +717,7 @@ def train_models(allowed_models=None):
             input_size=config.getint(model_name, "input_size", fallback=7),
             hidden_size=config.getint(model_name, "hidden_size"),
             num_layers=config.getint(model_name, "num_layers"),
-            output_size=config.getint(model_name, "output_size", fallback=4),
+            output_size=config.getint(model_name, "output_size", fallback=5),
         ).to(device)
 
         if wandb_enabled:

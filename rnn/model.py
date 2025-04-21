@@ -7,8 +7,8 @@ import torch.nn as nn
 
 from base_model import MazeBaseModel
 
+
 # implement len>1 to remember te path
-REN_GR_1 = True
 class MazeRecurrentModel(MazeBaseModel):
     def __init__(self, mode_type="RNN", input_size=7, hidden_size=128, num_layers=2, output_size=4):
         """
