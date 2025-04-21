@@ -28,7 +28,7 @@ from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
 # Import the unified model
 from model import MazeRecurrentModel
-from utils import setup_logging, profile_method
+from utils import setup_logging, profile_method, clean_outupt_folder
 
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -366,7 +366,7 @@ class RNN2MazeTrainer:
 
     @staticmethod
     def _process_maze(data, index):
-        maze = Maze(data)
+        maze = data
         if not maze.self_test():
             logging.warning(f"Maze {index + 1} failed validation.")
 
@@ -622,6 +622,7 @@ def collate_fn(batch):
 
 def train_models(allowed_models=None):
     setup_logging()
+    clean_outupt_folder()
     logger = logging.getLogger(__name__)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     summary_data = []  # traning metadata

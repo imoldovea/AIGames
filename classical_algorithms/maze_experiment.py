@@ -8,7 +8,6 @@ import traceback
 from backtrack_maze_solver import BacktrackingMazeSolver
 from bfs_maze_solver import BFSMazeSolver
 from grpah_maze_solver import AStarMazeSolver
-from maze import Maze
 from optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from pladge_maze_solver import PledgeMazeSolver
 from utils import (
@@ -34,15 +33,14 @@ def solve_all_mazes(mazes, solver_class):
     """
     solved_mazes = []
     for i, maze in enumerate(mazes):
-        maze_obj = Maze(maze)
-        maze_obj.animate = False
-        maze_obj.save_movie = True
-        solver = solver_class(maze_obj)
+        maze.animate = False
+        maze.save_movie = True
+        solver = solver_class(maze)
 
         try:
             solution = solver.solve()
-            maze_obj.set_solution(solution)
-            solved_mazes.append(maze_obj)
+            maze.set_solution(solution)
+            solved_mazes.append(maze)
             logging.debug(f"Maze {i + 1} solved successfully.")
         except Exception as e:
             logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")

@@ -40,7 +40,8 @@ solver_mapping = {
 
 num_mazes = config.getint("MAZE", "num_mazes")
 
-def generate_maze(width: int, height: int) -> np.ndarray:
+
+def create_maze(width: int, height: int) -> np.ndarray:
     """
     Generate a random rectangular maze with walls and paths.
 
@@ -223,7 +224,7 @@ def plot_maze(maze):
 
 
 @profile_method(output_file=f"generate_maze")
-def generate(filename, number, solve=False, assynchronous=False):
+def generate(filename, number, solve=False, ):
     """
     Generate a specified number of mazes and optionally solve them.
 
@@ -251,11 +252,9 @@ def generate(filename, number, solve=False, assynchronous=False):
     max_size = config.getint("MAZE", "max_size")
     mazes = []
 
-    if assynchronous:
-        # max_workers = max(round(os.cpu_count()), 1)
-        max_workers = 10
-
+    if config.getboolean("DEFAULT", "max_num_workers", fallback="0") > 0:
         # Use a process pool for parallel generation
+        max_workers = round(os.cpu_count()) - 1
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
             # Submit tasks to the pool
             futures = [executor.submit(generate_single_maze, min_size, max_size, solve)
@@ -278,7 +277,7 @@ def generate_single_maze(min_size, max_size, solve):
     # Select random dimensions
     width = random.choice(range(min_size, max_size, 2))
     height = random.choice(range(min_size, max_size, 2))
-    maze_array = generate_maze(width, height)
+    maze_array = create_maze(width, height)
     maze = Maze(maze_array)
     if solve:
         maze.animate = False
