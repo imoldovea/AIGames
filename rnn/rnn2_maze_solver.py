@@ -140,9 +140,6 @@ class RNN2MazeSolver(MazeSolver):
                 direction_logits = output[0, -1][:4]  # Only the first 4 neurons (directions)
                 action = torch.argmax(direction_logits, dim=0).item()
 
-                # Determine the action (direction) with the highest probability
-                action = torch.argmax(output[0, -1], dim=0).item()
-
             # Calculate the move delta based on the predicted action
             move_delta = self.DIRECTIONS[action]
             # Compute the next position by applying the move delta to the current position
