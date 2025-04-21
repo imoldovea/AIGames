@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler  # ⬅️ NEW import
 from tqdm import tqdm
 
 from utils import profile_method
@@ -44,17 +44,39 @@ class MazeBaseModel(nn.Module):
         self.patience = config.getint("DEFAULT", "patience", fallback=5)
 
     def _build_one_hot_target(self, targets_flat, exit_weight):
-        if (targets_flat < -1).any() or (targets_flat > 4).any():
-            raise ValueError(f"Found invalid target value(s): {targets_flat.unique()}")
+        """
+        Converts a flattened sequence of target class indices into a one-hot encoded tensor,
+        applying special handling for padding and the exit class.
 
+        This function:
+        - Masks out padding values (set to -100)
+        - Converts valid class indices [0–4] into one-hot vectors
+        - Applies an `exit_weight` multiplier to the "exit" class (index 4)
+        - Ensures padding positions contribute nothing to the loss
+
+        Args:
+            targets_flat (Tensor): Flattened 1D tensor of class indices (length: batch_size * seq_len),
+                                   where valid values are in [0, 4] and padding is -100.
+            exit_weight (float): Multiplier for the "exit" class to emphasize it during training.
+
+        Returns:
+            one_hot (Tensor): A float tensor of shape [batch_size * seq_len, 5],
+                              with one-hot vectors for valid targets and all-zeros for padded entries.
+
+        Raises:
+            ValueError: If any non-padding values are outside the allowed range [0, 4].
+        """
         valid_mask = targets_flat != -100
         targets_clipped = targets_flat.clone()
-        targets_clipped[~valid_mask] = 0  # temporary placeholder
+        targets_clipped[~valid_mask] = 0  # placeholder
+
+        # ✅ Check only on valid (non-padded) values
+        if (targets_clipped[valid_mask] < 0).any() or (targets_clipped[valid_mask] > 4).any():
+            raise ValueError(f"Found invalid target value(s): {targets_clipped[valid_mask].unique()}")
 
         one_hot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
-        one_hot[~valid_mask] = 0  # zero out the padding
+        one_hot[~valid_mask] = 0
         one_hot[:, 4] *= exit_weight
-
         return one_hot
 
     def forward(self, x):
@@ -98,7 +120,7 @@ class MazeBaseModel(nn.Module):
             num_epochs = 2
 
         use_amp = torch.cuda.is_available()
-        scaler = GradScaler() if use_amp else None
+        scaler = GradScaler()
 
         self.to(device)
         improvement_threshold = config.getfloat("DEFAULT", "improvement_threshold", fallback=0.01)
