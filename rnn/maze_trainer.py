@@ -438,6 +438,10 @@ class RNN2MazeTrainer:
                 if move_delta not in DIRECTION_TO_ACTION:
                     raise KeyError(f"Invalid move delta: {move_delta}")
                 target_action = DIRECTION_TO_ACTION[move_delta]
+                # Check if this is the step right before the exit
+                is_exit_step = next_pos == maze.exit
+                if is_exit_step:
+                    target_action = 4  # Exit signal (index 4)
                 sequence_targets.append(target_action)
 
             sample_inputs = np.array(sequence_inputs, dtype=np.float32)

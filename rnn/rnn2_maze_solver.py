@@ -136,7 +136,9 @@ class RNN2MazeSolver(MazeSolver):
             with torch.no_grad():
                 # Perform inference using the trained model to predict the next move
                 output, hidden_activations = self.model(input_tensor, return_activations=True)
-                self.activations['recurrent'].append(hidden_activations.squeeze(0).cpu().numpy())
+                # ifth neuron (index 4) signals whether the next move is the exit — and should not influence directional decision-making. By slicing the output to [:4], you ensure the agent makes decisions based on movement only.
+                direction_logits = output[0, -1][:4]  # Only the first 4 neurons (directions)
+                action = torch.argmax(direction_logits, dim=0).item()
 
                 # Determine the action (direction) with the highest probability
                 action = torch.argmax(output[0, -1], dim=0).item()

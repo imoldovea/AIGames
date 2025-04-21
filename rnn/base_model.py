@@ -96,7 +96,7 @@ class MazeBaseModel(nn.Module):
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
         lr_factor = config.getfloat("DEFAULT", "lr_factor", fallback=0.7)
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=self.patience)
-        criterion = nn.CrossEntropyLoss(ignore_index=-100)
+        criterion = nn.BCEWithLogitsLoss()
 
         train_losses = {"train": [], "validation": []}
         train_accuracies = {"train": [], "validation": []}
@@ -145,8 +145,13 @@ class MazeBaseModel(nn.Module):
                     outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
                     targets_flat = target_actions.contiguous().view(batch_size * seq_len)
 
+                    # Convert targets to one-hot with shape [batch_size * seq_len, 5]
+                    target_onehot = torch.nn.functional.one_hot(targets_flat, num_classes=5).float()
+                    # Put more weight on the exit action
+                    exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+                    target_onehot[:, 4] *= exit_weight
                     # Compute loss in standard precision
-                    loss = criterion(outputs_flat, targets_flat)
+                    loss = criterion(outputs_flat, target_onehot)
 
                 # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
