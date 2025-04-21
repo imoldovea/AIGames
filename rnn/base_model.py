@@ -215,7 +215,7 @@ class MazeBaseModel(nn.Module):
                 validation_loss=validation_loss,
                 training_accuracy=training_accuracy,
                 validation_accuracy=validation_accuracy,
-                time_per_step=int(((time.time() - epoch_start) / accumulation_steps) / 60),
+                time_per_step=int(((time.time() - epoch_start) / accumulation_steps)),  # in seconds
                 tensorboard_writer=tensorboard_writer,
             )
 

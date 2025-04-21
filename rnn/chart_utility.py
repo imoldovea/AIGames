@@ -18,6 +18,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 from torch.utils.tensorboard import SummaryWriter
 from torchviz import make_dot
 
+from maze_trainer import load_models
+
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
 config.read(PARAMETERS_FILE)
@@ -50,7 +52,7 @@ def save_latest_loss_chart():
         subplot_titles=[
             "Training Loss", "Validation Loss",
             "Training Accuracy %", "Validation Accuracy %",
-            "Time per Step (min)"
+            "Time per Step (s)"
         ]
     )
 
@@ -134,7 +136,7 @@ def save_neural_network_diagram(models, output_dir="output/"):
 
                 # Draw the graph and add it as a page in the PDF
                 figure = plt.figure(figsize=(12, 8))
-                plt.title(f"Model: {getattr(model, 'name', f'Model_{idx}')}")
+                plt.title(f"Model: {model}")
                 plt.axis("off")
                 # png_data = dot.pipe(format="png")
 
@@ -309,6 +311,16 @@ def visualize_model_activations(all_activations, output_folder = OUTPUT, model_n
 
 def main():
     save_latest_loss_chart()
+
+    config = ConfigParser()
+    config.read("config.properties")
+    # Read the allowed models from the config file. Expected format: "GRU, LSTM, RNN"
+    models_config = config.get("DEFAULT", "models", fallback="GRU,LSTM,RNN")
+    allowed_models = [model.strip().upper() for model in models_config.split(",")]
+    models = load_models(allowed_models)
+    save_neural_network_diagram(models)
+    visualize_model_weights(models)
+    # visualize_model_activations(models)
 
 
 if __name__ == '__main__':

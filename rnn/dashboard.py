@@ -113,9 +113,9 @@ def update_graphs(n):
         y='time_per_step',
         color='model_name',
         markers=True,
-        title="Time Per Step (min)"
+        title="Time Per Step (s)"
     )
-    fig_time_per_step.update_yaxes(title_text="time_per_step (minutes)")
+    fig_time_per_step.update_yaxes(title_text="time_per_step (s)")
 
     # Update layout for each figure:
     for fig in (fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step):
