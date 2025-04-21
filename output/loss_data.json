@@ -2,27 +2,27 @@
   {
     "model_name": "LSTM",
     "epoch": 1,
-    "train_loss": 1.386099886894226,
-    "val_loss": 1.3556420803070068,
-    "train_acc": 0.1141732283464567,
-    "val_acc": 0.34615384615384615,
-    "timestamp": 1745233034.098389,
+    "train_loss": 1.3965819597244262,
+    "val_loss": 1.395473599433899,
+    "train_acc": 0.06299212598425197,
+    "val_acc": 0.07692307692307693,
+    "timestamp": 1745242840.0434215,
     "time_per_step": 0,
     "cpu_load": 0.0,
     "gpu_load": 1.0,
-    "ram_usage": 36.0
+    "ram_usage": 38.0
   },
   {
     "model_name": "LSTM",
     "epoch": 2,
-    "train_loss": 1.3752582311630248,
-    "val_loss": 1.3351008892059326,
-    "train_acc": 0.10126582278481013,
-    "val_acc": 0.38461538461538464,
-    "timestamp": 1745233034.1904144,
+    "train_loss": 1.386762762069702,
+    "val_loss": 1.3771456480026245,
+    "train_acc": 0.1141732283464567,
+    "val_acc": 0.07692307692307693,
+    "timestamp": 1745242840.1174529,
     "time_per_step": 0,
     "cpu_load": 0.0,
     "gpu_load": 1.0,
-    "ram_usage": 36.0
+    "ram_usage": 38.0
   }
 ]

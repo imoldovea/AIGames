@@ -264,8 +264,7 @@ class RollingSubsetSampler(Sampler):
         # Replace fraction of current active set
         num_replace = int(self.fraction * self.size)
         # Retain the lowest N% indices (favoring easier mazes)
-        old_samples = sorted(list(self.active_indices))
-        retained = set(old_samples[:self.size - num_replace])
+        retained = set(np.random.choice(list(self.active_indices), self.size - num_replace, replace=False))
 
         # Add harder ones next in line
         available_pool = [i for i in self.total_indices if i not in retained]
@@ -679,6 +678,8 @@ def train_models(allowed_models=None):
         sampler = None
     else:
         raise ValueError(f"Invalid sampler option: {sampler_option}")
+    shuffle = sampler is None
+
     shuffle = (sampler is None)
     # DataLoader config
     train_loader = DataLoader(train_ds,
