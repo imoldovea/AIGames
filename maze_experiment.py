@@ -10,6 +10,7 @@ from classical_algorithms.bfs_maze_solver import BFSMazeSolver
 from classical_algorithms.grpah_maze_solver import AStarMazeSolver
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
+from rnn.maze_trainer import get_models
 from rnn.rnn2_maze_solver import RNN2MazeSolver
 from utils import (
     save_movie,
@@ -21,7 +22,7 @@ from utils import (
 OUTPUT_MOVIE_FILE = "output/maze_animation.mp4"
 
 
-def solve_all_mazes(mazes, solver_class):
+def solve_all_mazes(mazes, solver_class, **solver_kwargs):
     """
     Solves all the mazes using the provided solver class.
 
@@ -37,7 +38,7 @@ def solve_all_mazes(mazes, solver_class):
         maze.animate = False
         maze.save_movie = True
         maze.reset_solution()
-        solver = solver_class(maze)
+        solver = solver_class(maze, **solver_kwargs)
 
         try:
             solution = solver.solve()
@@ -52,8 +53,7 @@ def main():
     """
     Main function to load, solve, and save all mazes into a PDF.
     """
-
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    project_root = os.path.dirname(os.path.abspath(__file__))
 
     # Construct absolute paths for PDF and MP4 outputs
     output_pdf = os.path.join(project_root, "output", "solved_mazes.pdf")
@@ -106,25 +106,26 @@ def main():
         all_solved_mazes.extend(solved_mazes)
 
         pr.enable()
-        solved_mazes = solve_all_mazes(mazes, RNN2MazeSolver)
+        models = get_models()
+        for name, model in models:
+            solved_rnn = solve_all_mazes(mazes, RNN2MazeSolver, model=model)
+            all_solved_mazes.extend(solved_rnn)
         pr.disable()
         ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
         logging.info(f"RNN execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
-        all_solved_mazes.extend(solved_mazes)
 
-        # pr.enable()
-        # solved_mazes = solve_all_mazes(mazes, LLMMazeSolver)
-        # pr.disable()
-        # ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        # logging.info(f"LLM execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
-        # all_solved_mazes.extend(solved_mazes)
+        pr.enable()
+        solved_mazes = solve_all_mazes(mazes, LLMMazeSolver)
+        pr.disable()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        logging.info(f"LLM execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        all_solved_mazes.extend(solved_mazes)
 
         # Step 3: Save mazes to PDF
         broken_mazes = []
-        for maze in all_solved_mazes:
+        for i, maze in enumerate(all_solved_mazes):
             if not maze.test_solution():
-                logging.warning(f"Maze {maze.maze_id} has no solution.")
-                solved_mazes.remove(maze)
+                logging.warning(f"Maze #{i} has no solution.")
                 broken_mazes.append(maze)
         if broken_mazes:
             logging.error(f"The following mazes have no solution: {broken_mazes}")

@@ -219,7 +219,7 @@ class RNN2MazeSolver(MazeSolver):
 # -------------------------------
 # Integration Functions
 # -------------------------------
-def rnn2_solver(models, mazes, device):
+def rnn2_solver(models, mazes, device='cpu'):
     """
     Applies trained models to test data, solves mazes, and evaluates performance.
 

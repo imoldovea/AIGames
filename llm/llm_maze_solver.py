@@ -2,12 +2,15 @@
 import configparser
 import json
 import logging
+import os
 
 import numpy as np
 
 from llm.gpt_factory import GPTFactory
 from maze_solver import MazeSolver
 from utils import setup_logging, load_mazes, save_mazes_as_pdf, save_movie
+
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 
 WALL = 1
 CORRIDOR = 0
@@ -76,13 +79,13 @@ class LLMMazeSolver(MazeSolver):
         provider = config.get('LLM', 'provider')
         max_steps = config.getint('DEFAULT', 'max_steps')
 
-        current_position = self.start
+        current_position = self.maze.start_position
         # Initialize Maze's current position
         self.maze.move(current_position)
         path = [current_position]
         self.steps = 0
 
-        llm_model = GPTFactory.create_gpt_model(provider, "maze_solver")
+        llm_model = GPTFactory.create_gpt_model(provider)
 
         while self.steps < max_steps:
             self.steps += 1
@@ -115,7 +118,7 @@ class LLMMazeSolver(MazeSolver):
             logging.error("Maximum steps exceeded without reaching the exit.")
         return path
 
-    def _convert_json_to_prompt(js: json) -> str:
+    def _convert_json_to_prompt(self, js: json) -> str:
         """
         Converts a JSON object to a prompt string.
 
@@ -156,7 +159,7 @@ class LLMMazeSolver(MazeSolver):
             local context in a JSON format like: prompt = '{"local_context": {"north": "wall", "south": "open", "east": "open", "west": "wall"}, "exit_reached": false}'
         """
 
-        local_context = self._compute_local_context(self, maze, position, directions)
+        local_context = self._compute_local_context(maze, position, directions)
         # verify if exit has been reached
         exit_reached = self.maze.at_exit()
         # convert contex        # convert context to JSON
@@ -231,7 +234,10 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     logger.debug("Logging is configured.")
 
-    input_mazes = os.path.join(project_root, "input", "mazes.pkl")
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # ← Up one level
+    input_mazes = os.path.join(project_root, "input",
+                               "mazes.pkl")  # → C:/Users/imold/PycharmProjects/AIGames/input/mazes.pkl
+
     mazes = load_mazes(input_mazes)
 
     solved_mazes = []

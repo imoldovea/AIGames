@@ -409,15 +409,7 @@ def load_mazes(file_path = "input/mazes.pkl"):
     Returns:
         list: A list of maze matrices.
     """
-    # Determine the absolute path of the project root (assuming this file is in the project root or a subdirectory)
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    absolute_path = os.path.join(project_root, file_path)
-
-
-    try:
-        with open(absolute_path, 'rb') as f:
-            mazes = pickle.load(f)
-        logging.info(f"Loaded {len(mazes)} mazes from {absolute_path}.")
+    with open(file_path, 'rb') as f:
+        mazes = pickle.load(f)
+        logging.info(f"Loaded {len(mazes)} mazes from {file_path}.")
         return mazes
-    except Exception as e:
-        raise FileNotFoundError(f"Could not load mazes from {file_path}: {e}")
