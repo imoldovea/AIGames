@@ -1,4 +1,5 @@
 import concurrent.futures
+import gc
 import glob
 import logging
 import os
@@ -196,8 +197,24 @@ def add_loops(maze):
 
 
 def save_mazes(folder, filename, mazes):
-    with open(folder +'/' + filename, 'wb') as f:
-        pickle.dump(mazes, f)
+    """Save mazes to a pickle file, handling large collections by saving incrementally."""
+    filepath = os.path.join(folder, filename)
+
+    # Check if the file exists and load existing mazes if it does
+    existing_mazes = []
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'rb') as f:
+                existing_mazes = pickle.load(f)
+        except Exception as e:
+            logging.warning(f"Could not load existing mazes: {e}")
+
+    # Combine existing mazes with new ones
+    all_mazes = existing_mazes + mazes
+
+    # Save all mazes
+    with open(filepath, 'wb') as f:
+        pickle.dump(all_mazes, f)
 
 def display_maze(maze):
     """
@@ -224,54 +241,110 @@ def plot_maze(maze):
 
 
 @profile_method(output_file=f"generate_maze")
-def generate(filename, number, solve=False):
+def generate(filename, number, solve=False, batch_size=1000):
     """
     Generate a specified number of mazes and optionally solve them.
-
-    This function generates a set of maze instances with random dimensions within a specified range.
-    Each maze can be solved using a solver defined in the configuration, and if solving is successful,
-    the solution is tested before adding the maze to the output list. The generated mazes are then saved
-    to an output folder.
-
-    :param filename: str
-        The name of the file where the mazes will be saved.
-
-    :param number: int
-        The number of mazes to generate.
-
-    :param solve: bool, optional (default=False)
-        A flag indicating whether to attempt solving each maze. If True,
-        the function uses a solver specified in the configuration to find and
-        test solutions for the generated mazes before saving them.
-
-    :return: None
-
+    This version uses a single progress bar for the overall batch progress.
     """
     logging.info(f"Generating {filename}, {number} solved {solve} mazes...")
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
-    mazes = []
 
-    if config.getboolean("DEFAULT", "max_num_workers", fallback="0") > 0:
-        # Use a process pool for parallel generation
-        max_workers = round(os.cpu_count()) - 1
-        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # Submit tasks to the pool
-            futures = [executor.submit(generate_single_maze, min_size, max_size, solve)
-                       for _ in range(number)]
-            for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=number, desc="Generating mazes"):
-                maze = future.result()
-                if maze is not None:
-                    mazes.append(maze)
-    else:
-        for _ in tqdm.trange(number, desc="Generating mazes"):
-            maze = generate_single_maze(min_size, max_size, solve)
-            if maze is not None:
-                mazes.append(maze)
+    # Calculate number of batches
+    num_batches = (number + batch_size - 1) // batch_size
+    total_generated = 0
 
-    save_mazes(OUTPUT_FOLDER, filename, mazes)
-    logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
+    # Delete existing file to start fresh
+    target_file = os.path.join(OUTPUT_FOLDER, filename)
+    if os.path.exists(target_file):
+        os.remove(target_file)
+        logging.info(f"Removed existing file {target_file}")
 
+    # Create a single progress bar for batch tracking
+    with tqdm.tqdm(total=num_batches, desc=f"Generating {filename} (batches)") as batch_pbar:
+        for batch in range(num_batches):
+            # Calculate how many mazes to generate in this batch
+            batch_count = min(batch_size, number - total_generated)
+            mazes = []
+
+            if config.getboolean("DEFAULT", "max_num_workers", fallback="0") > 0:
+                # Use a process pool for parallel generation without inner progress bar
+                max_workers = max(1, round(os.cpu_count()) - 1)
+                with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+                    # Submit tasks to the pool
+                    futures = [executor.submit(generate_single_maze, min_size, max_size, solve)
+                               for _ in range(batch_count)]
+
+                    # Process futures without inner progress bar
+                    for future in concurrent.futures.as_completed(futures):
+                        maze = future.result()
+                        if maze is not None:
+                            mazes.append(maze)
+            else:
+                # Sequential generation without progress bar
+                for _ in range(batch_count):
+                    maze = generate_single_maze(min_size, max_size, solve)
+                    if maze is not None:
+                        mazes.append(maze)
+
+            # Save this batch of mazes
+            append_mazes(OUTPUT_FOLDER, filename, mazes)
+            total_generated += len(mazes)
+
+            # Update the batch progress bar
+            batch_pbar.update(1)
+
+            # Log progress after the progress bar update
+            logging.debug(
+                f"Batch {batch + 1}/{num_batches}: Saved {len(mazes)} mazes, total: {total_generated}/{number}")
+
+            # Free memory
+            del mazes
+            gc.collect()
+
+    logging.debug(f"Completed: Generated and saved {total_generated} mazes to {OUTPUT_FOLDER}/{filename}")
+
+
+def append_mazes(folder, filename, new_mazes):
+    """
+    Append new mazes to an existing file or create a new one.
+    Memory-efficient version that uses a separate file for each batch.
+    """
+    filepath = os.path.join(folder, filename)
+
+    # If this is the first batch, create the main file
+    if not os.path.exists(filepath):
+        with open(filepath, 'wb') as f:
+            pickle.dump(new_mazes, f)
+        return
+
+    # For subsequent batches, create batch files
+    batches_dir = os.path.join(folder, filename + "_batches")
+    if not os.path.exists(batches_dir):
+        os.makedirs(batches_dir)
+
+    # Get the next batch number
+    existing_batches = [f for f in os.listdir(batches_dir) if f.endswith('.pkl')]
+    batch_num = len(existing_batches) + 1
+
+    # Save this batch
+    batch_path = os.path.join(batches_dir, f"batch_{batch_num}.pkl")
+    with open(batch_path, 'wb') as f:
+        pickle.dump(new_mazes, f)
+
+    # Update a metadata file with the total count
+    meta_path = os.path.join(batches_dir, "metadata.txt")
+    total_count = len(new_mazes)
+
+    if os.path.exists(meta_path):
+        with open(meta_path, 'r') as f:
+            prev_count = int(f.read().strip())
+        total_count += prev_count
+
+    with open(meta_path, 'w') as f:
+        f.write(str(total_count))
+
+    logging.debug(f"Saved batch {batch_num} with {len(new_mazes)} mazes. Total: {total_count}")
 
 def generate_single_maze(min_size, max_size, solve):
     # Select random dimensions
@@ -310,9 +383,9 @@ def main():
             os.remove(filename)
             logging.info(f"{filename} removed")
 
-    generate(filename=training_mazes, number=num_mazes, solve=True)
-    generate(filename=validation_mazes, number=num_mazes // 10, solve=True)
-    generate(filename=mazes, number=10, solve=False)
+    generate(filename=training_mazes, number=num_mazes, solve=True, batch_size=1000)
+    generate(filename=validation_mazes, number=num_mazes // 10, solve=True, batch_size=100)
+    generate(filename=mazes, number=10, solve=False, batch_size=1)
 
 if __name__ == "__main__":
     #setup logging
