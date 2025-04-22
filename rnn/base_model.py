@@ -273,7 +273,7 @@ class MazeBaseModel(nn.Module):
                 training_accuracy=training_accuracy,
                 validation_accuracy=validation_accuracy,
                 # compute execution time in minutes, with 2 decimals
-                time_per_step=round(((time.time() - epoch_start) / accumulation_steps) / 60, 2),  # in minutes
+                time_per_step=round((time.time() - epoch_start) / len(dataloader) / 60, 2),  # minutes per step
                 tensorboard_writer=tensorboard_writer,
             )
 
@@ -303,7 +303,7 @@ class MazeBaseModel(nn.Module):
 
     def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss=0,
                           training_accuracy=0, validation_accuracy=0,
-                          time_per_step=0.00, tensorboard_writer=None):
+                          time_per_step=0., tensorboard_writer=None):
         # Retrieve actual resource usage
         cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
 
