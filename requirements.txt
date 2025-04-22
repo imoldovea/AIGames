@@ -15,3 +15,8 @@ pytest
 kaleido
 flask
 psutil
+requests
+openai
+deepseek-ai
+
+

@@ -6,12 +6,13 @@ from typing import List, Tuple, Dict, Optional
 import numpy as np
 
 from maze import Maze
+from maze_solver import MazeSolver
 from utils import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
-class OptimizedBacktrackingMazeSolver:
+class OptimizedBacktrackingMazeSolver(MazeSolver):
     """A maze solver that uses a vectorized backtracking algorithm to find a path."""
 
     def __init__(self, maze):

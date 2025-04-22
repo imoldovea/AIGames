@@ -9,10 +9,11 @@ from typing import List, Tuple, Dict, Optional
 import numpy as np
 
 from maze import Maze
+from maze_solver import MazeSolver
 from utils import setup_logging
 
 
-class AStarMazeSolver:
+class AStarMazeSolver(MazeSolver):
     """A maze solver that uses the A* algorithm for efficient pathfinding."""
 
     def __init__(self, maze):

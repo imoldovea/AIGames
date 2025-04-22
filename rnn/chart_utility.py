@@ -52,7 +52,7 @@ def save_latest_loss_chart():
         subplot_titles=[
             "Training Loss", "Validation Loss",
             "Training Accuracy %", "Validation Accuracy %",
-            "Time per Step (s)"
+            "Time per Step (minutes)"
         ]
     )
 

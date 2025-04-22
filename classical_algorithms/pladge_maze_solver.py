@@ -1,8 +1,10 @@
 # Python
 import logging
 
+from maze_solver import MazeSolver
 
-class PledgeMazeSolver:
+
+class PledgeMazeSolver(MazeSolver):
     """
     Maze solver using the Pledge Algorithm adapted to a Maze object where the exit
     is not known in advance. The Maze object is assumed to provide:
