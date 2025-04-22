@@ -1,10 +1,9 @@
 # gpt_factiry.py
 
-from deepseek_model import DeepSeekModel
-from ollama_model import OllamaModel
-
-from gpt_model import GPTModel
-from openai_model import OpenAIModel
+# from deepseek_model import DeepSeekModel
+# from ollama_model import OllamaModel
+from llm.gpt_model import GPTModel
+from llm.openai_model import OpenAIModel
 
 
 # Step 4: Create a Factory for Generating GPT Models

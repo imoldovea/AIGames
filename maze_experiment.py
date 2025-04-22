@@ -5,11 +5,12 @@ import os
 import pstats
 import traceback
 
-from backtrack_maze_solver import BacktrackingMazeSolver
-from bfs_maze_solver import BFSMazeSolver
-from grpah_maze_solver import AStarMazeSolver
-from optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
-from pladge_maze_solver import PledgeMazeSolver
+from classical_algorithms.backtrack_maze_solver import BacktrackingMazeSolver
+from classical_algorithms.bfs_maze_solver import BFSMazeSolver
+from classical_algorithms.grpah_maze_solver import AStarMazeSolver
+from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
+from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
+from rnn.rnn2_maze_solver import RNN2MazeSolver
 from utils import (
     save_movie,
     display_all_mazes,
@@ -35,6 +36,7 @@ def solve_all_mazes(mazes, solver_class):
     for i, maze in enumerate(mazes):
         maze.animate = False
         maze.save_movie = True
+        maze.reset_solution()
         solver = solver_class(maze)
 
         try:
@@ -103,6 +105,20 @@ def main():
         logging.info(f"Pledge execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
+        pr.enable()
+        solved_mazes = solve_all_mazes(mazes, RNN2MazeSolver)
+        pr.disable()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        logging.info(f"RNN execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        all_solved_mazes.extend(solved_mazes)
+
+        # pr.enable()
+        # solved_mazes = solve_all_mazes(mazes, LLMMazeSolver)
+        # pr.disable()
+        # ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        # logging.info(f"LLM execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        # all_solved_mazes.extend(solved_mazes)
+
         # Step 3: Save mazes to PDF
         broken_mazes = []
         for maze in all_solved_mazes:
@@ -124,7 +140,6 @@ def main():
 
 
 if __name__ == "__main__":
-    #setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.debug("Logging is configured.")

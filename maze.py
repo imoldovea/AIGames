@@ -74,6 +74,31 @@ class Maze:
         self.set_exit()
         self.self_test()
 
+    def reset_solution(self):
+        """
+        Resets the solution state of an instance to its initial state.
+
+        This method reinitializes or clears any relevant attributes or
+        dependencies to return the solution or object to its default
+        configuration. It ensures a clean state that enables further
+        reuse or preparation for a new process.
+
+        :raises AttributeError: If any required attribute is missing from
+            the object during the reset process.
+        :return: None
+        """
+        self.valid_solution = False
+        self._solution = []  # To hold the maze solution as a list of coordinates
+
+        # Replace the starting marker with a corridor (0)
+        self.grid[self.start_position] = 0
+
+        self.visited_cells = set()
+        self.raw_movie = []
+
+        self.path = [self.start_position]
+        self.move(self.start_position)
+
     @property
     def context_map(self):
         if self._context_map is None:

@@ -27,7 +27,7 @@ from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktr
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
 # Import the unified model
-from model import MazeRecurrentModel
+from rnn.model import MazeRecurrentModel
 from utils import setup_logging, profile_method, clean_outupt_folder
 
 WALL = 1

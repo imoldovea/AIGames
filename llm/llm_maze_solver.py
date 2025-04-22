@@ -5,7 +5,7 @@ import logging
 
 import numpy as np
 
-from gpt_factory import GPTFactory
+from llm.gpt_factory import GPTFactory
 from maze_solver import MazeSolver
 from utils import setup_logging, load_mazes, save_mazes_as_pdf, save_movie
 

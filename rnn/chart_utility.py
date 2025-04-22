@@ -18,7 +18,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from torch.utils.tensorboard import SummaryWriter
 from torchviz import make_dot
 
-from maze_trainer import load_models
+from rnn.maze_trainer import load_models
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()

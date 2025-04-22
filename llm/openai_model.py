@@ -6,7 +6,7 @@ import logging
 
 import openai
 
-from gpt_model import GPTModel
+from llm.gpt_model import GPTModel
 
 PARAMETERS_FILE = "config.properties"
 SECRETS_FILE = "secrets.properties"

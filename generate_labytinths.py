@@ -1,6 +1,5 @@
 import concurrent.futures
 import gc
-import glob
 import logging
 import os
 import pickle
@@ -239,7 +238,6 @@ def plot_maze(maze):
     plt.axis('off')  # Hides axes for better visualization
     plt.show()
 
-
 @profile_method(output_file=f"generate_maze")
 def generate(filename, number, solve=False, batch_size=1000):
     """
@@ -247,6 +245,11 @@ def generate(filename, number, solve=False, batch_size=1000):
     This version uses a single progress bar for the overall batch progress.
     """
     logging.info(f"Generating {filename}, {number} solved {solve} mazes...")
+
+    if os.path.exists(filename):
+        os.remove(filename)
+        logging.info(f"{filename} removed")
+
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
 
@@ -378,14 +381,9 @@ def main():
     training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.pkl")
     validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.pkl")
 
-    for pattern in ["*.pkl"]:
-        for filename in glob.glob(os.path.join(INPUT, pattern)):
-            os.remove(filename)
-            logging.info(f"{filename} removed")
-
     generate(filename=training_mazes, number=num_mazes, solve=True, batch_size=1000)
     generate(filename=validation_mazes, number=num_mazes // 10, solve=True, batch_size=100)
-    generate(filename=mazes, number=10, solve=False, batch_size=1)
+    generate(filename=mazes, number=10, solve=False, batch_size=10)
 
 if __name__ == "__main__":
     #setup logging

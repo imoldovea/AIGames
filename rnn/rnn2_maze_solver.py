@@ -18,10 +18,10 @@ import numpy as np
 import torch
 
 import wandb
-from chart_utility import (save_latest_loss_chart, save_neural_network_diagram, visualize_model_weights,
+from rnn.chart_utility import (save_latest_loss_chart, save_neural_network_diagram, visualize_model_weights,
                            visualize_model_activations)
 from maze_solver import MazeSolver
-from maze_trainer import get_models  # Training function from maze_trainer.py
+from rnn.maze_trainer import get_models  # Training function from maze_trainer.py
 from utils import load_mazes, save_mazes_as_pdf, setup_logging
 from utils import save_movie
 
