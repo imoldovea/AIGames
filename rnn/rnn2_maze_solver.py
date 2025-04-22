@@ -51,7 +51,7 @@ LSTM_MODEL_PATH = f"{INPUT}{LSTM_MODEL}"
 LOSS_PLOT_FILE = f"{OUTPUT}loss_plot.png"
 LOSS_FILE = f"{OUTPUT}loss_data.csv"
 MODELS_DIAGRAM = f"{OUTPUT}models_diagram.pdf"
-OUTPUT_PDF = f"{OUTPUT}solved_mazes.pdf"
+OUTPUT_PDF = f"{OUTPUT}solved_mazes_rnn.pdf"
 SECRETS = "secrets.properties"
 MAZES = LSTM_MODEL = config.get("FILES", "MAZES", fallback="mazes.pkl")
 TEST_MAZES_FILE = f"{INPUT}{MAZES}"

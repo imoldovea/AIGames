@@ -1,7 +1,7 @@
 # gpt_model.py
 
-from abc import ABC, abstractmethod
 import configparser
+from abc import ABC, abstractmethod
 
 
 class GPTModel(ABC):
@@ -10,6 +10,10 @@ class GPTModel(ABC):
         config.read('config.properties')
 
         self.system_prompt = config.get('LLM', 'system_prompt')
+        self.algorithm = self.system_prompt = config.get('LLM', 'system_prompt')
+        self.system_prompt = self.system_prompt.replace("{algorithm}", self.algorithm)
+        
+        
         self.model = config.get('LLM', 'model_name')
         self.temperature = config.getfloat('LLM', 'temperature')
         self.max_tokens = config.getint('LLM', 'max_tokens')
