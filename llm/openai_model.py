@@ -9,7 +9,7 @@ import openai
 from gpt_model import GPTModel
 
 PARAMETERS_FILE = "config.properties"
-SECRETS_FILE = 'secrets.properties'
+SECRETS_FILE = "secrets.properties"
 
 config = configparser.ConfigParser()
 config.read(PARAMETERS_FILE)
@@ -17,22 +17,19 @@ config.read(PARAMETERS_FILE)
 secrets = configparser.ConfigParser()
 secrets.read(SECRETS_FILE)
 
-
 class OpenAIModel(GPTModel):
-    def __init__(self, name: str):
-        logging.info("Initializing OpeAIModel")
-        self.provider = "OpenAI"
-        self.name = name
+    def __init__(self):
+        super().__init__()
 
+        logging.info("Initializing OpenAIModel")
+        self.provider = "OpenAI"
+        self.name = "OpenAI"
+
+        # Same section name as in the secrets.properties file
         self.api_key = secrets.get('ChatGPT', 'api_key')
-        self.model = model
-        self.model = secrets.get('LLM', 'model_name')
-        self.temperature = config.getfloat('LLM', 'temperature')
-        self.max_tokens = config.getint('LLM', 'max_tokens')
-        self.system_prompt = config.get('LLM', 'system_prompt')
         openai.api_key = self.api_key
 
-    def generate_response(self, prompt) -> str:
+    def generate_response(self, prompt: str) -> str:
         try:
             # Send the system prompt along with the actual user prompt
             response = openai.chat.completions.create(
@@ -67,9 +64,8 @@ class OpenAIModel(GPTModel):
 
 # Example usage
 if __name__ == "__main__":
-    models = ["gpt-3.5-turbo", "gpt-4o-mini"]
     prompt = '{"local_context": {"north": "wall", "south": "open", "east": "open", "west": "wall"}, "exit_reached": false}'
 
     chat_model = OpenAIModel()
     response = chat_model.generate_response(prompt)
-    logging.info(f"Response: {response}")
+    print(f"Response: {response}")

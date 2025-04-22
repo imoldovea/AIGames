@@ -1,11 +1,22 @@
 # gpt_model.py
 
 from abc import ABC, abstractmethod
+import configparser
 
 
 class GPTModel(ABC):
+    def __init__(self):
+        config = configparser.ConfigParser()
+        config.read('config.properties')
+
+        self.system_prompt = config.get('LLM', 'system_prompt')
+        self.model = config.get('LLM', 'model_name')
+        self.temperature = config.getfloat('LLM', 'temperature')
+        self.max_tokens = config.getint('LLM', 'max_tokens')
+        self.provider = config.get('LLM', 'provider')
+
     @abstractmethod
-    def generate_response(self, prompt, use_history: bool) -> str:
+    def generate_response(self, prompt) -> str:
         pass
 
     @abstractmethod

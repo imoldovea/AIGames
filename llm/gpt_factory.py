@@ -10,12 +10,12 @@ from openai_model import OpenAIModel
 # Step 4: Create a Factory for Generating GPT Models
 class GPTFactory:
     @staticmethod
-    def create_gpt_model(provider: str, model: str, name: str, role: str) -> GPTModel:
+    def create_gpt_model(provider: str) -> GPTModel:
         if provider == "ChatGPT":
-            return OpenAIModel(model, name, role)
+            return OpenAIModel()
         elif provider == "Ollama":
-            return OllamaModel(model, name, role)
+            return OllamaModel()
         elif provider == "DeepSeek":  # Add support for DeepSeek
-            return DeepSeekModel(model, name, role)
+            return DeepSeekModel()
         else:
             raise ValueError(f"Unknown provider: {provider}")
