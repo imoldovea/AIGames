@@ -1,4 +1,4 @@
-import concurrent.futures
+# geberate_labytibths.py
 import gc
 import logging
 import os
@@ -196,6 +196,10 @@ def add_loops(maze):
 
 
 def save_mazes(folder, filename, mazes):
+    if os.path.exists(os.path.join(OUTPUT_FOLDER, filename)):
+        os.remove(os.path.join(OUTPUT_FOLDER, filename))
+        logging.info(f"Deleted: {os.path.join(OUTPUT_FOLDER, filename)}")
+
     with open(folder + '/' + filename, 'wb') as f:
         pickle.dump(mazes, f)
 
@@ -247,44 +251,32 @@ def generate(filename, number, solve=False):
     :return: None
 
     """
-    if os.path.exists(os.path.join(OUTPUT_FOLDER, filename)):
-        os.remove(os.path.join(OUTPUT_FOLDER, filename))
     logging.info(f"Generating {filename}, {number} solved {solve} mazes...")
 
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
     mazes = []
 
-    if config.getboolean("DEFAULT", "max_num_workers", fallback="0") > 0:
-        # Use a process pool for parallel generation
-        max_workers = round(os.cpu_count()) - 1
-        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # Submit tasks to the pool
-            futures = [executor.submit(generate_single_maze, min_size, max_size, solve)
-                       for _ in range(number)]
-            for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=number, desc="Generating mazes"):
-                maze = future.result()
-                if maze is not None:
-                    mazes.append(maze)
-    else:
-        for i in tqdm.trange(number, desc="Generating mazes"):
-            if i > 0 and i % 1000 == 0:
-                gc.collect()
-            maze = generate_single_maze(min_size, max_size, solve)
-            if maze is not None:
-                mazes.append(maze)
+    for i in tqdm.trange(number, desc="Generating mazes"):
+        if i > 0 and i % 1000 == 0:
+            gc.collect()
+        maze = generate_single_maze(min_size, max_size, solve, i)
+        if maze is not None:
+            mazes.append(maze)
 
     save_mazes(OUTPUT_FOLDER, filename, mazes)
     logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
 
 
-def generate_single_maze(min_size, max_size, solve):
+def generate_single_maze(min_size, max_size, solve, index):
     # Select random dimensions
     width = random.choice(range(min_size, max_size, 2))
     height = random.choice(range(min_size, max_size, 2))
     maze_array = create_maze(width, height)
     maze = Maze(maze_array)
+    maze.id = index
     if not maze.self_test():
+        logging.warning(f"Maze {index} is invalid")
         return None
     if solve:
         maze.animate = False
@@ -301,6 +293,7 @@ def generate_single_maze(min_size, max_size, solve):
             return maze
         else:
             # You may decide to discard mazes that fail the test.
+            logging.warning(f"Maze {index} is invalid")
             return None
     else:
         return maze

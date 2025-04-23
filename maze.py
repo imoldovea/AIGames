@@ -124,6 +124,7 @@ class Maze:
         Returns:
             float: Complexity score in the range [0, ~3+] (unbounded upper)
         """
+        complexity_score = 1000
         # A. Path length (if available)
         if self._solution and isinstance(self._solution, list):
             path_length = len(self._solution)
@@ -142,8 +143,8 @@ class Maze:
         norm_area = area / (18 * 18)  # relative to max maze size from config
         norm_loops = loop_estimate / 10  # empirical scaling
 
-        complexity_score = norm_path + norm_area + norm_loops
-        return round(complexity_score, 3)
+        complexity_score = round(norm_path + norm_area + norm_loops, 2)
+        return complexity_score
 
     def _compute_local_context(self, position):
         """

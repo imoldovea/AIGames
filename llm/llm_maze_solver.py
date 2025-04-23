@@ -2,16 +2,13 @@
 import configparser
 import json
 import logging
-import os
 
 import numpy as np
 
 from llm.gpt_factory import GPTFactory
+from maze import Maze
 from maze_solver import MazeSolver
 from utils import setup_logging, load_mazes, save_mazes_as_pdf, save_movie
-
-config = configparser.ConfigParser()
-OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 
 WALL = 1
 CORRIDOR = 0
@@ -24,6 +21,10 @@ ACTION_TO_DIRECTION = {'north': (-1, 0), 'south': (1, 0), 'east': (0, 1), 'west'
 PARAMETERS_FILE = "config.properties"
 SECRETS_FILE = "secrets.properties"
 
+config = configparser.ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+INPUT = config.get("FILES", "INPUT", fallback="input/")
 
 class LLMMazeSolver(MazeSolver):
     """
@@ -73,14 +74,9 @@ class LLMMazeSolver(MazeSolver):
         Returns:
             path (list of positions): The sequence of (row, col) tuples of the path.
         """
-
-        config = configparser.ConfigParser()
-        config.read(PARAMETERS_FILE)
-
         provider = config.get('LLM', 'provider')
-        10
         # max_steps = config.getint('DEFAULT', 'max_steps')
-        self.maze.algorithm = self.__class__.__name__
+        max_steps = 10
         current_position = self.maze.start_position
         # Initialize Maze's current position
         self.maze.move(current_position)
@@ -237,19 +233,16 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     logger.debug("Logging is configured.")
 
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # ← Up one level
-    input_mazes = os.path.join(project_root, "input",
-                               "mazes.pkl")  # → C:/Users/imold/PycharmProjects/AIGames/input/mazes.pkl
+    mazes_file = f"{INPUT}mazes.pkl"
 
-    mazes = load_mazes(input_mazes)
+    mazes = load_mazes(mazes_file)
 
     solved_mazes = []
 
     # sort mazes by complexity
-    mazes.sort(key=lambda x: x.complexity)
+    mazes = list(mazes)
+    # mazes.sort(key=lambda x: x.complexity)
     easy_maze = mazes[0]
-    easy_maze.set_algorithm("LLMMazeSolver")
-    easy_maze.easy_maze = False
     easy_maze.animate = False
 
     solver = LLMMazeSolver(easy_maze)
