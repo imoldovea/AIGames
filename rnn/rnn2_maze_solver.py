@@ -119,6 +119,7 @@ class RNN2MazeSolver(MazeSolver):
         current_pos = self.maze.start_position
         path = [current_pos]
         step_number = 0
+        self.maze.
         max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
         while self.maze.exit != current_pos and len(path) < max_steps:
             step_number += 1

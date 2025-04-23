@@ -49,6 +49,7 @@ class Maze:
         self.algorithm = None
         self.valid_solution = False
         self.complexity = self._compute_complexity()
+        self.id = 0  # no ID set yet
 
         # cash
         self._bounds_cache = {}

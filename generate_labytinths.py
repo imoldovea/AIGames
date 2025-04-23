@@ -253,19 +253,16 @@ def generate(filename, number, solve=False, batch_size=1000):
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
 
-    # Calculate number of batches
-    num_batches = (number + batch_size - 1) // batch_size
-    total_generated = 0
-
     # Delete existing file to start fresh
     target_file = os.path.join(OUTPUT_FOLDER, filename)
     if os.path.exists(target_file):
         os.remove(target_file)
         logging.info(f"Removed existing file {target_file}")
 
-    # Create a single progress bar for batch tracking
-    with tqdm.tqdm(total=num_batches, desc=f"Generating {filename} (batches)") as batch_pbar:
-        for batch in range(num_batches):
+    # Create a single progress bar for tracking the actual number of generated mazes
+    total_generated = 0
+    with tqdm.tqdm(total=number, desc=f"Generating {filename} (mazes)") as maze_pbar:
+        while total_generated < number:
             # Calculate how many mazes to generate in this batch
             batch_count = min(batch_size, number - total_generated)
             mazes = []
@@ -284,9 +281,10 @@ def generate(filename, number, solve=False, batch_size=1000):
                         if maze is not None:
                             mazes.append(maze)
             else:
-                # Sequential generation without progress bar
-                for _ in range(batch_count):
-                    maze = generate_single_maze(min_size, max_size, solve)
+                # Sequential generation
+                for i in range(batch_count):
+                    maze = generate_single_maze(min_size=min_size, max_size=max_size, solve=solve)
+                    maze.id = i
                     if maze is not None:
                         mazes.append(maze)
 
@@ -294,18 +292,18 @@ def generate(filename, number, solve=False, batch_size=1000):
             append_mazes(OUTPUT_FOLDER, filename, mazes)
             total_generated += len(mazes)
 
-            # Update the batch progress bar
-            batch_pbar.update(1)
+            # Update the progress bar by the number of mazes generated in this batch
+            maze_pbar.update(len(mazes))
 
             # Log progress after the progress bar update
             logging.debug(
-                f"Batch {batch + 1}/{num_batches}: Saved {len(mazes)} mazes, total: {total_generated}/{number}")
+                f"Batch progress: Generated and saved {len(mazes)} mazes, total: {total_generated}/{number}")
 
             # Free memory
             del mazes
             gc.collect()
 
-    logging.debug(f"Completed: Generated and saved {total_generated} mazes to {OUTPUT_FOLDER}/{filename}")
+    logging.info(f"Completed: Generated and saved {total_generated} mazes to {OUTPUT_FOLDER}/{filename}")
 
 
 def append_mazes(folder, filename, new_mazes):
@@ -313,6 +311,8 @@ def append_mazes(folder, filename, new_mazes):
     Append new mazes to an existing file or create a new one.
     Memory-efficient version that uses a separate file for each batch.
     """
+    logging.debug(f"Appending {len(new_mazes)} mazes to {filename}")
+
     filepath = os.path.join(folder, filename)
 
     # If this is the first batch, create the main file
@@ -349,13 +349,16 @@ def append_mazes(folder, filename, new_mazes):
 
     logging.debug(f"Saved batch {batch_num} with {len(new_mazes)} mazes. Total: {total_count}")
 
-def generate_single_maze(min_size, max_size, solve):
+
+def generate_single_maze(min_size, max_size, solve, idx=0):
     # Select random dimensions
     width = random.choice(range(min_size, max_size, 2))
     height = random.choice(range(min_size, max_size, 2))
     maze_array = create_maze(width, height)
     maze = Maze(maze_array)
+    maze.id = idx
     if not maze.self_test():
+        logging.warning(f"Maze self test failed: {maze.id}")
         return None
     if solve:
         maze.animate = False

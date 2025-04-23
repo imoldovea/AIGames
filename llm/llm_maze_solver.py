@@ -78,7 +78,7 @@ class LLMMazeSolver(MazeSolver):
 
         provider = config.get('LLM', 'provider')
         max_steps = config.getint('DEFAULT', 'max_steps')
-
+        self.maze.algorithm = self.__class__.__name__
         current_position = self.maze.start_position
         # Initialize Maze's current position
         self.maze.move(current_position)
@@ -92,7 +92,7 @@ class LLMMazeSolver(MazeSolver):
 
             local_context = self._compute_loca_context_json(self.maze, current_position, self.directions)
             prompt = self._convert_json_to_prompt(local_context)
-            logging.info("Prompt: " + prompt)
+            logging.debug("Prompt: " + prompt)
             response = llm_model.generate_response(prompt)
             direction = self._process_llm_response(response)
 
@@ -107,9 +107,8 @@ class LLMMazeSolver(MazeSolver):
 
             # Check if the maze is solved by asking Maze via at_exit().
             if self.maze.at_exit():
-                logging.debug("Exit found at position: " + str(current_position))
-                thank_you = "Great. Thank you"
-                logging.info(f"{thank_you} Response {llm_model.generate_response(thank_you)}")
+                logging.info(
+                    f"Exit found at position: {str(current_position)} Thank you! \n {llm_model.generate_response(thank_you)}")
                 break
 
         if self.steps >= max_steps:
@@ -172,6 +171,7 @@ class LLMMazeSolver(MazeSolver):
             },
             "exit_reached": exit_reached
         }
+        logging.debug(f"Local context: {prompt}")
 
         return prompt
 
@@ -185,6 +185,7 @@ class LLMMazeSolver(MazeSolver):
         Returns:
             str: One of 'north', 'south', 'east', 'west' or None if invalid
         """
+        logging.debug(f"LLM response: {response}")
         response = response.lower().strip()
         valid_directions = ['north', 'south', 'east', 'west']
         for direction in valid_directions:
