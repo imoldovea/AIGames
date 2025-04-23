@@ -76,7 +76,7 @@ class LLMMazeSolver(MazeSolver):
         """
         provider = config.get('LLM', 'provider')
         # max_steps = config.getint('DEFAULT', 'max_steps')
-        max_steps = 10
+        max_steps = 20  # for debug only
         current_position = self.maze.start_position
         # Initialize Maze's current position
         self.maze.move(current_position)
@@ -90,10 +90,8 @@ class LLMMazeSolver(MazeSolver):
 
             local_context = self._compute_loca_context_json(self.maze, current_position, self.directions)
             prompt = self._convert_json_to_prompt(local_context)
-            logging.debug("Prompt: " + prompt)
             response = llm_model.generate_response(prompt)
             direction = self._process_llm_response(response)
-
             if direction:
                 move = ACTION_TO_DIRECTION[direction]
                 new_position = (current_position[0] + move[0], current_position[1] + move[1])
@@ -102,7 +100,11 @@ class LLMMazeSolver(MazeSolver):
                     current_position = new_position
                     path.append(current_position)
                     logging.info(f"Moved {direction} to {current_position}")
-
+            else:
+                resp = llm_model.generate_response("Not a valid response. Respond with ONLY one word - "
+                                                   "either: north, south, east, or west. "
+                                                   "Do not include any other text. Wait for the next prompt")
+                logging.warning(f"Invalid response: {resp}")
             # Check if the maze is solved by asking Maze via at_exit().
             if self.maze.at_exit():
                 logging.info(
@@ -189,6 +191,8 @@ class LLMMazeSolver(MazeSolver):
         for direction in valid_directions:
             if direction in response:
                 return direction
+
+        logging.warning(f"no direction returned. response: {response}")
         return None
 
     def _compute_local_context(self, maze, position, directions):
@@ -230,20 +234,18 @@ class LLMMazeSolver(MazeSolver):
 if __name__ == "__main__":
     # setup logging
     setup_logging()
-    logger = logging.getLogger(__name__)
-    logger.debug("Logging is configured.")
 
     mazes_file = f"{INPUT}mazes.pkl"
-
     mazes = load_mazes(mazes_file)
 
     solved_mazes = []
 
     # sort mazes by complexity
     mazes = list(mazes)
-    # mazes.sort(key=lambda x: x.complexity)
+    mazes.sort(key=lambda x: x.complexity)
     easy_maze = mazes[0]
-    easy_maze.animate = False
+    easy_maze.animate = True
+    easy_maze.save_movie = True
 
     solver = LLMMazeSolver(easy_maze)
     solution = solver.solve()

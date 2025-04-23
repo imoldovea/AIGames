@@ -69,7 +69,7 @@ def setup_logging():
     forbidden_logs = [
         "findfont", "werkzeug", "werkzeug:_internal.py", "dash-update-component",
         "internal.py", "pydevd", "TF_ENABLE_ONEDNN_OPTS",
-        "Training batch", "tqdm", "_client.py"  # Added these two patterns
+        "Training batch", "tqdm", "client.py", "HTTP Request"
     ]
 
     # Console handler for INFO level and above

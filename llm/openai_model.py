@@ -38,7 +38,7 @@ class OpenAIModel(GPTModel):
                 temperature=self.temperature,
                 messages=[
                     {"role": "system", "content": f"{self.system_prompt}"},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": f"{prompt}"}
                 ]
             )
             assistant_content = response.choices[0].message.content.strip()
