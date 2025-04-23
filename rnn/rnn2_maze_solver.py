@@ -69,10 +69,10 @@ class RNN2MazeSolver(MazeSolver):
         """
         super().__init__(maze)  # Pass the maze parameter to the parent constructor
         self.maze = maze
+        self.maze.algorithm = self.__class__.__name__
         self.device = torch.device(device)
         self.model = model
         self.model_type = model.mode_type
-        maze.set_algorithm(self.__class__.__name__)
         model.to(self.device)
         model.eval()
         self.fig, self.ax = plt.subplots()
@@ -119,7 +119,7 @@ class RNN2MazeSolver(MazeSolver):
         current_pos = self.maze.start_position
         path = [current_pos]
         step_number = 0
-        self.maze.
+        self.maze.algorithm = self.__class__.__name__
         max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
         while self.maze.exit != current_pos and len(path) < max_steps:
             step_number += 1

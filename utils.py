@@ -86,6 +86,8 @@ def setup_logging():
     file_handler.addFilter(CustomLogFilter(forbidden_logs))
     logger.addHandler(file_handler)
 
+    logging.info("Logging initiated")
+
 
 def clean_outupt_folder():
     # Delete all OUTPUT folder content
@@ -399,7 +401,32 @@ def load_mazes(file_path="input/mazes.pkl"):
     except Exception as e:
         raise FileNotFoundError(f"Could not load mazes from {file_path}: {e}")
 
-def load_mazes(file_path = "input/mazes.pkl"):
+
+def load_mazes(file_path="input/mazes.pkl"):
+    """
+    Loads mazes from a pickle file and returns count of loaded records.
+
+    Args:
+        file_path (str): Path to the pickle file containing mazes.
+
+    Returns:
+        tuple: (list of maze matrices, int count of mazes loaded)
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            mazes = pickle.load(f)
+        num_mazes = len(mazes)
+        logging.info(f"Loaded {num_mazes} mazes from {file_path}.")
+        return mazes, num_mazes
+    except Exception as e:
+        logging.error(f"Could not load mazes from {file_path}: {e}")
+        raise FileNotFoundError(f"Could not load mazes from {file_path}: {e}")
+    return mazes
+
+
+if __name__ == "__main__":
+    mazes, count = load_mazes("input/training_mazes.pkl")
+    print(f"Loaded {count} training mazes.")
     """
     Loads mazes from a numpy file.
 
@@ -409,7 +436,3 @@ def load_mazes(file_path = "input/mazes.pkl"):
     Returns:
         list: A list of maze matrices.
     """
-    with open(file_path, 'rb') as f:
-        mazes = pickle.load(f)
-        logging.info(f"Loaded {len(mazes)} mazes from {file_path}.")
-        return mazes

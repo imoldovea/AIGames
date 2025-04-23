@@ -10,6 +10,7 @@ from llm.gpt_factory import GPTFactory
 from maze_solver import MazeSolver
 from utils import setup_logging, load_mazes, save_mazes_as_pdf, save_movie
 
+config = configparser.ConfigParser()
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 
 WALL = 1
@@ -77,7 +78,8 @@ class LLMMazeSolver(MazeSolver):
         config.read(PARAMETERS_FILE)
 
         provider = config.get('LLM', 'provider')
-        max_steps = config.getint('DEFAULT', 'max_steps')
+        10
+        # max_steps = config.getint('DEFAULT', 'max_steps')
         self.maze.algorithm = self.__class__.__name__
         current_position = self.maze.start_position
         # Initialize Maze's current position

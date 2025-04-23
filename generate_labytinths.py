@@ -250,6 +250,12 @@ def generate(filename, number, solve=False, batch_size=1000):
         os.remove(filename)
         logging.info(f"{filename} removed")
 
+    # Optionally delete the batch directory if empty
+    batch_dir = 'input/training_mazes.pkl_batches'
+    if not os.listdir(batch_dir):
+        os.rmdir(batch_dir)
+        print(f"Deleted batch directory: {batch_dir}")
+
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
 
@@ -302,6 +308,31 @@ def generate(filename, number, solve=False, batch_size=1000):
             # Free memory
             del mazes
             gc.collect()
+
+    # Consolidate all batch mazes
+    all_mazes = []
+
+    # Load initial mazes
+    with open('input/training_mazes.pkl', 'rb') as f:
+        all_mazes += pickle.load(f)
+
+    # Load and consolidate all batch files
+    batch_files = sorted(glob.glob('input/training_mazes.pkl_batches/*.pkl'))
+    for batch_file in batch_files:
+        with open(batch_file, 'rb') as f:
+            all_mazes += pickle.load(f)
+
+    # Save consolidated mazes
+    with open('input/training_mazes_consolidated.pkl', 'wb') as f:
+        pickle.dump(all_mazes, f)
+
+    print(f"Consolidated total mazes: {len(all_mazes)}")
+
+    # Delete batch files after consolidation
+    for batch_file in batch_files:
+        os.remove(batch_file)
+        print(f"Deleted batch file: {batch_file}")
+
 
     logging.info(f"Completed: Generated and saved {total_generated} mazes to {OUTPUT_FOLDER}/{filename}")
 
