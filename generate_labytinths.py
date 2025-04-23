@@ -1,5 +1,5 @@
 import concurrent.futures
-import glob
+import gc
 import logging
 import os
 import pickle
@@ -247,7 +247,10 @@ def generate(filename, number, solve=False):
     :return: None
 
     """
+    if os.path.exists(os.path.join(OUTPUT_FOLDER, filename)):
+        os.remove(os.path.join(OUTPUT_FOLDER, filename))
     logging.info(f"Generating {filename}, {number} solved {solve} mazes...")
+
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
     mazes = []
@@ -264,7 +267,9 @@ def generate(filename, number, solve=False):
                 if maze is not None:
                     mazes.append(maze)
     else:
-        for _ in tqdm.trange(number, desc="Generating mazes"):
+        for i in tqdm.trange(number, desc="Generating mazes"):
+            if i > 0 and i % 1000 == 0:
+                gc.collect()
             maze = generate_single_maze(min_size, max_size, solve)
             if maze is not None:
                 mazes.append(maze)
@@ -304,11 +309,6 @@ def main():
     mazes = config.get("FILES", "MAZES", fallback="mazes.pkl")
     training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.pkl")
     validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.pkl")
-
-    for pattern in ["*.pkl"]:
-        for filename in glob.glob(os.path.join(INPUT, pattern)):
-            os.remove(filename)
-            logging.info(f"{filename} removed")
 
     generate(filename=training_mazes, number=num_mazes, solve=True)
     generate(filename=validation_mazes, number=num_mazes // 10, solve=True)
