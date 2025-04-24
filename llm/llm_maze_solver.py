@@ -26,6 +26,17 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
 
+SYSTEM_PROMPT = (
+    """You will help me solve a maze following the {algorithm}. You will do this from the view point of 
+    someone in the maze, without the full view of the maze but only the cells immediately around you. 
+    You will be given the local context of the cells around the current position in this format 
+    `prompt = '{"local_context": {"north": "wall", "south": "open", "east": "open", "west": "wall"}, "exit_reached": false}'`.  
+    "wall" is a maze wall and moving in that direction is not permitted. "open" is a maze corridor, and it is a 
+    direction that can be explored.  "outside" marks a neighbour position outside the maze, when the current position is at the exit.  
+    Important note, this is a call from an API. You will respond with only the direction to travel next 
+    like: north, south, east, or west. Maximum output tokens are 1."""
+)
+
 class LLMMazeSolver(MazeSolver):
     """
     LLMMazeSolver is an AI-based maze-solving class utilizing Large Language Models (LLMs).
@@ -67,29 +78,31 @@ class LLMMazeSolver(MazeSolver):
         maze.set_algorithm(self.__class__.__name__)
 
     def solve(self):
-        """
-        Solve the maze using LLMs. Each move is executed via
-        Maze.move(), ensuring the Maze's current_position is updated.
-
-        Returns:
-            path (list of positions): The sequence of (row, col) tuples of the path.
-        """
         provider = config.get('LLM', 'provider')
-        # max_steps = config.getint('DEFAULT', 'max_steps')
-        max_steps = 20  # for debug only
+        max_steps = 10  # for debug only
         current_position = self.maze.start_position
-        # Initialize Maze's current position
         self.maze.move(current_position)
         path = [current_position]
         self.steps = 0
 
-        llm_model = GPTFactory.create_gpt_model(provider)
+        llm_model = GPTFactory.create_gpt_model(provider, SYSTEM_PROMPT)
 
         while self.steps < max_steps:
             self.steps += 1
 
-            local_context = self._compute_loca_context_json(self.maze, current_position, self.directions)
-            prompt = self._convert_json_to_prompt(local_context)
+            # Compute the local context as a list...
+            local_context_list = self._compute_local_context(self.maze, current_position, self.directions)
+            payload = {
+                "local_context": {
+                    "north": local_context_list[0],
+                    "south": local_context_list[1],
+                    "east": local_context_list[2],
+                    "west": local_context_list[3]
+                },
+                "exit_reached": self.maze.at_exit()
+            }
+            prompt = self._convert_json_to_prompt(payload)
+            logging.info(f"Prompt: {prompt}")
             response = llm_model.generate_response(prompt)
             direction = self._process_llm_response(response)
             if direction:
@@ -100,22 +113,61 @@ class LLMMazeSolver(MazeSolver):
                     current_position = new_position
                     path.append(current_position)
                     logging.info(f"Moved {direction} to {current_position}")
+                else:
+                    # logging.warning("Invalid move")
+                    resp = llm_model.generate_response(
+                        "Not a valid move . You can only move in a direction marked as 'open' by the local context and not in a direction marked with 'wall'."
+                    )
+                    logging.warning(f"Invalid response: {resp}")
             else:
-                resp = llm_model.generate_response("Not a valid response. Respond with ONLY one word - "
-                                                   "either: north, south, east, or west. "
-                                                   "Do not include any other text. Wait for the next prompt")
+                resp = llm_model.generate_response(
+                    "Not a valid response. Respond with ONLY one word - either: north, south, east, or west. Do not include any other text. Wait for the next prompt."
+                )
                 logging.warning(f"Invalid response: {resp}")
-            # Check if the maze is solved by asking Maze via at_exit().
+
             if self.maze.at_exit():
-                logging.info(
-                    f"Exit found at position: {str(current_position)} Thank you! \n {llm_model.generate_response(thank_you)}")
+                logging.info(f"Exit found at position: {current_position}.")
                 break
 
         if self.steps >= max_steps:
-            thank_you = "Sorry, I can't find the exit. We will try again."
-            logging.info(f"{thank_you} Response {llm_model.generate_response(thank_you)}")
+            msg = "Sorry, I can't find the exit. We will try again."
+            logging.info(f"{msg} Response: {llm_model.generate_response(msg)}")
             logging.error("Maximum steps exceeded without reaching the exit.")
+
         return path
+
+    def _compute_local_context(self, maze, position, directions):
+        """
+        Computes the local context for the given position in the maze.
+
+        Args:
+            maze (Maze): Maze object with .grid attribute (2D numpy array)
+            position (tuple): (row, col) position in the maze.
+            directions (list): List of (dr, dc) direction offsets.
+
+        Returns:
+            list: A list of 4 string labels for the surrounding cells,
+                  mapping WALL (1) to "wall", CORRIDOR (0) to "open", and
+                  OUTSIDE (5) to "outside".
+        """
+        r, c = position
+        rows, cols = maze.grid.shape
+        dr_dc = np.array(directions)
+        positions = dr_dc + np.array([r, c])  # shape: (4, 2)
+
+        in_bounds = ((positions[:, 0] >= 0) & (positions[:, 0] < rows) &
+                     (positions[:, 1] >= 0) & (positions[:, 1] < cols))
+
+        clamped = np.clip(positions, [0, 0], [rows - 1, cols - 1])
+        neighbor_vals = maze.grid[clamped[:, 0], clamped[:, 1]]
+        context = np.where(in_bounds, neighbor_vals, OUTSIDE).tolist()
+
+        mapping = {
+            WALL: "wall",
+            CORRIDOR: "open",
+            OUTSIDE: "outside"
+        }
+        return [mapping.get(value, "unknown") for value in context]
 
     def _convert_json_to_prompt(self, js: json) -> str:
         """
@@ -147,33 +199,6 @@ class LLMMazeSolver(MazeSolver):
 
         return prompt
 
-    def _compute_loca_context_json(self, maze, position, directions) -> json:
-        """
-        Cnvert local context to JSON
-        Args:
-            maze (Maze): Maze object with .grid attribute (2D numpy array)
-            position (tuple): (row, col) position in the maze
-            directions (list): List of (dr, dc) direction offsets
-        Returns:
-            local context in a JSON format like: prompt = '{"local_context": {"north": "wall", "south": "open", "east": "open", "west": "wall"}, "exit_reached": false}'
-        """
-
-        local_context = self._compute_local_context(maze, position, directions)
-        # verify if exit has been reached
-        exit_reached = self.maze.at_exit()
-        # convert contex        # convert context to JSON
-        prompt = {
-            "local_context": {
-                "north": local_context[0],
-                "south": local_context[1],
-                "east": local_context[2],
-                "west": local_context[3]
-            },
-            "exit_reached": exit_reached
-        }
-        logging.debug(f"Local context: {prompt}")
-
-        return prompt
 
     def _process_llm_response(self, response: str) -> str:
         """
@@ -194,40 +219,6 @@ class LLMMazeSolver(MazeSolver):
 
         logging.warning(f"no direction returned. response: {response}")
         return None
-
-    def _compute_local_context(self, maze, position, directions):
-        """
-        Vectorized version of local context computation using NumPy.
-
-        Args:
-            maze (Maze): Maze object with .grid attribute (2D numpy array)
-            position (tuple): (row, col) position in the maze
-            directions (list): List of (dr, dc) direction offsets
-
-        Returns:
-            list: Values of the 4 surrounding cells, defaulting to OUTSIDE if out of bounds
-        """
-        r, c = position
-        rows, cols = maze.grid.shape
-        dr_dc = np.array(directions)
-        positions = dr_dc + np.array([r, c])  # shape: (4, 2)
-
-        # Check which are in bounds
-        in_bounds = (
-                (positions[:, 0] >= 0) & (positions[:, 0] < rows) &
-                (positions[:, 1] >= 0) & (positions[:, 1] < cols)
-        )
-
-        # Clip indices to valid range, so we can use them safely
-        clamped = np.clip(positions, [0, 0], [rows - 1, cols - 1])
-
-        # Use fancy indexing to get neighbor values
-        neighbor_vals = maze.grid[clamped[:, 0], clamped[:, 1]]
-
-        # Apply OUTSIDE where out of bounds
-        context = np.where(in_bounds, neighbor_vals, OUTSIDE)
-
-        return context.tolist()
 
 
 # Example usage:

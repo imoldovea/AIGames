@@ -18,8 +18,8 @@ secrets = configparser.ConfigParser()
 secrets.read(SECRETS_FILE)
 
 class OpenAIModel(GPTModel):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, system_prompt):
+        super().__init__(system_prompt)
 
         logging.info("Initializing OpenAIModel")
         self.provider = "OpenAI"
@@ -28,6 +28,7 @@ class OpenAIModel(GPTModel):
         # Same section name as in the secrets.properties file
         self.api_key = secrets.get('ChatGPT', 'api_key')
         openai.api_key = self.api_key
+        logging.info("OpenAIModel initialized with system prompt:\n%s", self.system_prompt)
 
     def generate_response(self, prompt: str) -> str:
         try:

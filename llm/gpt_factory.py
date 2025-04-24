@@ -9,12 +9,12 @@ from llm.openai_model import OpenAIModel
 # Step 4: Create a Factory for Generating GPT Models
 class GPTFactory:
     @staticmethod
-    def create_gpt_model(provider: str) -> GPTModel:
+    def create_gpt_model(provider: str, system_prompt: str) -> GPTModel:
         if provider == "ChatGPT":
-            return OpenAIModel()
+            return OpenAIModel(system_prompt)
         elif provider == "Ollama":
-            return OllamaModel()
+            return OllamaModel(system_prompt)
         elif provider == "DeepSeek":  # Add support for DeepSeek
-            return DeepSeekModel()
+            return DeepSeekModel(system_prompt)
         else:
             raise ValueError(f"Unknown provider: {provider}")
