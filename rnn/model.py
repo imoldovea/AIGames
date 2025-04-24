@@ -53,7 +53,7 @@ class MazeRecurrentModel(MazeBaseModel):
             elif 'bias' in name:
                 nn.init.zeros_(param)
 
-    def forward(self, x, return_activations=False):
+    def forward(self, x, return_activations=False, return_logits=False):
         """
         Forward pass for the model.
         x: Tensor of shape [batch_size, seq_length, input_size]
@@ -75,6 +75,8 @@ class MazeRecurrentModel(MazeBaseModel):
 
         logits = self.fc(out)  # shape: [batch, seq_len, output_size]
 
+        if return_logits:
+            return logits
         if return_activations:
-            return logits, out  # return both predictions and LSTM/GRU/RNN hidden states
+            return logits, out
         return logits

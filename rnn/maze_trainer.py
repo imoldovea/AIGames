@@ -444,6 +444,9 @@ class RNN2MazeTrainer:
                     target_action = 4  # Exit signal (index 4)
                 sequence_targets.append(target_action)
 
+            exit_count = sum(1 for a in sequence_targets if a == 4)
+            logging.info(f"Maze {maze.id if hasattr(maze, 'id') else '?'} has {exit_count} exit-labeled steps.")
+
             sample_inputs = np.array(sequence_inputs, dtype=np.float32)
             sample_targets = np.array(sequence_targets, dtype=np.int64)
             dataset.append((sample_inputs, sample_targets))
