@@ -165,9 +165,10 @@ class MazeBaseModel(nn.Module):
                             outputs_dir, outputs_exit, target_actions,
                             criterion_ce, criterion_bce, device
                         )
+
                         correct += correct_batch
                         total += total_batch
-
+                        running_loss += loss.item() * inputs.size(0)
                 else:
                     outputs_dir, outputs_exit = self.forward(inputs)
                     loss, correct_batch, total_batch = self._compute_dual_head_loss_and_accuracy(
@@ -176,6 +177,7 @@ class MazeBaseModel(nn.Module):
                     )
                     correct += correct_batch
                     total += total_batch
+                    running_loss += loss.item() * inputs.size(0)
 
                 # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
