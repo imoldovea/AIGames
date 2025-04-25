@@ -233,6 +233,9 @@ class MazeBaseModel(nn.Module):
             train_accuracies["train"].append(training_accuracy)
             train_accuracies["validation"].append(validation_accuracy)
 
+            epoch_duration = time.time() - epoch_start  # seconds
+            epoch_time_minutes = round(epoch_duration / 60, 2)  # minute
+
             self._monitor_training(
                 epoch=epoch,
                 num_epochs=num_epochs,
@@ -242,7 +245,7 @@ class MazeBaseModel(nn.Module):
                 training_accuracy=training_accuracy,
                 validation_accuracy=validation_accuracy,
                 # compute execution time in minutes, with 2 decimals
-                time_per_step=round((time.time() - epoch_start) / len(dataloader) / 60, 2),  # minutes per step
+                time_per_step=epoch_time_minutes,  # minutes per step
                 tensorboard_writer=tensorboard_writer,
             )
 
