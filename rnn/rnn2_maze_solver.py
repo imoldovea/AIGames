@@ -139,7 +139,7 @@ class RNN2MazeSolver(MazeSolver):
                 output, hidden_activations = self.model(input_tensor, return_activations=True)
                 # Probe exit neuron (index 4)
                 exit_logit = output[0, -1][4].item()
-                logging.info(f"Step {step_number}: Exit neuron activation = {exit_logit:.4f}")
+                # logging.info(f"Step {step_number}: Exit neuron activation = {exit_logit:.4f}")
                 # ifth neuron (index 4) signals whether the next move is the exit — and should not influence directional decision-making. By slicing the output to [:4], you ensure the agent makes decisions based on movement only.
                 direction_logits = output[0, -1][:4]  # Only the first 4 neurons (directions)
                 action = torch.argmax(direction_logits, dim=0).item()

@@ -65,7 +65,7 @@ class MazeBaseModel(nn.Module):
         targets_clipped = targets_flat.clone()
         targets_clipped[~valid_mask] = 0  # dummy class for padding
 
-        # ✅ Only validate values that are NOT padding
+        # Only validate values that are NOT padding
         if (targets_clipped[valid_mask] < 0).any() or (targets_clipped[valid_mask] > 4).any():
             raise ValueError(f"Found invalid target value(s): {targets_clipped[valid_mask].unique()}")
 
@@ -127,7 +127,7 @@ class MazeBaseModel(nn.Module):
         optimizer = optim.Adam(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
         lr_factor = config.getfloat("DEFAULT", "lr_factor", fallback=0.7)
         scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=lr_factor, patience=self.patience)
-        criterion = nn.BCEWithLogitsLoss()
+        criterion = nn.CrossEntropyLoss(ignore_index=-100)
 
         train_losses = {"train": [], "validation": []}
         train_accuracies = {"train": [], "validation": []}
@@ -178,7 +178,6 @@ class MazeBaseModel(nn.Module):
                         exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
 
                         target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
-
                         loss = criterion(outputs_flat, target_onehot)
                 else:
                     # Standard forward and loss computation (no AMP)
@@ -198,12 +197,9 @@ class MazeBaseModel(nn.Module):
                     target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
                     target_onehot[~valid_mask] = 0  # restore padding as all-zeros
 
-                    exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+                    # exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
 
-                    target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
-
-                    # Compute loss in standard precision
-                    loss = criterion(outputs_flat, target_onehot)
+                    loss = criterion(outputs_flat, targets_flat)
 
                 # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
@@ -404,9 +400,8 @@ class MazeBaseModel(nn.Module):
                 targets_flat = target_actions.contiguous().view(batch_size * seq_len)
 
                 # Compute loss using the flattened tensors
-                exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
-                target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
-                loss = criterion(outputs_flat, target_onehot)
+                # exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+                loss = criterion(outputs_flat, targets_flat)
 
                 # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
