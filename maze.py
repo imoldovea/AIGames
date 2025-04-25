@@ -21,7 +21,7 @@ class Maze:
     START = 3
     IMG_SIZE = 26
 
-    def __init__(self, grid: np.ndarray) -> None:
+    def __init__(self, grid: np.ndarray, index) -> None:
 
         """
             Initializes the maze from a provided NumPy matrix.
@@ -49,7 +49,7 @@ class Maze:
         self.algorithm = None
         self.valid_solution = False
         self.complexity = self._compute_complexity()
-        self.id = 0  # no ID set yet
+        self.index = index
 
         # cash
         self._bounds_cache = {}
@@ -110,6 +110,14 @@ class Maze:
                 if self.grid[r, c] == self.CORRIDOR
             }
         return self._context_map
+
+    @property
+    def height(self):
+        return self.rows
+
+    @property
+    def width(self):
+        return self.cols
 
     def clear_context_map(self):
         self._context_map = None

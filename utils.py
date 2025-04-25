@@ -92,7 +92,8 @@ def setup_logging():
 def clean_outupt_folder():
     # Delete all OUTPUT folder content
     if config.getboolean("DEFAULT", "retrain_model", fallback=True):
-        for pattern in ["*.html", "*.pdf", "*.mp4", "*.prof", "*.csv", "*.json", "*.png", "*.properties", "*.txt"]:
+        for pattern in ["*.html", "*.pdf", "*.mp4", "*.prof", "*.csv", "*.json", "*.png", "*.properties",
+                        "*.txt"], "*.png":
             for filename in glob.glob(os.path.join(OUTPUT, pattern)):
                 os.remove(filename)
 

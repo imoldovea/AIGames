@@ -38,7 +38,9 @@ class MazeRecurrentModel(MazeBaseModel):
         else:
             raise ValueError("Invalid mode_type. Expected one of 'RNN', 'GRU', or 'LSTM'.")
 
-        self.fc = nn.Linear(hidden_size, output_size)
+        self.fc_dir = nn.Linear(hidden_size, 4)
+        self.fc_exit = nn.Linear(hidden_size, 1)
+
         self.model_name = self.mode_type  # Set the model name based on the mode_type
 
         self._initialize_weights()
@@ -73,10 +75,8 @@ class MazeRecurrentModel(MazeBaseModel):
             h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=device)
             out, _ = self.recurrent(x, h0)
 
-        logits = self.fc(out)  # shape: [batch, seq_len, output_size]
-
-        if return_logits:
-            return logits
+        logits_dir = self.fc_dir(out)  # shape: [B, T, 4]
+        logit_exit = self.fc_exit(out).squeeze(-1)  # shape: [B, T]
         if return_activations:
-            return logits, out
-        return logits
+            return (logits_dir, logit_exit), out
+        return logits_dir, logit_exit

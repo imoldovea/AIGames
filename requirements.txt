@@ -18,5 +18,5 @@ psutil
 requests
 openai
 deepseek-ai
-
+seaborn
 

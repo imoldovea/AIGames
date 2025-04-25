@@ -19,7 +19,8 @@ import torch
 
 import wandb
 from rnn.chart_utility import (save_latest_loss_chart, save_neural_network_diagram, visualize_model_weights,
-                           visualize_model_activations)
+                               visualize_model_activations, visualize_exit_activations,
+                               visualize_exit_confidence_heatmap)
 from maze_solver import MazeSolver
 from rnn.maze_trainer import get_models  # Training function from maze_trainer.py
 from utils import load_mazes, save_mazes_as_pdf, setup_logging
@@ -119,8 +120,11 @@ class RNN2MazeSolver(MazeSolver):
         current_pos = self.maze.start_position
         path = [current_pos]
         step_number = 0
+        exit_activations = []
         self.maze.algorithm = self.__class__.__name__
         max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
+        maze_overlay = np.zeros((self.maze.rows, self.maze.cols), dtype=np.float32)
+
         while self.maze.exit != current_pos and len(path) < max_steps:
             step_number += 1
             step_number_normalized = step_number / max_steps
@@ -136,12 +140,20 @@ class RNN2MazeSolver(MazeSolver):
             input_tensor = torch.tensor(input_features).unsqueeze(0).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 # Perform inference using the trained model to predict the next move
-                output, hidden_activations = self.model(input_tensor, return_activations=True)
+                (logits_dir, logit_exit), _ = self.model(input_tensor, return_activations=True)
+                exit_prob = torch.sigmoid(logit_exit[0, -1]).item()
+                exit_activations.append(exit_prob)
+                if exit_prob > 0.9:
+                    logging.info(f"Step {step_number}: Exit neuron activation = {exit_prob:.4f}")
+                    break  # model believes it's at the exit
+
+                y, x = self.maze.current_position
+                maze_overlay[y][x] = exit_prob
+
+                action = torch.argmax(logits_dir[0, -1]).item()
                 # Probe exit neuron (index 4)
-                exit_logit = output[0, -1][4].item()
-                # logging.info(f"Step {step_number}: Exit neuron activation = {exit_logit:.4f}")
-                # ifth neuron (index 4) signals whether the next move is the exit — and should not influence directional decision-making. By slicing the output to [:4], you ensure the agent makes decisions based on movement only.
-                direction_logits = output[0, -1][:4]  # Only the first 4 neurons (directions)
+                # Only the first 4 neurons (directions) should be used for movement.
+                direction_logits = logits_dir[0, -1][:4]
                 action = torch.argmax(direction_logits, dim=0).item()
 
             # Calculate the move delta based on the predicted action
@@ -167,13 +179,14 @@ class RNN2MazeSolver(MazeSolver):
                         relative_position=relative_position,
                         step_number_normalized=step_number_normalized,
                     )
-                    self.activations['recurrent'].append(act.cpu().numpy())
+
+                visualize_exit_activations(exit_activations, maze_name=self.maze.index)
 
                 self.maze.move(current_pos)
         else:
             if self.maze.exit != current_pos:
                 logging.debug(f"Reached max steps ({max_steps}) without finding a solution.")
-
+        visualize_exit_confidence_heatmap(maze_overlay, maze_name=self.maze.index)
         return path
 
     def get_recurrent_activations(self):

@@ -338,7 +338,6 @@ class RNN2MazeTrainer:
         # Using tqdm to display progress bar - slicing the list to ensure we only process training_samples
         for i, maze_data in enumerate(tqdm(training_mazes[:training_samples], desc="Load training mazes")):
             try:
-                maze_data.id = i
                 solved_maze = self._process_maze(maze_data, i)
                 # only add valid and solved mazes to the list.
                 if solved_maze.valid_solution:

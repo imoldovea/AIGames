@@ -11,6 +11,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objs as go
+import seaborn as sns
 import torch
 import torch.onnx
 from PIL import Image
@@ -312,6 +313,75 @@ def visualize_model_activations(all_activations, output_folder = OUTPUT, model_n
     video_writer.release()
     plt.close('all')
     logging.info(f"Activations Video saved to: {video_path}")
+
+
+def visualize_exit_activations(exit_activations, maze_name="Maze", output_folder=OUTPUT):
+    """
+    Plots the evolution of exit neuron activations over time.
+
+    Args:
+        exit_activations (list): A list of sigmoid exit probabilities at each step.
+        maze_name (str): Title for the plot.
+        output_folder (str): Where to save the output image.
+    """
+    plt.figure(figsize=(10, 6))
+    plt.plot(exit_activations, marker='o')
+    plt.title(f"Exit Activations Over Time ({maze_name})")
+    plt.xlabel("Step")
+    plt.ylabel("Exit Probability")
+    plt.grid(True)
+
+    os.makedirs(output_folder, exist_ok=True)
+    filename = os.path.join(output_folder, f"{maze_name}_exit_activations.png")
+    plt.savefig(filename)
+    plt.close()
+    logging.debug(f"Saved exit activations plot to {filename}")
+
+
+def visualize_exit_confidence_heatmap(confidence_grid, maze_name="Maze", output_folder=OUTPUT):
+    """
+    Generates a heatmap for the exit confidence across maze locations.
+
+    Args:
+        confidence_grid (2D array): Exit probabilities per (y,x) position.
+        maze_name (str): Title for the heatmap.
+        output_folder (str): Where to save the heatmap image.
+    """
+    plt.figure(figsize=(8, 8))
+    sns.heatmap(confidence_grid, cmap="YlOrRd", square=True, annot=False, cbar=True)
+    plt.title(f"Exit Confidence Map ({maze_name})")
+    plt.axis('off')
+
+    os.makedirs(output_folder, exist_ok=True)
+    filename = os.path.join(output_folder, f"{maze_name}_exit_confidence_heatmap.png")
+    plt.savefig(filename)
+    plt.close()
+    logging.debug(f"Saved exit confidence heatmap to {filename}")
+
+
+def evaluate_model_success(solver, test_mazes, max_steps=1000):
+    """
+    Solves test mazes and computes the success rate.
+
+    Args:
+        solver: A maze solver object (like RNN2MazeSolver).
+        test_mazes (list): List of Maze objects to solve.
+        max_steps (int): Maximum steps allowed per maze.
+
+    Returns:
+        success_rate (float): Fraction of mazes successfully solved.
+    """
+    total = len(test_mazes)
+    solved = 0
+
+    for maze in test_mazes:
+        solver.solve(maze, max_steps=max_steps)
+        if maze.at_exit():
+            solved += 1
+
+    success_rate = solved / total if total > 0 else 0.0
+    logging.info(f"Test Maze Success Rate: {solved}/{total} = {success_rate:.2%}")
+    return success_rate
 
 
 def main():

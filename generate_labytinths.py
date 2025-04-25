@@ -273,8 +273,7 @@ def generate_single_maze(min_size, max_size, solve, index):
     width = random.choice(range(min_size, max_size, 2))
     height = random.choice(range(min_size, max_size, 2))
     maze_array = create_maze(width, height)
-    maze = Maze(maze_array)
-    maze.id = index
+    maze = Maze(maze_array, index)
     if not maze.self_test():
         logging.warning(f"Maze {index} is invalid")
         return None

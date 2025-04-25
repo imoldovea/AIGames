@@ -135,6 +135,9 @@ class MazeBaseModel(nn.Module):
         early_stopping_counter = 0
         accumulation_steps = 2
 
+        criterion_ce = nn.CrossEntropyLoss(ignore_index=-100)
+        criterion_bce = nn.BCEWithLogitsLoss()
+
         for epoch in range(num_epochs):
             running_loss = 0.0
             correct = 0
@@ -157,49 +160,22 @@ class MazeBaseModel(nn.Module):
                 if use_amp:
                     # Enable automatic mixed precision context for faster GPU training and reduced memory usage
                     with torch.amp.autocast(device_type='cuda'):
-                        # Forward pass through the model (with float16 precision where safe)
-                        outputs = self.forward(inputs)
+                        outputs_dir, outputs_exit = self.forward(inputs)
+                        loss, correct_batch, total_batch = self._compute_dual_head_loss_and_accuracy(
+                            outputs_dir, outputs_exit, target_actions,
+                            criterion_ce, criterion_bce, device
+                        )
+                        correct += correct_batch
+                        total += total_batch
 
-                        # Validate shape and flatten the output for CrossEntropyLoss
-                        batch_size, seq_len, output_size = outputs.shape
-                        outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
-                        targets_flat = target_actions.contiguous().view(batch_size * seq_len)
-
-                        # Compute the loss (CrossEntropy expects flat inputs and targets)
-                        # mask out invalid indices (e.g., -100)
-                        valid_mask = targets_flat != -100
-                        targets_clipped = targets_flat.clone()
-                        targets_clipped[~valid_mask] = 0  # temporarily set to safe class
-
-                        target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
-                        target_onehot[~valid_mask] = 0  # restore padding as all-zeros
-
-                        # apply exit_weight to valid samples only
-                        exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
-
-                        target_onehot = self._build_one_hot_target(targets_flat, exit_weight)
-                        loss = criterion(outputs_flat, target_onehot)
                 else:
-                    # Standard forward and loss computation (no AMP)
-                    outputs = self.forward(inputs)
-
-                    # Flatten outputs and targets for CrossEntropyLoss
-                    batch_size, seq_len, output_size = outputs.shape
-                    outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
-                    targets_flat = target_actions.contiguous().view(batch_size * seq_len)
-
-                    # Convert targets to one-hot with shape [batch_size * seq_len, 5]
-                    # mask out invalid indices (e.g., -100)
-                    valid_mask = targets_flat != -100
-                    targets_clipped = targets_flat.clone()
-                    targets_clipped[~valid_mask] = 0  # temporarily set to safe class
-
-                    target_onehot = torch.nn.functional.one_hot(targets_clipped, num_classes=5).float()
-                    target_onehot[~valid_mask] = 0  # restore padding as all-zeros
-
-                    # exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
-
-                    loss = criterion(outputs_flat, targets_flat)
+                    outputs_dir, outputs_exit = self.forward(inputs)
+                    loss, correct_batch, total_batch = self._compute_dual_head_loss_and_accuracy(
+                        outputs_dir, outputs_exit, target_actions,
+                        criterion_ce, criterion_bce, device
+                    )
+                    correct += correct_batch
+                    total += total_batch
 
                 # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
@@ -243,11 +219,6 @@ class MazeBaseModel(nn.Module):
                         step = epoch * len(dataloader) + iteration
                         tensorboard_writer.add_scalar("BatchLoss/train", loss.item(), step)
                         tensorboard_writer.add_scalar("GradientNorm/train", grad_norm, step)
-
-                running_loss += loss.item() * batch_size
-                _, predicted = torch.max(outputs_flat, 1)
-                total += targets_flat.size(0)
-                correct += (predicted == targets_flat).sum().item()
 
             epoch_loss = running_loss / len(dataloader.dataset)
             training_accuracy = correct / total if total > 0 else 0.0
@@ -296,6 +267,35 @@ class MazeBaseModel(nn.Module):
         self.last_loss = train_losses["train"][-1] if train_losses["train"] else None
         logging.info(f"Training Complete for {self.model_name}. Final Loss: {self.last_loss}")
         return self
+
+    def _compute_dual_head_loss_and_accuracy(
+            self,
+            outputs_dir,
+            outputs_exit,
+            target_actions,
+            criterion_ce,
+            criterion_bce,
+            device
+    ):
+        dir_flat = outputs_dir.contiguous().view(-1, 4)
+        exit_flat = outputs_exit.contiguous().view(-1)
+        targets_flat = target_actions.contiguous().view(-1)
+
+        direction_mask = (targets_flat != -100) & (targets_flat < 4)
+
+        valid_mask = targets_flat != -100
+        exit_target = (targets_flat == 4).float()
+
+        loss_dir = criterion_ce(dir_flat[direction_mask], targets_flat[direction_mask])
+        loss_exit = criterion_bce(exit_flat[valid_mask], exit_target[valid_mask])
+        exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+        loss = loss_dir + exit_weight * loss_exit
+
+        _, predicted = torch.max(dir_flat, dim=1)
+        correct = (predicted[valid_mask] == targets_flat[valid_mask]).sum().item()
+        total = valid_mask.sum().item()
+
+        return loss, correct, total
 
     def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss=0,
                           training_accuracy=0, validation_accuracy=0,
@@ -351,7 +351,7 @@ class MazeBaseModel(nn.Module):
         with open(LOSS_JSON_FILE, "w") as jf:
             json.dump(all_logs, jf, indent=2)
 
-        if tensorboard_writer:
+        if tensorboard_writer and config.getboolean("DEFAULT", "tensorboard", fallback=False):
             tensorboard_writer.add_scalar("Loss/train", epoch_loss, epoch)
             tensorboard_writer.add_scalar("Loss/validation", validation_loss, epoch)
             tensorboard_writer.add_scalar("Accuracy/train", training_accuracy, epoch)
@@ -378,47 +378,53 @@ class MazeBaseModel(nn.Module):
         Returns:
             A tuple of (average validation loss, validation accuracy)
         """
-        self.eval()  # Set model to evaluation mode
+        self.eval()
+
         val_loss_sum = 0.0
         num_batches = 0
         correct = 0
         total = 0
 
+        criterion_ce = nn.CrossEntropyLoss(ignore_index=-100)
+        criterion_bce = nn.BCEWithLogitsLoss()
+
         with torch.no_grad():
             for batch in val_loader:
-                # Each batch is a tuple (inputs, target_actions)
                 inputs, target_actions = batch
-                inputs = inputs.to(device)  # shape: (batch_size, seq_len, input_size)
-                target_actions = target_actions.to(device)  # shape: (batch_size, seq_len)
+                inputs = inputs.to(device)
+                target_actions = target_actions.to(device)
 
-                # Forward pass: expecting outputs of shape (batch_size, seq_len, output_size)
-                outputs = self.forward(inputs)
+                outputs_dir, outputs_exit = self.forward(inputs)
+                dir_flat = outputs_dir.view(-1, 4)
+                exit_flat = outputs_exit.view(-1)
+                targets_flat = target_actions.view(-1)
 
-                # Flatten the outputs and targets to shape [batch_size * seq_len, ...]
-                batch_size, seq_len, output_size = outputs.shape
-                outputs_flat = outputs.contiguous().view(batch_size * seq_len, output_size)
-                targets_flat = target_actions.contiguous().view(batch_size * seq_len)
+                valid_mask = targets_flat != -100
+                exit_target = (targets_flat == 4).float()
 
-                # Compute loss using the flattened tensors
-                # exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
-                loss = criterion(outputs_flat, targets_flat)
+                loss_dir = criterion_ce(dir_flat, targets_flat)
 
-                # Check for invalid loss values before backward
-                if torch.isnan(loss) or torch.isinf(loss):
-                    logging.error(f"Invalid loss encountered {epoch + 1}")
+                # Safety checks to prevent CUDA crash
+                if exit_flat[valid_mask].shape != exit_target[valid_mask].shape:
+                    raise RuntimeError(f"exit_flat and exit_target mismatch: "
+                                       f"{exit_flat[valid_mask].shape} vs {exit_target[valid_mask].shape}")
+                if torch.any(exit_target[valid_mask] < 0) or torch.any(exit_target[valid_mask] > 1):
+                    raise RuntimeError("exit_target contains invalid values outside [0, 1]")
+
+                loss_exit = criterion_bce(exit_flat[valid_mask], exit_target[valid_mask])
+                exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+                loss = loss_dir + exit_weight * loss_exit
+
                 val_loss_sum += loss.item()
                 num_batches += 1
 
-                # Calculate accuracy over the flattened outputs as well
-                mask = targets_flat != -100
-                _, predicted = torch.max(outputs_flat, dim=1)
-                predicted = predicted[mask]
-
-                targets_flat = targets_flat[mask]
-                total += targets_flat.size(0)
-                correct += (predicted == targets_flat).sum().item()
+                # Accuracy
+                _, predicted = torch.max(dir_flat, dim=1)
+                predicted = predicted[valid_mask]
+                targets_masked = targets_flat[valid_mask]
+                correct += (predicted == targets_masked).sum().item()
+                total += targets_masked.size(0)
 
         average_val_loss = val_loss_sum / num_batches if num_batches > 0 else float("inf")
         validation_accuracy = correct / total if total > 0 else 0.0
-
         return average_val_loss, validation_accuracy
