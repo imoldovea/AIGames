@@ -1,0 +1,106 @@
+import random
+
+from maze import Maze
+from maze_solver import MazeSolver
+
+
+class GeneticMazeSolver(MazeSolver):
+    """
+    Maze solver using a Genetic Algorithm. Maintains a population of candidate paths
+    and evolves them through selection, crossover, and mutation to find a path from start to exit.
+    """
+
+    def __init__(self, maze: Maze,
+                 population_size: int = 50,
+                 chromosome_length: int = 100,
+                 crossover_rate: float = 0.8,
+                 mutation_rate: float = 0.1,
+                 generations: int = 200):
+        super().__init__(maze)
+        self.population_size = population_size
+        self.chromosome_length = chromosome_length
+        self.crossover_rate = crossover_rate
+        self.mutation_rate = mutation_rate
+        self.generations = generations
+        self.directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N,S,W,E
+        self.maze.set_algorithm(self.__class__.__name__)
+
+    def _random_chromosome(self):
+        # A chromosome is a sequence of direction indices
+        return [random.randrange(len(self.directions)) for _ in range(self.chromosome_length)]
+
+    def _fitness(self, chromosome):
+        # Evaluate a path: shorter distance to exit plus penalize invalid moves
+        pos = self.maze.start_position
+        penalty = 0
+        for gene in chromosome:
+            move = self.directions[gene]
+            new_pos = (pos[0] + move[0], pos[1] + move[1])
+            if not self.maze.is_valid_move(new_pos):
+                penalty += 5  # invalid move penalty
+            else:
+                pos = new_pos
+            if pos == self.maze.exit:
+                break
+        # Manhattan distance to exit
+        dist = abs(pos[0] - self.maze.exit[0]) + abs(pos[1] - self.maze.exit[1])
+        return - (dist + penalty)  # higher (less negative) is better
+
+    def _crossover(self, parent1, parent2):
+        if random.random() > self.crossover_rate:
+            return parent1[:], parent2[:]
+        pt = random.randrange(1, self.chromosome_length)
+        child1 = parent1[:pt] + parent2[pt:]
+        child2 = parent2[:pt] + parent1[pt:]
+        return child1, child2
+
+    def _mutate(self, chromosome):
+        for i in range(len(chromosome)):
+            if random.random() < self.mutation_rate:
+                chromosome[i] = random.randrange(len(self.directions))
+        return chromosome
+
+    def solve(self):
+        # Initialize population
+        population = [self._random_chromosome() for _ in range(self.population_size)]
+        best = None
+        best_score = float('-inf')
+
+        for gen in range(self.generations):
+            # Evaluate fitness
+            scored = [(chrom, self._fitness(chrom)) for chrom in population]
+            scored.sort(key=lambda x: x[1], reverse=True)
+            if scored[0][1] > best_score:
+                best_score = scored[0][1]
+                best = scored[0][0]
+            # Early exit if solution reached
+            if best_score == 0:
+                break
+            # Selection (tournament)
+            new_pop = []
+            while len(new_pop) < self.population_size:
+                # pick two
+                a, b = random.sample(scored[:10], 2)
+                p1 = a[0]
+                p2 = b[0]
+                c1, c2 = self._crossover(p1, p2)
+                new_pop.append(self._mutate(c1))
+                if len(new_pop) < self.population_size:
+                    new_pop.append(self._mutate(c2))
+            population = new_pop
+
+        # Decode best into a path and move through maze
+        pos = self.maze.start_position
+        path = [pos]
+        for gene in best:
+            move = self.directions[gene]
+            next_pos = (pos[0] + move[0], pos[1] + move[1])
+            if self.maze.is_valid_move(next_pos):
+                self.maze.move(next_pos)
+                path.append(next_pos)
+                pos = next_pos
+            if pos == self.maze.exit:
+                break
+
+        self.maze.path = path
+        return path
