@@ -233,6 +233,7 @@ class RNN2MazeSolver(MazeSolver):
             context.append(cell_state)
         return context
 
+
 # -------------------------------
 # Integration Functions
 # -------------------------------
@@ -295,7 +296,7 @@ def rnn2_solver(models, mazes, device='cpu'):
                 maze.set_save_movie(True)
 
             # Step 5.b.ii: Create a solver instance
-            solver = RNN2MazeSolver(maze=maze, model=model_obj,  device=device)
+            solver = RNN2MazeSolver(maze=maze, model=model_obj, device=device)
 
             # Step 5.b.iii: Set the algorithm name for the maze
             maze.set_algorithm(model_name)
@@ -335,6 +336,7 @@ def rnn2_solver(models, mazes, device='cpu'):
     # Step 8: Return success rates
     return solved_mazes, model_success_rates
 
+
 def is_port_in_use(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('localhost', port)) == 0
@@ -350,7 +352,7 @@ def main():
 
     # Setup Monitoring
     try:
-        if config.getboolean("MONITORING", "wandb",fallback=True):
+        if config.getboolean("MONITORING", "wandb", fallback=False):
             os.environ['WANDB_MODE'] = 'offline'
             config_secrets = ConfigParser()
             config_secrets.read(SECRETS)
@@ -422,7 +424,7 @@ def main():
         solved_mazes, model_success_rates = rnn2_solver(models=models, mazes=mazes, device=device.type)
         logging.info(f"Model success rates: {model_success_rates}")
 
-        #Plot mazes
+        # Plot mazes
         if config.getboolean("MONITORING", "save_mazes_as_pdf", fallback=True):
             logging.info("Saving mazes as PDF...")
             save_mazes_as_pdf(solved_mazes, OUTPUT_PDF)
@@ -458,6 +460,7 @@ def main():
                 tensorboard_process.terminate()
         except Exception as e:
             logging.debug(f"Error finalizing Tensorboard: {e}")
+
 
 if __name__ == "__main__":
     main()
