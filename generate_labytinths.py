@@ -298,6 +298,10 @@ def generate_single_maze(min_size, max_size, solve, index):
         return maze
 
 def main():
+    if not os.path.exists(OUTPUT_FOLDER):
+        os.makedirs(OUTPUT_FOLDER)
+        logging.info(f"Created output directory: {OUTPUT_FOLDER}")
+
     mazes = config.get("FILES", "MAZES", fallback="mazes.pkl")
     training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.pkl")
     validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.pkl")
