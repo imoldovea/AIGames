@@ -1,24 +1,23 @@
 import cProfile
+import cv2
+import flask.cli
 import glob
 import io
 import json
 import logging
+import numpy as np
 import os
 import pickle
 import pstats
 import tempfile
 import traceback
+from PIL import Image
 from configparser import ConfigParser
 from datetime import datetime
+from fpdf import FPDF
 from functools import wraps
 from multiprocessing import Process
 from typing import Optional, Callable, Any, TypeVar
-
-import cv2
-import flask.cli
-import numpy as np
-from PIL import Image
-from fpdf import FPDF
 
 T = TypeVar('T', bound=Callable[..., Any])  # *new* Define T as a type variable for use in type annotations
 
@@ -78,12 +77,6 @@ def setup_logging():
     console_handler.setFormatter(formatter)
     console_handler.addFilter(CustomLogFilter(forbidden_logs))
     logger.addHandler(console_handler)
-
-    # Ensure OUTPUT directory exists
-    if not os.path.exists(OUTPUT):
-        os.makedirs(OUTPUT)
-        logging.info(f"Created output directory: {OUTPUT}")
-
 
     # File handler for DEBUG level and above
     file_handler = logging.FileHandler(f"{OUTPUT}debug.log")
