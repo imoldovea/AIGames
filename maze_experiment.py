@@ -10,8 +10,6 @@ from classical_algorithms.bfs_maze_solver import BFSMazeSolver
 from classical_algorithms.grpah_maze_solver import AStarMazeSolver
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
-from rnn.maze_trainer import get_models
-from rnn.rnn2_maze_solver import RNN2MazeSolver
 from utils import (
     save_movie,
     display_all_mazes,
@@ -48,6 +46,7 @@ def solve_all_mazes(mazes, solver_class, **solver_kwargs):
         except Exception as e:
             logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
     return solved_mazes
+
 
 def main():
     """
@@ -111,26 +110,26 @@ def main():
         logging.info(f"Pledge execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
-        #RNN
-        pr.enable()
-        models = get_models()
-        for name, model in models:
-            solved_rnn = solve_all_mazes(mazes, RNN2MazeSolver, model=model)
-            all_solved_mazes.extend(solved_rnn)
-        pr.disable()
-        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        logging.info(f"RNN execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        # #RNN
+        # pr.enable()
+        # models = get_models()
+        # for name, model in models:
+        #     solved_rnn = solve_all_mazes(mazes, RNN2MazeSolver, model=model)
+        #     all_solved_mazes.extend(solved_rnn)
+        # pr.disable()
+        # ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        # logging.info(f"RNN execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
 
-        #LLM
-        pr.enable()
-        solved_mazes = solve_all_mazes(mazes, LLMMazeSolver)
-        pr.disable()
-        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        logging.info(f"LLM execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
-        all_solved_mazes.extend(solved_mazes)
+        # # LLM
+        # pr.enable()
+        # solved_mazes = solve_all_mazes(mazes, LLMMazeSolver)
+        # pr.disable()
+        # ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        # logging.info(f"LLM execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        # all_solved_mazes.extend(solved_mazes)
 
         # print statistics on solved mazes
-        total_mazes = len(mazes) * (len(models) + 6)  # 6 classical solvers + len of RNN models
+        total_mazes = len(mazes)
         solved_percentage = (len(all_solved_mazes) / total_mazes) * 100
         logging.info(
             f"Successfully solved {solved_percentage:.2f}% of mazes ({len(all_solved_mazes)} out of {total_mazes})")
@@ -147,7 +146,7 @@ def main():
         for algorithm, count in algorithm_counts.items():
             logging.info(f"{algorithm}: {count} solved mazes")
 
-        #Save resutls
+        # Save resutls
         display_all_mazes(solved_mazes)
         save_mazes_as_pdf(all_solved_mazes, output_pdf)
         save_movie(all_solved_mazes, output_mp4)
