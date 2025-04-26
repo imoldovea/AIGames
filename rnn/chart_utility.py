@@ -1,20 +1,19 @@
 # chart_utility.py
 
-import io
-import os
-import subprocess
-import webbrowser
-from configparser import ConfigParser
-
 import cv2
+import io
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import plotly.graph_objs as go
 import seaborn as sns
+import subprocess
 import torch
 import torch.onnx
+import webbrowser
 from PIL import Image
+from configparser import ConfigParser
 from matplotlib.backends.backend_pdf import PdfPages
 from torch.utils.tensorboard import SummaryWriter
 from torchviz import make_dot
@@ -315,7 +314,7 @@ def visualize_model_activations(all_activations, output_folder = OUTPUT, model_n
     logging.info(f"Activations Video saved to: {video_path}")
 
 
-def visualize_exit_activations(exit_activations, maze_name="Maze", output_folder=OUTPUT):
+def visualize_exit_activations(exit_activations, maze_name="Maze", output_folder=f"{OUTPUT}exit/"):
     """
     Plots the evolution of exit neuron activations over time.
 
@@ -338,7 +337,7 @@ def visualize_exit_activations(exit_activations, maze_name="Maze", output_folder
     logging.debug(f"Saved exit activations plot to {filename}")
 
 
-def visualize_exit_confidence_heatmap(confidence_grid, maze_name="Maze", output_folder=OUTPUT):
+def visualize_exit_confidence_heatmap(confidence_grid, maze_name="Maze", output_folder=f"{OUTPUT}exit/"):
     """
     Generates a heatmap for the exit confidence across maze locations.
 
