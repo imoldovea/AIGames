@@ -102,6 +102,12 @@ def clean_outupt_folder():
                         "*.txt", "*.png"]:
             for filename in glob.glob(os.path.join(OUTPUT, pattern)):
                 os.remove(filename)
+        # Remove /exit subfolder and its contents if exist
+        exit_folder = os.path.join(OUTPUT, "exit")
+        if os.path.exists(exit_folder):
+            for filename in glob.glob(os.path.join(exit_folder, "*")):
+                os.remove(filename)
+            os.rmdir(exit_folder)
 
         os.makedirs(OUTPUT, exist_ok=True)
         logging.info(f"{OUTPUT}cleared...")
