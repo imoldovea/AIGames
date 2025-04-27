@@ -40,7 +40,7 @@ class MazeBaseModel(nn.Module):
         super(MazeBaseModel, self).__init__()
         self.model_name = "MazeBaseModel"  # Define the model name
         self.last_loss = 1
-
+        self.exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
         # Set up early stopping patience to monitor overfitting
         self.patience = config.getint("DEFAULT", "patience", fallback=5)
 
@@ -143,6 +143,7 @@ class MazeBaseModel(nn.Module):
             running_loss = 0.0
             running_loss_dir = 0.0
             running_loss_exit = 0.0
+            running_valid_targets = 0
             correct = 0
             total = 0
 
@@ -164,16 +165,22 @@ class MazeBaseModel(nn.Module):
                     # Enable automatic mixed precision context for faster GPU training and reduced memory usage
                     with torch.amp.autocast(device_type='cuda'):
                         outputs_dir, outputs_exit = self.forward(inputs)
+                        # Compute losses and batch accuracy
                         loss, correct_batch, total_batch, loss_dir_value, loss_exit_value = self._compute_dual_head_loss_and_accuracy(
                             outputs_dir, outputs_exit, target_actions,
                             criterion_ce, criterion_bce, device
                         )
-
                         correct += correct_batch
                         total += total_batch
                         running_loss += loss.item() * inputs.size(0)
+                        # Count valid targets (non-padding)
+                        targets_flat = target_actions.view(-1)  # ← flatten targets
+                        valid_mask = (targets_flat != -100)
+                        valid_targets_in_batch = valid_mask.sum().item()
+                        running_valid_targets += valid_targets_in_batch
                 else:
                     outputs_dir, outputs_exit = self.forward(inputs)
+                    # Compute losses and batch accuracy
                     loss, correct_batch, total_batch, loss_dir_value, loss_exit_value = self._compute_dual_head_loss_and_accuracy(
                         outputs_dir, outputs_exit, target_actions,
                         criterion_ce, criterion_bce, device
@@ -181,6 +188,11 @@ class MazeBaseModel(nn.Module):
                     correct += correct_batch
                     total += total_batch
                     running_loss += loss.item() * inputs.size(0)
+                    # Count valid targets (non-padding)
+                    targets_flat = target_actions.view(-1)  # ← flatten targets
+                    valid_mask = (targets_flat != -100)
+                    valid_targets_in_batch = valid_mask.sum().item()
+                    running_valid_targets += valid_targets_in_batch
 
                 # Check for invalid loss values before backward
                 if torch.isnan(loss) or torch.isinf(loss):
@@ -248,7 +260,8 @@ class MazeBaseModel(nn.Module):
 
             epoch_duration = time.time() - epoch_start  # seconds
             epoch_time_minutes = round(epoch_duration / 60, 2)  # minute
-
+            epoch_valid_targets = running_valid_targets
+            
             self._monitor_training(
                 epoch=epoch,
                 num_epochs=num_epochs,
@@ -341,7 +354,8 @@ class MazeBaseModel(nn.Module):
                     writer.writerow([
                         "model_name", "epoch", "train_loss", "train_loss_dir", "train_loss_exit",
                         "val_loss", "train_acc", "val_acc",
-                        "timestamp", "time_per_step", "cpu_load", "gpu_load", "ram_usage"
+                        "timestamp", "time_per_step", "cpu_load", "gpu_load", "ram_usage",
+                        "exit_weight", "valid_targets"
                     ])
                 writer.writerow([
                     self.model_name, epoch + 1,
@@ -349,7 +363,9 @@ class MazeBaseModel(nn.Module):
                     validation_loss,
                     training_accuracy, validation_accuracy,
                     time.time(), time_per_step,
-                    cpu_load, gpu_load, ram_usage
+                    cpu_load, gpu_load, ram_usage,
+                    self.exit_weight,  # <-- you must store self.exit_weight at model creation
+                    epoch_valid_targets
                 ])
         # Load or initialize existing JSON list
         if os.path.exists(LOSS_JSON_FILE):
