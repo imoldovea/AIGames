@@ -47,18 +47,23 @@ app.layout = html.Div([
     dcc.Graph(id="accuracy-graph"),
     dcc.Graph(id="validation-accuracy-graph"),
     dcc.Graph(id="time-per-step-graph"),
+    dcc.Graph(id="exit-weight-graph"),  # New graph
     dcc.Interval(id="interval-component", interval=3000, n_intervals=0)
 ])
 
 
+# Update the callback to include exit weight
 @app.callback(
     Output("training-loss-graph", "figure"),
     Output("validation-loss-graph", "figure"),
     Output("accuracy-graph", "figure"),
     Output("validation-accuracy-graph", "figure"),
     Output("time-per-step-graph", "figure"),
+    Output("exit-weight-graph", "figure"),  # New output
     Input("interval-component", "n_intervals")
 )
+
+
 def update_graphs(n):
     df = load_loss_data()
     if df.empty or 'model_name' not in df.columns:
@@ -130,7 +135,28 @@ def update_graphs(n):
             )
         )
 
-    return fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step
+    # Add new exit weight figure
+    fig_exit_weight = px.line(
+        df,
+        x='epoch',
+        y='exit_weight',
+        color='model_name',
+        line_dash='model_name',
+        symbol='model_name',
+        markers=True,
+        title="Exit Weight per Epoch"
+    )
+    fig_exit_weight.update_layout(
+        xaxis_title="Epoch",
+        yaxis_title="Exit Weight",
+        showlegend=True,
+        legend=dict(
+            x=1.02,
+            y=1,
+            traceorder="normal"
+
+
+    return fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step, fig_exit_weight
 
 
 if __name__ == '__main__':

@@ -29,6 +29,7 @@ TRAINING_PROGRESS_PNG = "training_progress.png"
 LOSS_FILE = os.path.join(OUTPUT, "loss_data.csv")
 LOSS_JSON_FILE = os.path.join(OUTPUT, "loss_data.json")
 
+
 class MazeBaseModel(nn.Module):
     """
     Base model for solving mazes using PyTorch.
@@ -161,7 +162,7 @@ class MazeBaseModel(nn.Module):
                     # Enable automatic mixed precision context for faster GPU training and reduced memory usage
                     with torch.amp.autocast(device_type='cuda'):
                         outputs_dir, outputs_exit = self.forward(inputs)
-                        loss, correct_batch, total_batch = self._compute_dual_head_loss_and_accuracy(
+                        loss, correct_batch, total_batch, loss_dir_value, loss_exit_value = self._compute_dual_head_loss_and_accuracy(
                             outputs_dir, outputs_exit, target_actions,
                             criterion_ce, criterion_bce, device
                         )
@@ -171,7 +172,7 @@ class MazeBaseModel(nn.Module):
                         running_loss += loss.item() * inputs.size(0)
                 else:
                     outputs_dir, outputs_exit = self.forward(inputs)
-                    loss, correct_batch, total_batch = self._compute_dual_head_loss_and_accuracy(
+                    loss, correct_batch, total_batch, loss_dir_value, loss_exit_value = self._compute_dual_head_loss_and_accuracy(
                         outputs_dir, outputs_exit, target_actions,
                         criterion_ce, criterion_bce, device
                     )
@@ -212,14 +213,18 @@ class MazeBaseModel(nn.Module):
                     # Standard optimizer step
                     optimizer.step()
 
-                #Per-batch logging every 10 iterations
+                # Per-batch logging every 10 iterations
                 if iteration % 10 == 0:
                     grad_norm = sum((p.grad.norm().item() ** 2 for p in self.parameters() if p.grad is not None)) ** 0.5
                     logging.debug(
-                        f"Epoch {epoch + 1} | Batch {iteration + 1} | Loss: {loss.item():.4f} | GradNorm: {grad_norm:.4f}")
+                        f"Epoch {epoch + 1} | Batch {iteration + 1} | Loss: {loss.item():.4f} "
+                        f"| DirLoss: {loss_dir_value:.4f} | ExitLoss: {loss_exit_value:.4f} | GradNorm: {grad_norm:.4f}"
+                    )
                     if tensorboard_writer:
                         step = epoch * len(dataloader) + iteration
-                        tensorboard_writer.add_scalar("BatchLoss/train", loss.item(), step)
+                        tensorboard_writer.add_scalar("BatchLoss/train_total", loss.item(), step)
+                        tensorboard_writer.add_scalar("BatchLoss/train_dir_only", loss_dir_value, step)
+                        tensorboard_writer.add_scalar("BatchLoss/train_exit_only", loss_exit_value, step)
                         tensorboard_writer.add_scalar("GradientNorm/train", grad_norm, step)
 
             epoch_loss = running_loss / len(dataloader.dataset)
@@ -244,9 +249,10 @@ class MazeBaseModel(nn.Module):
                 validation_loss=validation_loss,
                 training_accuracy=training_accuracy,
                 validation_accuracy=validation_accuracy,
-                # compute execution time in minutes, with 2 decimals
-                time_per_step=epoch_time_minutes,  # minutes per step
+                time_per_step=epoch_time_minutes,
                 tensorboard_writer=tensorboard_writer,
+                loss_dir_avg=epoch_loss_dir,  # <--- NEW
+                loss_exit_avg=epoch_loss_exit,  # <--- NEW
             )
 
             current_lr = scheduler.get_last_lr()[0]
@@ -287,24 +293,29 @@ class MazeBaseModel(nn.Module):
         targets_flat = target_actions.contiguous().view(-1)
 
         direction_mask = (targets_flat != -100) & (targets_flat < 4)
-
         valid_mask = targets_flat != -100
         exit_target = (targets_flat == 4).float()
 
+        # Individual losses
         loss_dir = criterion_ce(dir_flat[direction_mask], targets_flat[direction_mask])
         loss_exit = criterion_bce(exit_flat[valid_mask], exit_target[valid_mask])
+
         exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
-        loss = loss_dir + exit_weight * loss_exit
+        total_loss = loss_dir + exit_weight * loss_exit
 
         _, predicted = torch.max(dir_flat, dim=1)
         correct = (predicted[valid_mask] == targets_flat[valid_mask]).sum().item()
         total = valid_mask.sum().item()
 
-        return loss, correct, total
+        return total_loss, correct, total, loss_dir.item(), loss_exit.item()
 
-    def _monitor_training(self, epoch, num_epochs, epoch_loss, scheduler, validation_loss=0,
-                          training_accuracy=0, validation_accuracy=0,
-                          time_per_step=0., tensorboard_writer=None):
+    def _monitor_training(
+            self,
+            epoch, num_epochs, epoch_loss, scheduler,
+            validation_loss=0, training_accuracy=0, validation_accuracy=0,
+            time_per_step=0., tensorboard_writer=None,
+            loss_dir_avg=0., loss_exit_avg=0.  # <--- NEW
+    ):
         # Retrieve actual resource usage
         cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
 
@@ -320,13 +331,18 @@ class MazeBaseModel(nn.Module):
                 writer = csv.writer(f)
                 if write_header:
                     writer.writerow([
-                        "model_name", "epoch", "train_loss", "val_loss",
-                        "train_acc", "val_acc", "timestamp", "time_per_step",
-                        "cpu_load", "gpu_load", "ram_usage"
+                        "model_name", "epoch", "train_loss", "train_loss_dir", "train_loss_exit",
+                        "val_loss", "train_acc", "val_acc",
+                        "timestamp", "time_per_step", "cpu_load", "gpu_load", "ram_usage"
                     ])
-                writer.writerow([self.model_name, epoch + 1, epoch_loss, validation_loss,
-                                 training_accuracy, validation_accuracy, time.time(), time_per_step,
-                                 cpu_load, gpu_load, ram_usage])
+                writer.writerow([
+                    self.model_name, epoch + 1,
+                    epoch_loss, loss_dir_avg, loss_exit_avg,
+                    validation_loss,
+                    training_accuracy, validation_accuracy,
+                    time.time(), time_per_step,
+                    cpu_load, gpu_load, ram_usage
+                ])
         # Load or initialize existing JSON list
         if os.path.exists(LOSS_JSON_FILE):
             with open(LOSS_JSON_FILE, "r") as jf:

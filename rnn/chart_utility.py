@@ -1,19 +1,20 @@
 # chart_utility.py
 
-import cv2
 import io
+import os
+import subprocess
+import webbrowser
+from configparser import ConfigParser
+
+import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import plotly.graph_objs as go
 import seaborn as sns
-import subprocess
 import torch
 import torch.onnx
-import webbrowser
 from PIL import Image
-from configparser import ConfigParser
 from matplotlib.backends.backend_pdf import PdfPages
 from torch.utils.tensorboard import SummaryWriter
 from torchviz import make_dot
@@ -36,8 +37,6 @@ import pandas as pd
 
 # Load the loss data
 
-
-# Prepare plot with separate lines per model
 def save_latest_loss_chart():
     LOSS_CHART = f"{OUTPUT}loss_chart.html"
 
@@ -47,12 +46,17 @@ def save_latest_loss_chart():
     df = pd.read_csv(LOSS_FILE)
     df['time_per_step'] = (pd.to_numeric(df['time_per_step'], errors='coerce') / 60).round(0)
 
+    # Ensure epoch is numeric and properly formatted
+    df['epoch'] = pd.to_numeric(df['epoch'], errors='coerce')
+
     fig = make_subplots(
-        rows=5, cols=1, shared_xaxes=True, vertical_spacing=0.05,
+        rows=6, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.05,
         subplot_titles=[
             "Training Loss", "Validation Loss",
             "Training Accuracy %", "Validation Accuracy %",
-            "Time per Step (minutes)"
+            "Time per Step (minutes)", "Exit Weight"
         ]
     )
 
@@ -63,7 +67,8 @@ def save_latest_loss_chart():
         ("val_loss", "Val Loss"),
         ("train_acc", "Train Accuracy"),
         ("val_acc", "Val Accuracy"),
-        ("time_per_step", "Time per Step")
+        ("time_per_step", "Time per Step"),
+        ("exit_weight", "Exit Weight")
     ]
 
     for idx, (metric_key, metric_title) in enumerate(metrics):
@@ -79,18 +84,29 @@ def save_latest_loss_chart():
                 showlegend=True
             ), row=idx + 1, col=1)
 
+        # Update x-axis for each subplot
+        fig.update_xaxes(
+            title_text="Epoch",
+            dtick=1,  # Set tick interval to 1
+            tick0=0,  # Start ticks at 0
+            showgrid=True,
+            row=idx + 1,
+            col=1
+        )
         fig.update_yaxes(title_text=metric_title, row=idx + 1, col=1)
 
     fig.update_layout(
-        height=1400,
+        height=1600,
         width=1000,
         title_text="Latest Loss Chart (Per Model)",
         legend_tracegroupgap=160,
-        legend_title="Model Type"
+        legend_title="Model Type",
+        showlegend=True
     )
 
     fig.write_html(LOSS_CHART, auto_open=False)
     webbrowser.open(f"file://{os.path.abspath(LOSS_CHART)}")
+
 
 def save_neural_network_diagram(models, output_dir="output/"):
     """
@@ -242,7 +258,9 @@ def visualize_model_weights(models, output_folder=OUTPUT, base_title="Model Diag
 
     logging.info(f"Saved model diagrams to: {pdf_filename}")
 
-def visualize_model_activations(all_activations, output_folder = OUTPUT, model_name = "Mode Name", video_filename = "recurrent_activations_movie.mp4", fps = 25):
+
+def visualize_model_activations(all_activations, output_folder=OUTPUT, model_name="Mode Name",
+                                video_filename="recurrent_activations_movie.mp4", fps=25):
     """
     Generates a video showing model activations over time.
 
@@ -261,7 +279,7 @@ def visualize_model_activations(all_activations, output_folder = OUTPUT, model_n
     fig, ax = plt.subplots()
     frames = []
 
-    for activations in all_activations: #loop in activations for all mazes
+    for activations in all_activations:  # loop in activations for all mazes
         # Loop over activations to generate frames.
         for act in activations:
             # Clear the previous image.
