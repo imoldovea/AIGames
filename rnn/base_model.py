@@ -141,6 +141,8 @@ class MazeBaseModel(nn.Module):
 
         for epoch in range(num_epochs):
             running_loss = 0.0
+            running_loss_dir = 0.0
+            running_loss_exit = 0.0
             correct = 0
             total = 0
 
@@ -227,7 +229,13 @@ class MazeBaseModel(nn.Module):
                         tensorboard_writer.add_scalar("BatchLoss/train_exit_only", loss_exit_value, step)
                         tensorboard_writer.add_scalar("GradientNorm/train", grad_norm, step)
 
+                running_loss += loss.item() * inputs.size(0)
+                running_loss_dir += loss_dir_value * inputs.size(0)
+                running_loss_exit += loss_exit_value * inputs.size(0)
+
             epoch_loss = running_loss / len(dataloader.dataset)
+            epoch_loss_dir = running_loss_dir / len(dataloader.dataset)
+            epoch_loss_exit = running_loss_exit / len(dataloader.dataset)
             training_accuracy = correct / total if total > 0 else 0.0
 
             # Validate model (using val_loader with similar reshaping steps)...
