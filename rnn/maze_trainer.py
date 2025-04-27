@@ -433,8 +433,8 @@ class RNN2MazeTrainer:
                 local_context = maze.context_map.get(current_pos, [WALL] * 4)
 
                 # Normalize inputs
-                row_offset = (current_pos[0] - start_pos[0])
-                col_offset = (current_pos[1] - start_pos[1])
+                row_offset = (current_pos[0] - start_position[0])
+                col_offset = (current_pos[1] - start_position[1])
                 norm_row = row_offset / (maze.rows - 1)  # normalize to [-1,1] based on maze size
                 norm_col = col_offset / (maze.cols - 1)
                 relative_position = (norm_row, norm_col)
