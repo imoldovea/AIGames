@@ -153,8 +153,8 @@ def update_graphs(n):
         legend=dict(
             x=1.02,
             y=1,
-            traceorder="normal"
-
+            traceorder="normal")
+    )
 
     return fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step, fig_exit_weight
 
