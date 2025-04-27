@@ -128,12 +128,14 @@ class MazeTrainingDataset(Dataset):
     def __getitem__(self, idx):
         return self.samples[idx]
 
+
 class ValidationDataset(Dataset):
     """
     Wraps either:
       A) pre-windowed List[ (inputs_np, targets_np) ],
       B) raw sequences to be windowed exactly like MazeTrainingDataset does.
     """
+
     def __init__(self, data):
         if not data:
             raise ValueError("Validation dataset is empty.")
@@ -222,7 +224,6 @@ class CurriculumSampler(Sampler):
     def set_epoch(self, epoch):
         self.current_epoch = epoch
 
-
     def __iter__(self):
         # Determine how many difficulty phases to include this epoch
         phases_unlocked = min(self.phase_count, (self.current_epoch // self.unlock_every) + 1)
@@ -233,6 +234,7 @@ class CurriculumSampler(Sampler):
 
     def __len__(self):
         return self.num_samples
+
 
 class RollingSubsetSampler(Sampler):
     """
@@ -253,6 +255,7 @@ class RollingSubsetSampler(Sampler):
         fraction (float): The fraction of indices to replace in each iteration.
                           Must be between 0 and 1. Defaults to 0.1 (10%).
     """
+
     def __init__(self, dataset, fraction=0.1):
         self.dataset = dataset
         self.total_indices = list(range(len(dataset)))
@@ -317,8 +320,8 @@ class RNN2MazeTrainer:
                 "Training samples must be at least 10 "
                 "Please adjust the training_samples parameter in the config file.")
 
-        self.training_mazes = self._load_and_process_training_mazes(training_file_path,training_samples)
-        self.validation_mazes = self._load_and_process_training_mazes(validation_file_path,training_samples//10)
+        self.training_mazes = self._load_and_process_training_mazes(training_file_path, training_samples)
+        self.validation_mazes = self._load_and_process_training_mazes(validation_file_path, training_samples // 10)
 
     @profile_method(output_file=f"load_mazes_profile")
     def _load_and_process_training_mazes(self, path, training_samples):
@@ -544,6 +547,7 @@ class RNN2MazeTrainer:
                 context_map[(r, c)] = self._compute_local_context(maze, (r, c), directions)
         return context_map
 
+
 # -------------------------------
 # Model Training Function
 # -------------------------------
@@ -658,6 +662,7 @@ def train_models(allowed_models=None):
     clean_outupt_folder()
     logger = logging.getLogger(__name__)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logging.info(f"Using device: {device}")
     summary_data = []  # traning metadata
 
     # Load dataset
@@ -766,4 +771,3 @@ def train_models(allowed_models=None):
     logging.info(f"Saved model training summary to {summary_csv} and {summary_json}")
 
     return trained_models
-
