@@ -15,6 +15,7 @@ from typing import Optional, Callable, Any, TypeVar
 
 import cv2
 import flask.cli
+import h5py
 import numpy as np
 from PIL import Image
 from fpdf import FPDF
