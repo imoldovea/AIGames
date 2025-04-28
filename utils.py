@@ -1,23 +1,24 @@
 import cProfile
-import cv2
-import flask.cli
 import glob
 import io
 import json
 import logging
-import numpy as np
 import os
 import pickle
 import pstats
 import tempfile
 import traceback
-from PIL import Image
 from configparser import ConfigParser
 from datetime import datetime
-from fpdf import FPDF
 from functools import wraps
 from multiprocessing import Process
 from typing import Optional, Callable, Any, TypeVar
+
+import cv2
+import flask.cli
+import numpy as np
+from PIL import Image
+from fpdf import FPDF
 
 T = TypeVar('T', bound=Callable[..., Any])  # *new* Define T as a type variable for use in type annotations
 
@@ -409,6 +410,8 @@ def load_mazes(file_path="input/mazes.pkl"):
     try:
         with open(file_path, 'rb') as f:
             mazes = pickle.load(f)
+        limit = config.getint('DEFAUT', 'training_samples', fallback=1000000)
+        # mazes = mazes[:limit]
         logging.info(f"Loaded {len(mazes)} mazes.")
         return mazes
     except Exception as e:
@@ -416,8 +419,8 @@ def load_mazes(file_path="input/mazes.pkl"):
 
 if __name__ == "__main__":
     # mazes, count = load_mazes("input/training_mazes.pkl")
-    mazes, count = load_mazes("input/mazes.pkl")
-    print(f"Loaded {count} training mazes.")
+    mazes = load_mazes("input/training_mazes.pkl")
+    print(f"Loaded {len(mazes)} training mazes.")
     """
     Loads mazes from a numpy file.
 

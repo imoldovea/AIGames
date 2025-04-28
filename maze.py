@@ -693,7 +693,7 @@ def run_maze():
         # Iterate through all the maze matrices and print each one
         for idx, maze in enumerate(mazes):
             # Create a Maze object from the first maze matrix
-            maze_obj = Maze(maze)
+            maze_obj = Maze(maze, idx)
             print(f"Maze {idx}:\n{maze_obj.get_maze_as_text()}")
 
             # Optionally, set an exit if you know where it should be (e.g., bottom right corner)

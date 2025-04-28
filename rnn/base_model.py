@@ -272,8 +272,10 @@ class MazeBaseModel(nn.Module):
                 validation_accuracy=validation_accuracy,
                 time_per_step=epoch_time_minutes,
                 tensorboard_writer=tensorboard_writer,
-                loss_dir_avg=epoch_loss_dir,  # <--- NEW
-                loss_exit_avg=epoch_loss_exit,  # <--- NEW
+                loss_dir_avg=epoch_loss_dir,
+                loss_exit_avg=epoch_loss_exit,
+                valid_targets=epoch_valid_targets,
+                exit_weight=self.exit_weight
             )
 
             current_lr = scheduler.get_last_lr()[0]
@@ -335,8 +337,8 @@ class MazeBaseModel(nn.Module):
             epoch, num_epochs, epoch_loss, scheduler,
             validation_loss=0, training_accuracy=0, validation_accuracy=0,
             time_per_step=0., tensorboard_writer=None,
-            loss_dir_avg=0., loss_exit_avg=0.  # <--- NEW
-    ):
+            loss_dir_avg=0., loss_exit_avg=0.,
+            valid_targets=None, exit_weight=None):
         # Retrieve actual resource usage
         cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
 
@@ -364,9 +366,9 @@ class MazeBaseModel(nn.Module):
                     training_accuracy, validation_accuracy,
                     time.time(), time_per_step,
                     cpu_load, gpu_load, ram_usage,
-                    self.exit_weight,  # <-- you must store self.exit_weight at model creation
-                    epoch_valid_targets
+                    exit_weight, valid_targets
                 ])
+
         # Load or initialize existing JSON list
         if os.path.exists(LOSS_JSON_FILE):
             with open(LOSS_JSON_FILE, "r") as jf:
