@@ -267,17 +267,24 @@ def generate(filename, number, solve=False):
 
     min_size = config.getint("MAZE", "min_size")
     max_size = config.getint("MAZE", "max_size")
-    mazes = []
+    count = 0
+    file_path = os.path.join(OUTPUT_FOLDER, filename)
 
-    for i in tqdm.trange(number, desc="Generating mazes"):
-        if i > 0 and i % 1000 == 0:
-            gc.collect()
-        maze = generate_single_maze(min_size, max_size, solve, i)
-        if maze is not None:
-            mazes.append(maze)
-
-    save_mazes_hdf5(os.path.join(OUTPUT_FOLDER, filename), mazes)
-    logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
+    with h5py.File(file_path, 'w') as h5file:
+        for i in tqdm.trange(number, desc="Generating mazes"):
+            if i > 0 and i % 1000 == 0:
+                gc.collect()
+            maze = generate_single_maze(min_size, max_size, solve, i)
+            if maze is not None:
+                maze_group = h5file.create_group(f"maze_{i}")
+                maze_group.create_dataset('grid', data=maze.grid, compression="gzip")
+                maze_group.attrs['index'] = maze.index
+                maze_group.attrs['width'] = maze.width
+                maze_group.attrs['height'] = maze.height
+                count += 1
+                if maze._solution is not None:
+                    maze_group.create_dataset('solution', data=np.array(maze._solution))
+    logging.info(f"Saved {count} mazes to {OUTPUT_FOLDER}/{filename}")
 
 def generate_single_maze(min_size, max_size, solve, index):
     # Select random dimensions
