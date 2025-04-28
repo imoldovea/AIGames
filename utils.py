@@ -4,7 +4,6 @@ import io
 import json
 import logging
 import os
-import pickle
 import pstats
 import tempfile
 import traceback
@@ -105,6 +104,13 @@ def clean_outupt_folder():
 
         # Remove /exit subfolder and its contents if exist
         exit_folder = os.path.join(OUTPUT, "exit")
+        if os.path.exists(exit_folder):
+            for filename in glob.glob(os.path.join(exit_folder, "*")):
+                os.remove(filename)
+            os.rmdir(exit_folder)
+
+        # Remove .wandb subfolder and its contents if exist
+        exit_folder = os.path.join(OUTPUT, "wandb")
         if os.path.exists(exit_folder):
             for filename in glob.glob(os.path.join(exit_folder, "*")):
                 os.remove(filename)
@@ -408,12 +414,17 @@ def load_mazes(file_path="input/mazes.pkl"):
         list: A list of maze matrices.
     """
     try:
-        with open(file_path, 'rb') as f:
-            mazes = pickle.load(f)
-        limit = config.getint('DEFAUT', 'training_samples', fallback=1000000)
-        # mazes = mazes[:limit]
-        logging.info(f"Loaded {len(mazes)} mazes.")
+        mazes = []
+        with h5py.File(file_path, 'r') as f:
+            for maze_name in f.keys():
+                grid = f[maze_name]['grid'][:]
+                mazes.append(grid)
+
+        limit = config.getint('DEFAULT', 'training_samples', fallback=1000000)
+        mazes = mazes[:limit]
+        logging.info(f"Loaded {len(mazes)} mazes from {file_path}.")
         return mazes
+
     except Exception as e:
         raise FileNotFoundError(f"Could not load mazes from {file_path}: {e}")
 

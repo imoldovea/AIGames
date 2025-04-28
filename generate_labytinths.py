@@ -6,6 +6,7 @@ import pickle
 import random
 from configparser import ConfigParser
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
@@ -195,6 +196,17 @@ def add_loops(maze):
     return maze
 
 
+def save_mazes_hdf5(file_path, mazes):
+    with h5py.File(file_path, 'w') as h5file:
+        for idx, maze in enumerate(mazes):
+            maze_group = h5file.create_group(f"maze_{idx}")
+            maze_group.create_dataset('grid', data=maze.grid)  # Save the maze grid
+            maze_group.attrs['index'] = maze.index
+            maze_group.attrs['width'] = maze.width
+            maze_group.attrs['height'] = maze.height
+            if maze.solution is not None:
+                maze_group.create_dataset('solution', data=np.array(maze.solution))
+
 def save_mazes(folder, filename, mazes):
     if os.path.exists(os.path.join(OUTPUT_FOLDER, filename)):
         os.remove(os.path.join(OUTPUT_FOLDER, filename))
@@ -264,9 +276,8 @@ def generate(filename, number, solve=False):
         if maze is not None:
             mazes.append(maze)
 
-    save_mazes(OUTPUT_FOLDER, filename, mazes)
+    save_mazes_hdf5(os.path.join(OUTPUT_FOLDER, filename), mazes)
     logging.info(f"Saved {len(mazes)} mazes to {OUTPUT_FOLDER}/{filename}")
-
 
 def generate_single_maze(min_size, max_size, solve, index):
     # Select random dimensions
@@ -302,9 +313,9 @@ def main():
         os.makedirs(OUTPUT_FOLDER)
         logging.info(f"Created output directory: {OUTPUT_FOLDER}")
 
-    mazes = config.get("FILES", "MAZES", fallback="mazes.pkl")
-    training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.pkl")
-    validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.pkl")
+    mazes = config.get("FILES", "MAZES", fallback="mazes.h5")
+    training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.h5")
+    validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.h5")
 
     generate(filename=training_mazes, number=num_mazes, solve=True)
     generate(filename=validation_mazes, number=num_mazes // 10, solve=True)
