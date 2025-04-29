@@ -417,10 +417,14 @@ def load_mazes(file_path="input/mazes.h5"):
     """
     try:
         mazes = []
+        total_mazes = len(list(f.keys()))
         with h5py.File(file_path, 'r') as f:
-            for maze_name in f.keys():
+            for i, maze_name in enumerate(f.keys()):
                 grid = f[maze_name]['grid'][:]
                 mazes.append(grid)
+                if i % 1000 == 0:
+                    print(f"\rLoading mazes: {i}/{total_mazes} ({(i / total_mazes) * 100:.1f}%)", end="", flush=True)
+            print(f"\rLoading mazes: {total_mazes}/{total_mazes} (100%)")
 
         limit = config.getint('DEFAULT', 'training_samples', fallback=1000000)
         mazes = mazes[:limit]
