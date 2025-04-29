@@ -3,8 +3,6 @@ import configparser
 import json
 import logging
 
-import numpy as np
-
 from llm.gpt_factory import GPTFactory
 from maze import Maze
 from maze_solver import MazeSolver
@@ -80,7 +78,7 @@ class LLMMazeSolver(MazeSolver):
     def solve(self):
         provider = config.get('LLM', 'provider')
 
-        max_steps = config.getint('SOLVER', 'max_steps', fallback=max_steps)
+        max_steps = config.getint('SOLVER', 'max_steps', fallback=20)
         if config.getboolean('DEFAULT', 'development_mode'):
             max_steps = 3
             logging.warning("Development mode is enabled. Setting max_steps to 3.")
@@ -109,26 +107,22 @@ class LLMMazeSolver(MazeSolver):
             prompt = self._convert_json_to_prompt(payload)
             logging.info(f"Prompt: {prompt}")
             response = llm_model.generate_response(prompt)
+            logging.info(f"LLM response: {response}")
             direction = self._process_llm_response(response)
             if direction:
                 move = ACTION_TO_DIRECTION[direction]
                 new_position = (current_position[0] + move[0], current_position[1] + move[1])
-                if self.maze.is_valid_move(new_position):
+                if self.maze.can_move(current_position, move):
                     self.maze.move(new_position)
                     current_position = new_position
                     path.append(current_position)
                     logging.info(f"Moved {direction} to {current_position}")
                 else:
-                    # logging.warning("Invalid move")
-                    resp = llm_model.generate_response(
-                        "Not a valid move . You can only move in a direction marked as 'open' by the local context and not in a direction marked with 'wall'."
-                    )
-                    logging.warning(f"Invalid response: {resp}")
+                    logging.warning(f"Invalid move attempted towards {direction}. Retrying...")
+                    self.maze.print_local_context(current_position)
+                current_position = self.maze.current_position
             else:
-                resp = llm_model.generate_response(
-                    "Not a valid response. Respond with ONLY one word - either: north, south, east, or west. Do not include any other text. Wait for the next prompt."
-                )
-                logging.warning(f"Invalid response: {resp}")
+                logging.warning(f"Invalid response: {response} Retrying...")
 
             if self.maze.at_exit():
                 logging.info(f"Exit found at position: {current_position}.")
@@ -142,37 +136,15 @@ class LLMMazeSolver(MazeSolver):
         return path
 
     def _compute_local_context(self, maze, position, directions):
-        """
-        Computes the local context for the given position in the maze.
-
-        Args:
-            maze (Maze): Maze object with .grid attribute (2D numpy array)
-            position (tuple): (row, col) position in the maze.
-            directions (list): List of (dr, dc) direction offsets.
-
-        Returns:
-            list: A list of 4 string labels for the surrounding cells,
-                  mapping WALL (1) to "wall", CORRIDOR (0) to "open", and
-                  OUTSIDE (5) to "outside".
-        """
         r, c = position
-        rows, cols = maze.grid.shape
-        dr_dc = np.array(directions)
-        positions = dr_dc + np.array([r, c])  # shape: (4, 2)
+        context = []
 
-        in_bounds = ((positions[:, 0] >= 0) & (positions[:, 0] < rows) &
-                     (positions[:, 1] >= 0) & (positions[:, 1] < cols))
-
-        clamped = np.clip(positions, [0, 0], [rows - 1, cols - 1])
-        neighbor_vals = maze.grid[clamped[:, 0], clamped[:, 1]]
-        context = np.where(in_bounds, neighbor_vals, OUTSIDE).tolist()
-
-        mapping = {
-            WALL: "wall",
-            CORRIDOR: "open",
-            OUTSIDE: "outside"
-        }
-        return [mapping.get(value, "unknown") for value in context]
+        for dr, dc in directions:
+            if maze.can_move(position, (dr, dc)):
+                context.append("open")
+            else:
+                context.append("wall")
+        return context
 
     def _convert_json_to_prompt(self, js: json) -> str:
         """
