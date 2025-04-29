@@ -416,18 +416,15 @@ def load_mazes(file_path="input/mazes.h5"):
         list: A list of maze matrices.
     """
     try:
+        limit = config.getint('DEFAULT', 'training_samples', fallback=1000000)
         mazes = []
-        total_mazes = len(list(f.keys()))
         with h5py.File(file_path, 'r') as f:
+            total_mazes = len(list(f.keys()))
+            logging.info(f"Total mazes in {file_path}: {total_mazes}. Loading up to {limit} mazes.")
             for i, maze_name in enumerate(f.keys()):
                 grid = f[maze_name]['grid'][:]
                 mazes.append(grid)
-                if i % 1000 == 0:
-                    print(f"\rLoading mazes: {i}/{total_mazes} ({(i / total_mazes) * 100:.1f}%)", end="", flush=True)
-            print(f"\rLoading mazes: {total_mazes}/{total_mazes} (100%)")
 
-        limit = config.getint('DEFAULT', 'training_samples', fallback=1000000)
-        mazes = mazes[:limit]
         logging.info(f"Loaded {len(mazes)} mazes from {file_path}.")
         return mazes
 
@@ -438,12 +435,3 @@ if __name__ == "__main__":
     # mazes, count = load_mazes("input/training_mazes.pkl")
     mazes = load_mazes("input/training_mazes.h5")
     print(f"Loaded {len(mazes)} training mazes.")
-    """
-    Loads mazes from a numpy file.
-
-    Args:
-        file_path (str): Path to the numpy file containing mazes.
-
-    Returns:
-        list: A list of maze matrices.
-    """
