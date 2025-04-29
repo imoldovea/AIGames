@@ -404,7 +404,8 @@ def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
 
     return decorator
 
-def load_mazes(file_path="input/mazes.pkl"):
+
+def load_mazes(file_path="input/mazes.h5"):
     """
     Loads mazes from a numpy file.
 
@@ -431,7 +432,7 @@ def load_mazes(file_path="input/mazes.pkl"):
 
 if __name__ == "__main__":
     # mazes, count = load_mazes("input/training_mazes.pkl")
-    mazes = load_mazes("input/training_mazes.pkl")
+    mazes = load_mazes("input/training_mazes.h5")
     print(f"Loaded {len(mazes)} training mazes.")
     """
     Loads mazes from a numpy file.
