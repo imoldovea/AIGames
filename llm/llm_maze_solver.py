@@ -79,7 +79,12 @@ class LLMMazeSolver(MazeSolver):
 
     def solve(self):
         provider = config.get('LLM', 'provider')
-        max_steps = 10  # for debug only
+
+        max_steps = config.getint('SOLVER', 'max_steps', fallback=max_steps)
+        if config.getboolean('DEFAULT', 'development_mode'):
+            max_steps = 3
+            logging.warning("Development mode is enabled. Setting max_steps to 3.")
+        max_steps = 3  ###to remove
         current_position = self.maze.start_position
         self.maze.move(current_position)
         path = [current_position]
@@ -226,7 +231,7 @@ if __name__ == "__main__":
     # setup logging
     setup_logging()
 
-    mazes_file = f"{INPUT}mazes.pkl"
+    mazes_file = f"{INPUT}mazes.h5"
     mazes = load_mazes(mazes_file)
 
     solved_mazes = []

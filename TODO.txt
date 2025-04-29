@@ -1,12 +1,2 @@
-
- Output[4] = sigmoid neuron: "is this the exit step?"
-
-Then train that neuron with a binary flag:
-
-python
-Copy
-Edit
-is_exit_step = (next_pos == maze.exit)
-
-
+rptate and flip
 - Genetic algorithm learning

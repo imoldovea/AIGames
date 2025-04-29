@@ -408,19 +408,24 @@ def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
     return decorator
 
 
-def load_mazes(file_path="input/mazes.h5"):
+def load_mazes(file_path="input/mazes.h5", samples=0):
     """
     Loads mazes from an HDF5 file into Maze objects, restoring grids, index, and solution if present.
+    
+    Args:
+        file_path (str): Path to the HDF5 file containing maze data
+        samples (int): Number of mazes to load. If 0, loads all mazes.
     """
     try:
-        limit = config.getint('DEFAULT', 'training_samples', fallback=1000000)
         mazes = []
 
         with h5py.File(file_path, 'r') as f:
             maze_keys = list(f.keys())
             total_mazes = len(maze_keys)
-            logging.info(f"Loading up to {min(limit, total_mazes)} mazes from {file_path}...")
-            for maze_name in tqdm(maze_keys[:limit], desc="Loading mazes"):
+            num_mazes = min(samples, total_mazes) if samples > 0 else total_mazes
+            logging.info(f"Loading up to {num_mazes} mazes from {file_path}...")
+
+            for maze_name in tqdm(maze_keys[:num_mazes], desc="Loading mazes"):
                 maze_group = f[maze_name]
                 grid = maze_group['grid'][:]
                 start_row = maze_group.attrs['start_row']

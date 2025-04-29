@@ -326,9 +326,10 @@ def main():
     training_mazes = config.get("FILES", "TRAINING_MAZES", fallback="mazes.h5")
     validation_mazes = config.get("FILES", "VALIDATION_MAZES", fallback="mazes.h5")
 
+    generate(filename=mazes, number=10, solve=False)
     generate(filename=training_mazes, number=num_mazes, solve=True)
     generate(filename=validation_mazes, number=num_mazes // 10, solve=True)
-    generate(filename=mazes, number=10, solve=False)
+
 
 if __name__ == "__main__":
     #setup logging
