@@ -408,13 +408,7 @@ def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
 
 def load_mazes(file_path="input/mazes.h5"):
     """
-    Loads mazes from a numpy file.
-
-    Args:
-        file_path (str): Path to the numpy file containing mazes.
-
-    Returns:
-        list: A list of maze matrices.
+    Loads mazes from an HDF5 file into Maze objects, restoring grids, index, and solution if present.
     """
     try:
         limit = config.getint('DEFAULT', 'training_samples', fallback=1000000)
@@ -425,8 +419,19 @@ def load_mazes(file_path="input/mazes.h5"):
             total_mazes = len(maze_keys)
             logging.info(f"Loading up to {min(limit, total_mazes)} mazes from {file_path}...")
             for maze_name in tqdm(maze_keys[:limit], desc="Loading mazes"):
-                grid = f[maze_name]['grid'][:]
-                mazes.append(grid)
+                maze_group = f[maze_name]
+                grid = maze_group['grid'][:]
+                index = maze_group.attrs.get('index', None)
+
+                maze = Maze(grid, index=index)
+
+                # Optionally load solution
+                if 'solution' in maze_group:
+                    solution_array = maze_group['solution'][:]
+                    solution = [tuple(coord) for coord in solution_array]
+                    maze.set_solution(solution)
+
+                mazes.append(maze)
 
         logging.info(f"Successfully loaded {len(mazes)} mazes from {file_path}")
         return mazes
