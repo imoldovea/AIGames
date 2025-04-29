@@ -356,8 +356,14 @@ class RNN2MazeTrainer:
 
     @staticmethod
     def _load_mazes_safe(file_path):
+        limit = 0  # no limit of mazes to load
+        sampler = config.get('DEFAULT', 'sampler', fallback="None")
+        if sampler != "RollingSubsetSampler":
+            limit = config.getint('DEFAULT', 'training_samples', fallback=0)
+        if config.getboolean("DEFAULT", "development_mode", fallback=False):
+            limit = 20  # only load 20 mazes in development mode
         try:
-            return utils.load_mazes(file_path)
+            return utils.load_mazes(file_path, limit)
         except FileNotFoundError as e:
             logging.error(f"File not found: {file_path}")
             raise FileNotFoundError(f"Could not find the specified file: {file_path}") from e
@@ -696,8 +702,6 @@ def train_models(allowed_models=None):
         sampler = None
     else:
         raise ValueError(f"Invalid sampler option: {sampler_option}")
-    shuffle = sampler is None
-
     shuffle = (sampler is None)
     # DataLoader config
     train_loader = DataLoader(train_ds,
