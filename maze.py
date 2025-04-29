@@ -1,13 +1,10 @@
 import json
 import logging
-import traceback
 from configparser import ConfigParser
 
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-
-from utils import (load_mazes)
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -430,12 +427,16 @@ class Maze:
             self.logger.error("Exit is not connected to the maze border.")
             return False
 
+        # Validate that the exit is connected to at least one corridor
+        neighbors = self.get_neighbors(self.exit)
+        if not any(self.is_corridor(neighbor) for neighbor in neighbors):
+            self.logger.error("Exit is not connected to any corridor.")
+            return False
 
         # Explicit log for successful validation
         return True
 
     def test_solution(self) -> bool:
-
         """
             Validates if the provided solution navigates through valid positions, starts at
             the start position, ends at the exit, and avoids walls.
@@ -677,36 +678,5 @@ class Maze:
         plt.axis("off")
         plt.show()
 
-def run_maze():
-    """
-    Test function that loads an array of mazes from 'input/mazes.npy',
-    creates a Maze object using the first maze in the array, and displays it.
-    """
-    try:
-        # Load mazes
-        load_path = f"{INPUT}/mazes.pkl"
-        mazes = load_mazes(load_path)
-        # with open('input/mazes.pkl', 'rb') as f:
-        #     mazes = pickle.load(f)
-        # logging.info(f"Loaded {len(mazes)} mazes.")
-
-        # Iterate through all the maze matrices and print each one
-        for idx, maze in enumerate(mazes):
-            # Create a Maze object from the first maze matrix
-            maze_obj = Maze(maze, idx)
-            print(f"Maze {idx}:\n{maze_obj.get_maze_as_text()}")
-
-            # Optionally, set an exit if you know where it should be (e.g., bottom right corner)
-            #maze_obj.set_exit((maze_obj.rows - 2, maze_obj.cols - 2))
-            # Display the first maze with the path overlay
-            maze_obj.plot_maze(show_path=True)
-
-            # Optionally, save the first maze as a PNG image
-            #maze_obj.save_maze_as_png("output/test_maze.png", show_path=True)
-
-    except Exception as e:
-        logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
-
-
 if __name__ == '__main__':
-    run_maze()
+    pass
