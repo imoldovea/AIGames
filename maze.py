@@ -308,7 +308,7 @@ class Maze:
             self.current_position = self.path[i]
 
             # Create a partial path up to the current position
-            temp_path = self._solution[:i + 1]
+            temp_path = self.path[:i + 1]
             original_path = self.path
             self.path = temp_path
 
