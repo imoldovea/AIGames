@@ -19,6 +19,7 @@ import h5py
 import numpy as np
 from PIL import Image
 from fpdf import FPDF
+from tqdm import tqdm
 
 T = TypeVar('T', bound=Callable[..., Any])  # *new* Define T as a type variable for use in type annotations
 
@@ -418,14 +419,16 @@ def load_mazes(file_path="input/mazes.h5"):
     try:
         limit = config.getint('DEFAULT', 'training_samples', fallback=1000000)
         mazes = []
+
         with h5py.File(file_path, 'r') as f:
-            total_mazes = len(list(f.keys()))
-            logging.info(f"Total mazes in {file_path}: {total_mazes}. Loading up to {limit} mazes.")
-            for i, maze_name in enumerate(f.keys()):
+            maze_keys = list(f.keys())
+            total_mazes = len(maze_keys)
+            logging.info(f"Loading up to {min(limit, total_mazes)} mazes from {file_path}...")
+            for maze_name in tqdm(maze_keys[:limit], desc="Loading mazes"):
                 grid = f[maze_name]['grid'][:]
                 mazes.append(grid)
 
-        logging.info(f"Loaded {len(mazes)} mazes from {file_path}.")
+        logging.info(f"Successfully loaded {len(mazes)} mazes from {file_path}")
         return mazes
 
     except Exception as e:
