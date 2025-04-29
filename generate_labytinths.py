@@ -281,6 +281,8 @@ def generate(filename, number, solve=False):
                 maze_group.attrs['index'] = maze.index
                 maze_group.attrs['width'] = maze.width
                 maze_group.attrs['height'] = maze.height
+                maze_group.attrs['start_row'] = maze.start_position[0]
+                maze_group.attrs['start_col'] = maze.start_position[1]
                 count += 1
                 if maze._solution is not None:
                     maze_group.create_dataset('solution', data=np.array(maze._solution))

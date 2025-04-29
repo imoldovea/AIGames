@@ -21,6 +21,8 @@ from PIL import Image
 from fpdf import FPDF
 from tqdm import tqdm
 
+from maze import Maze
+
 T = TypeVar('T', bound=Callable[..., Any])  # *new* Define T as a type variable for use in type annotations
 
 PARAMETERS_FILE = "config.properties"
@@ -421,6 +423,9 @@ def load_mazes(file_path="input/mazes.h5"):
             for maze_name in tqdm(maze_keys[:limit], desc="Loading mazes"):
                 maze_group = f[maze_name]
                 grid = maze_group['grid'][:]
+                start_row = maze_group.attrs['start_row']
+                start_col = maze_group.attrs['start_col']
+                grid[start_row, start_col] = 3  # Restore the starting marker!
                 index = maze_group.attrs.get('index', None)
 
                 maze = Maze(grid, index=index)
@@ -431,7 +436,12 @@ def load_mazes(file_path="input/mazes.h5"):
                     solution = [tuple(coord) for coord in solution_array]
                     maze.set_solution(solution)
 
-                mazes.append(maze)
+                maze.animate = False
+                maze.save_movie = False
+                if maze.self_test():
+                    mazes.append(maze)
+                else:
+                    logging.warning(f"Maze {maze_name} is invalid. Skipping.")
 
         logging.info(f"Successfully loaded {len(mazes)} mazes from {file_path}")
         return mazes
