@@ -94,13 +94,14 @@ class LLMMazeSolver(MazeSolver):
         provider = config.get('LLM', 'provider')
         max_steps = config.getint('SOLVER', 'max_steps', fallback=20)
         if config.getboolean('DEFAULT', 'development_mode'):
-            max_steps = 3
-            logging.warning("Development mode is enabled. Setting max_steps to 3.")
+            max_steps = 20
+            logging.warning(f"Development mode is enabled. Setting max_steps to {max_steps}.")
 
         current_position = self.maze.start_position
         self.maze.move(current_position)
         path = [current_position]
         self.steps = 0
+        history = []  # stores 'north', 'south', etc.
 
         llm_model = GPTFactory.create_gpt_model(provider, SYSTEM_PROMPT)
 
@@ -115,7 +116,7 @@ class LLMMazeSolver(MazeSolver):
                 "local_context": local_context_dict,  # Use the dictionary directly
                 "exit_reached": self.maze.at_exit()
             }
-            prompt = self._convert_json_to_prompt(payload)  # Pass the dict payload
+            prompt = self._convert_json_to_prompt(payload, history)  # Pass the dict payload
 
             retries = 0
             move_successful = False
@@ -126,7 +127,7 @@ class LLMMazeSolver(MazeSolver):
                 logging.info(f"LLM response: {response}")
                 direction_name = self._process_llm_response(response)  # Expects "north", "south", etc.
 
-                if direction_name and direction_name in ACTION_TO_DIRECTION:
+                if direction_name in ACTION_TO_DIRECTION:
                     move_vector = ACTION_TO_DIRECTION[direction_name]  # Get the (-1, 0) style vector
 
                     # Compute new position
@@ -138,6 +139,7 @@ class LLMMazeSolver(MazeSolver):
                     if self.maze.can_move(self.maze.current_position, move_vector):
                         self.maze.move(new_position)
                         path.append(new_position)
+                        history.append(direction_name)
                         logging.info(f"Moved {direction_name} to {new_position}")
                         move_successful = True  # Exit retry loop
                     else:
@@ -190,7 +192,7 @@ class LLMMazeSolver(MazeSolver):
                 context[direction_name] = "wall"
         return context  # Returns dict like {"north": "wall", "south": "open", ...}
 
-    def _convert_json_to_prompt(self, js: dict) -> str:
+    def _convert_json_to_prompt(self, js: dict, history: list[str]) -> str:
         """
         Converts the payload dictionary (containing the context dict) to a prompt string.
         Now expects js['local_context'] to be a dictionary.
@@ -203,6 +205,7 @@ class LLMMazeSolver(MazeSolver):
         """
         context_dict = js["local_context"]  # This should now be the dictionary
         exit_reached = js["exit_reached"]
+        history_str = ", ".join(history) if history else "none"
 
         # Basic check to ensure context_dict is actually a dictionary
         if not isinstance(context_dict, dict):
@@ -219,7 +222,9 @@ class LLMMazeSolver(MazeSolver):
             f"- To the east: {context_dict.get('east', 'ERROR')}\n"
             f"- To the west: {context_dict.get('west', 'ERROR')}\n\n"
             f"Have you reached the exit? {exit_reached}\n"
-            "What direction should you move next to reach the exit? "
+            f"Path so far: {history_str}\n\n"
+            "Based on your path and surroundings, using Backtracking, what direction should you move next?\n"
+            "Avoid repeating directions that lead to dead ends."
             "Respond with ONLY one word - either: north, south, east, or west. Do not include any other text."
         )
         return prompt
