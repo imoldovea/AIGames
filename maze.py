@@ -221,6 +221,77 @@ class Maze:
         """
         return self.is_within_bounds(position) and not self.is_wall(position)
 
+    def can_move(self, current_position, move):
+        """
+        Checks if you can move in the given direction from current_position.
+        """
+        r, c = current_position
+        dr, dc = move
+        new_r, new_c = r + dr, c + dc
+        new_position = (new_r, new_c)
+
+        # Check both:
+        if not self.is_within_bounds(new_position):
+            return False
+        if self.is_wall(new_position):
+            return False
+        if self.is_wall(current_position):
+            return False
+        return True
+
+    def print_local_context(self, position):
+        """
+        Prints the local surroundings (north, south, east, west) around the given position
+        to help debug why a move might be invalid.
+        """
+        r, c = position
+        directions = {
+            'north': (r - 1, c),
+            'south': (r + 1, c),
+            'east': (r, c + 1),
+            'west': (r, c - 1),
+        }
+
+        info = []
+        for dir_name, (nr, nc) in directions.items():
+            if self.is_within_bounds((nr, nc)):
+                cell = self.grid[nr, nc]
+                meaning = "corridor" if cell == self.CORRIDOR else "wall"
+                info.append(f"{dir_name.upper()}: {meaning} (value={cell})")
+            else:
+                info.append(f"{dir_name.upper()}: out of bounds")
+        print(f"\nLocal context around {position}:")
+        print("\n".join(info))
+
+    def print_mini_map(self, position, size=1):
+        """
+        Prints a 3x3 (or larger) mini-map centered around the given position.
+
+        Args:
+            position (tuple): (row, column) of the agent.
+            size (int): how far to extend the view from the center. size=1 means 3x3, size=2 means 5x5, etc.
+        """
+        r, c = position
+        mini_map = []
+
+        for dr in range(-size, size + 1):
+            row = []
+            for dc in range(-size, size + 1):
+                nr, nc = r + dr, c + dc
+                if (nr, nc) == position:
+                    row.append('X')  # Current agent position
+                elif not self.is_within_bounds((nr, nc)):
+                    row.append('#')  # Out of bounds
+                else:
+                    if self.grid[nr, nc] == self.WALL:
+                        row.append('1')  # Wall
+                    else:
+                        row.append('0')  # Corridor
+            mini_map.append(' '.join(row))
+
+        print("\nMini Map around position {}:".format(position))
+        print('\n'.join(mini_map))
+
     def reset(self):
         """Reset maze to starting position for each new maze"""
         self.current_position = self.start_position
@@ -380,12 +451,16 @@ class Maze:
             raise ValueError("Solution must be a list of coordinates.")
         # if not self.test_solution():
         #     logging.error("Solution is invalid. No solution set.")
-        else:
-            self._solution = solution
-            self.valid_solution = self.test_solution()
+
+        self._solution = solution
+        self.valid_solution = self.test_solution()
         if self.valid_solution:
             # recompute complexity score
+            self.path = solution  # <- add this line to reuse the same path for visualization
             self._compute_complexity()
+        else:
+            self._solution = []
+            self.valid_solution = False
 
     def self_test(self) -> bool:
         """
