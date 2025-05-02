@@ -43,9 +43,6 @@ class MazeBaseModel(nn.Module):
         self.exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
         # Set up early stopping patience to monitor overfitting
         self.patience = config.getint("DEFAULT", "patience", fallback=5)
-        if config.get("DEFAULT", "sampler", fallback="None") == "CurriculumSampler":
-            self.patience = self.patience * 2
-
 
     def _build_one_hot_target(self, targets_flat, exit_weight):
         """
