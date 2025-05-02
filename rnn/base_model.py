@@ -43,6 +43,9 @@ class MazeBaseModel(nn.Module):
         self.exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
         # Set up early stopping patience to monitor overfitting
         self.patience = config.getint("DEFAULT", "patience", fallback=5)
+        if config.get("DEFAULT", "sampler", fallback="None") == "CurriculumSampler":
+            self.patience = self.patience * 2
+
 
     def _build_one_hot_target(self, targets_flat, exit_weight):
         """
@@ -152,6 +155,8 @@ class MazeBaseModel(nn.Module):
             iterator = tqdm(dataloader, desc=desc, leave=True)
 
             epoch_start = time.time()
+            if hasattr(dataloader.sampler, "set_epoch"):
+                dataloader.sampler.set_epoch(epoch)
             for iteration, batch in enumerate(iterator):
                 # Assume `batch` is a tuple: (inputs, target_actions)
                 #   inputs   : shape (batch_size, seq_len, input_size)

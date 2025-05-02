@@ -271,7 +271,10 @@ class RollingSubsetSampler(Sampler):
 
         # Add harder ones next in line
         available_pool = [i for i in self.total_indices if i not in retained]
-        new_samples = set(available_pool[:num_replace])
+        if len(available_pool) < num_replace:
+            new_samples = set(available_pool)
+        else:
+            new_samples = set(np.random.choice(available_pool, num_replace, replace=False))
 
         self.active_indices = retained | new_samples
         return iter(list(self.active_indices))
@@ -686,7 +689,10 @@ def train_models(allowed_models=None):
 
     # Config flags
     subset_fraction = config.getfloat("DEFAULT", "subset_fraction", fallback=0.1)
-    batch_size = config.getint("DEFAULT", "batch_size", fallback=64)
+    if config.getboolean("DEFAULT", "development_mode", fallback=False):
+        batch_size = 8
+    else:
+        batch_size = config.getint("DEFAULT", "batch_size", fallback=64)
     num_workers = config.getint("DEFAULT", "max_num_workers", fallback=0)
 
     sampler_option = config.get("DEFAULT", "sampler", fallback="None")
@@ -697,7 +703,9 @@ def train_models(allowed_models=None):
         # Ensure subset_fraction is defined before this block
         sampler = RollingSubsetSampler(train_ds, fraction=subset_fraction)
     elif sampler_option == "CurriculumSampler":
-        sampler = CurriculumSampler(train_ds)
+        phase_count = config.getint("DEFAULT", "curriculum_phase_count", fallback=10)
+        unlock_every = config.getint("DEFAULT", "curriculum_unlock_every", fallback=1)
+        sampler = CurriculumSampler(train_ds, phase_count=phase_count, unlock_every_n_epochs=unlock_every)
     elif sampler_option == "None":
         sampler = None
     else:

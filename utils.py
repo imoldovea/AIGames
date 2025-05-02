@@ -113,6 +113,13 @@ def clean_outupt_folder():
                 os.remove(filename)
             os.rmdir(exit_folder)
 
+        # Remove /tensorboard subfolder and its contents if exist
+        exit_folder = os.path.join(OUTPUT, "tesnorboard_data")
+        if os.path.exists(exit_folder):
+            for filename in glob.glob(os.path.join(exit_folder, "*")):
+                os.remove(filename)
+            os.rmdir(exit_folder)
+
         # Remove .wandb subfolder and its contents if exist
         exit_folder = os.path.join(OUTPUT, "wandb")
         if os.path.exists(exit_folder):
