@@ -1,0 +1,1 @@
+tensorboard --logdir output/tensorboard_data --port 6006
