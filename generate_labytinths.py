@@ -85,7 +85,7 @@ def create_maze(width: int, height: int) -> np.ndarray:
     # Ensure all paths are interconnected
     ensure_all_paths_connected(maze)
 
-    #set starting point
+    # set starting point
     maze = find_start(maze, width, height)
 
     # find exit
@@ -104,6 +104,7 @@ def find_start(maze: np.ndarray, width: int, height: int) -> np.ndarray:
         maze[start_y, start_x] = START  # Use `3` to mark the starting position
 
     return maze
+
 
 def find_exit(maze, width, height):
     # Add a single exit (randomly choose any valid cell on the perimeter)
@@ -204,8 +205,12 @@ def save_mazes_hdf5(file_path, mazes):
             maze_group.attrs['index'] = maze.index
             maze_group.attrs['width'] = maze.width
             maze_group.attrs['height'] = maze.height
+            maze_group.attrs['start_row'] = maze.start_position[0]
+            maze_group.attrs['start_col'] = maze.start_position[1]
+
             if maze.solution is not None:
                 maze_group.create_dataset('solution', data=np.array(maze.solution))
+
 
 def save_mazes(folder, filename, mazes):
     if os.path.exists(os.path.join(OUTPUT_FOLDER, filename)):
@@ -214,6 +219,7 @@ def save_mazes(folder, filename, mazes):
 
     with open(folder + '/' + filename, 'wb') as f:
         pickle.dump(mazes, f)
+
 
 def display_maze(maze):
     """
@@ -288,6 +294,7 @@ def generate(filename, number, solve=False):
                     maze_group.create_dataset('solution', data=np.array(maze._solution))
     logging.info(f"Saved {count} mazes to {OUTPUT_FOLDER}/{filename}")
 
+
 def generate_single_maze(min_size, max_size, solve, index):
     # Select random dimensions
     width = random.choice(range(min_size, max_size, 2))
@@ -317,6 +324,7 @@ def generate_single_maze(min_size, max_size, solve, index):
     else:
         return maze
 
+
 def main():
     if not os.path.exists(OUTPUT_FOLDER):
         os.makedirs(OUTPUT_FOLDER)
@@ -332,7 +340,7 @@ def main():
 
 
 if __name__ == "__main__":
-    #setup logging
+    # setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.debug("Logging is configured.")
