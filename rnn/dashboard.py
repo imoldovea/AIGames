@@ -2,12 +2,13 @@
 import logging
 import os
 from configparser import ConfigParser
+from io import BytesIO
 
 import dash
 import pandas as pd
 import plotly.express as px
 from dash import dcc, html, no_update
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 
 # File path to the CSV file
 PARAMETERS_FILE = "config.properties"
@@ -41,16 +42,73 @@ def load_loss_data():
 # Initialize the Dash app
 app = dash.Dash(__name__)
 
-# Dashboard layout with five graphs (added time_per_step)
+# Modify your app layout to include download buttons and a Download component
 app.layout = html.Div([
     html.H1("Neural Network Training Dashboard"),
-    dcc.Graph(id="training-loss-graph"),
-    dcc.Graph(id="validation-loss-graph"),
-    dcc.Graph(id="accuracy-graph"),
-    dcc.Graph(id="validation-accuracy-graph"),
-    dcc.Graph(id="time-per-step-graph"),
-    dcc.Graph(id="exit-weight-graph"),  # New graph
-    dcc.Graph(id="collision-penalty-graph"),
+
+    # First graph with download button
+    html.Div([
+        dcc.Graph(id="training-loss-graph"),
+        html.Button("Download Training Loss", id="btn-download-training-loss", className="download-btn"),
+    ]),
+
+    # Second graph with download button
+    html.Div([
+        dcc.Graph(id="validation-loss-graph"),
+        html.Button("Download Validation Loss", id="btn-download-validation-loss", className="download-btn"),
+    ]),
+
+    # Third graph with download button
+    html.Div([
+        dcc.Graph(id="accuracy-graph"),
+        html.Button("Download Accuracy", id="btn-download-accuracy", className="download-btn"),
+    ]),
+
+    # Fourth graph with download button
+    html.Div([
+        dcc.Graph(id="validation-accuracy-graph"),
+        html.Button("Download Validation Accuracy", id="btn-download-validation-accuracy", className="download-btn"),
+    ]),
+
+    # Fifth graph with download button
+    html.Div([
+        dcc.Graph(id="time-per-step-graph"),
+        html.Button("Download Time per Step", id="btn-download-time-per-step", className="download-btn"),
+    ]),
+
+    # Sixth graph with download button
+    html.Div([
+        dcc.Graph(id="exit-weight-graph"),
+        html.Button("Download Exit Weight", id="btn-download-exit-weight", className="download-btn"),
+    ]),
+
+    # Seventh graph with download button
+    html.Div([
+        dcc.Graph(id="collision-penalty-graph"),
+        html.Button("Download Collision Penalty", id="btn-download-collision-penalty", className="download-btn"),
+    ]),
+
+    # Download all button and save as PNG/CSV options
+    html.Div([
+        html.Button("Download All Charts", id="btn-download-all", className="download-all-btn"),
+        html.Div([
+            dcc.RadioItems(
+                id='download-format',
+                options=[
+                    {'label': 'PNG Image', 'value': 'png'},
+                    {'label': 'CSV Data', 'value': 'csv'}
+                ],
+                value='png',
+                labelStyle={'display': 'inline-block', 'margin-right': '10px'}
+            )
+        ], style={'margin': '10px 0'})
+    ], style={'margin': '20px 0'}),
+
+    # Download component (invisible)
+    dcc.Download(id="download-chart"),
+    dcc.Download(id="download-all-charts"),
+
+    # Interval for updating
     dcc.Interval(id="interval-component", interval=3000, n_intervals=0)
 ])
 
@@ -179,6 +237,149 @@ def update_graphs(n):
     )
 
     return fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step, fig_exit_weight, fig_collision_penalty
+
+
+# Callback for individual chart downloads
+@app.callback(
+    Output("download-chart", "data"),
+    [
+        Input("btn-download-training-loss", "n_clicks"),
+        Input("btn-download-validation-loss", "n_clicks"),
+        Input("btn-download-accuracy", "n_clicks"),
+        Input("btn-download-validation-accuracy", "n_clicks"),
+        Input("btn-download-time-per-step", "n_clicks"),
+        Input("btn-download-exit-weight", "n_clicks"),
+        Input("btn-download-collision-penalty", "n_clicks")
+    ],
+    [
+        State("training-loss-graph", "figure"),
+        State("validation-loss-graph", "figure"),
+        State("accuracy-graph", "figure"),
+        State("validation-accuracy-graph", "figure"),
+        State("time-per-step-graph", "figure"),
+        State("exit-weight-graph", "figure"),
+        State("collision-penalty-graph", "figure"),
+        State("download-format", "value")
+    ],
+    prevent_initial_call=True
+)
+def download_chart(n1, n2, n3, n4, n5, n6, n7,
+                   fig1, fig2, fig3, fig4, fig5, fig6, fig7, format_type):
+    ctx = callback_context
+    if not ctx.triggered:
+        return no_update
+
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    charts = {
+        "btn-download-training-loss": (fig1, "training_loss"),
+        "btn-download-validation-loss": (fig2, "validation_loss"),
+        "btn-download-accuracy": (fig3, "accuracy"),
+        "btn-download-validation-accuracy": (fig4, "validation_accuracy"),
+        "btn-download-time-per-step": (fig5, "time_per_step"),
+        "btn-download-exit-weight": (fig6, "exit_weight"),
+        "btn-download-collision-penalty": (fig7, "collision_penalty")
+    }
+
+    if button_id not in charts:
+        return no_update
+
+    figure, filename_base = charts[button_id]
+
+    if format_type == 'png':
+        # For PNG: export the Plotly figure
+        img_bytes = BytesIO()
+        import plotly.io as pio
+        pio.write_image(figure, img_bytes, format='png')
+        img_bytes.seek(0)
+        return dcc.send_bytes(img_bytes.getvalue(), f"{filename_base}.png")
+
+    elif format_type == 'csv':
+        # For CSV: extract data from the figure and create a CSV
+        df = load_loss_data()  # Re-load the data
+        if df.empty:
+            return no_update
+
+        csv_bytes = BytesIO()
+
+        # Map button to column name
+        column_mapping = {
+            "btn-download-training-loss": "train_loss",
+            "btn-download-validation-loss": "val_loss",
+            "btn-download-accuracy": "train_acc",
+            "btn-download-validation-accuracy": "val_acc",
+            "btn-download-time-per-step": "time_per_step",
+            "btn-download-exit-weight": "exit_weight",
+            "btn-download-collision-penalty": "collision_penalty"
+        }
+
+        # Get relevant columns
+        column = column_mapping.get(button_id)
+        if column:
+            relevant_df = df[['model_name', 'epoch', column]].copy()
+            relevant_df.to_csv(csv_bytes, index=False)
+            csv_bytes.seek(0)
+            return dcc.send_bytes(csv_bytes.getvalue(), f"{filename_base}.csv")
+
+    return no_update
+
+
+# Callback for downloading all charts
+@app.callback(
+    Output("download-all-charts", "data"),
+    Input("btn-download-all", "n_clicks"),
+    [
+        State("download-format", "value"),
+        State("training-loss-graph", "figure"),
+        State("validation-loss-graph", "figure"),
+        State("accuracy-graph", "figure"),
+        State("validation-accuracy-graph", "figure"),
+        State("time-per-step-graph", "figure"),
+        State("exit-weight-graph", "figure"),
+        State("collision-penalty-graph", "figure")
+    ],
+    prevent_initial_call=True
+)
+def download_all_charts(n_clicks, format_type, fig1, fig2, fig3, fig4, fig5, fig6, fig7):
+    if not n_clicks:
+        return no_update
+
+    if format_type == 'png':
+        # For PNG: zip all chart PNGs
+        import io
+        import zipfile
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            figures = [
+                (fig1, "training_loss.png"),
+                (fig2, "validation_loss.png"),
+                (fig3, "accuracy.png"),
+                (fig4, "validation_accuracy.png"),
+                (fig5, "time_per_step.png"),
+                (fig6, "exit_weight.png"),
+                (fig7, "collision_penalty.png")
+            ]
+
+            for fig, filename in figures:
+                img_bytes = BytesIO()
+                import plotly.io as pio
+                pio.write_image(fig, img_bytes, format='png')
+                img_bytes.seek(0)
+                zip_file.writestr(filename, img_bytes.getvalue())
+
+        zip_buffer.seek(0)
+        return dcc.send_bytes(zip_buffer.getvalue(), "all_charts.zip")
+
+    elif format_type == 'csv':
+        # For CSV: send the complete dataset
+        csv_bytes = BytesIO()
+        df = load_loss_data()
+        df.to_csv(csv_bytes, index=False)
+        csv_bytes.seek(0)
+        return dcc.send_bytes(csv_bytes.getvalue(), "training_data.csv")
+
+    return no_update
 
 
 if __name__ == '__main__':

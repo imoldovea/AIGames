@@ -21,3 +21,4 @@ deepseek-ai
 seaborn
 h5py
 tensorboard
+plotly-express
