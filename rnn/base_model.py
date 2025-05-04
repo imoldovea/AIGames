@@ -337,7 +337,7 @@ class MazeBaseModel(nn.Module):
         base_penalty = config.getfloat("DEFAULT", "wall_penalty", fallback=1.0)
         num_epochs = config.getint("DEFAULT", "num_epochs", fallback=10)
         wall_penalty_weight = base_penalty * min(1.0, epoch / num_epochs) if epoch is not None else base_penalty
-        logging.info(f"Wall penalty weight: {wall_penalty_weight}")
+        # logging.info(f"Wall penalty weight: {wall_penalty_weight}")
 
         # Extract the wall context from the input (assumes first 4 features are [N, E, S, W])
         with torch.no_grad():
