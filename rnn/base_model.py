@@ -168,7 +168,7 @@ class MazeBaseModel(nn.Module):
                     with torch.amp.autocast(device_type='cuda'):
                         outputs_dir, outputs_exit = self.forward(inputs)
                         # Compute losses and batch accuracy
-                        loss, correct_batch, total_batch, loss_dir_value, loss_exit_value = self._compute_dual_head_loss_and_accuracy(
+                        loss, correct_batch, total_batch, loss_dir_value, loss_exit_value, collision_penalty = self._compute_dual_head_loss_and_accuracy(
                             outputs_dir, outputs_exit, target_actions,
                             criterion_ce, criterion_bce, device
                         )
@@ -183,7 +183,7 @@ class MazeBaseModel(nn.Module):
                 else:
                     outputs_dir, outputs_exit = self.forward(inputs)
                     # Compute losses and batch accuracy
-                    loss, correct_batch, total_batch, loss_dir_value, loss_exit_value = self._compute_dual_head_loss_and_accuracy(
+                    loss, correct_batch, total_batch, loss_dir_value, loss_exit_value, collision_penalty = self._compute_dual_head_loss_and_accuracy(
                         outputs_dir, outputs_exit, target_actions,
                         criterion_ce, criterion_bce, device
                     )
@@ -242,6 +242,7 @@ class MazeBaseModel(nn.Module):
                         tensorboard_writer.add_scalar("BatchLoss/train_dir_only", loss_dir_value, step)
                         tensorboard_writer.add_scalar("BatchLoss/train_exit_only", loss_exit_value, step)
                         tensorboard_writer.add_scalar("GradientNorm/train", grad_norm, step)
+                        tensorboard_writer.add_scalar("Loss/wall_collision", collision_penalty.item(), epoch)
 
                 running_loss += loss.item() * inputs.size(0)
                 running_loss_dir += loss_dir_value * inputs.size(0)
@@ -277,7 +278,8 @@ class MazeBaseModel(nn.Module):
                 loss_dir_avg=epoch_loss_dir,
                 loss_exit_avg=epoch_loss_exit,
                 valid_targets=epoch_valid_targets,
-                exit_weight=self.exit_weight
+                exit_weight=self.exit_weight,
+                collision_penalty=collision_penalty
             )
 
             current_lr = scheduler.get_last_lr()[0]
@@ -347,7 +349,7 @@ class MazeBaseModel(nn.Module):
         correct = (predicted[valid_mask] == targets_flat[valid_mask]).sum().item()
         total = valid_mask.sum().item()
 
-        return total_loss, correct, total, loss_dir.item(), loss_exit.item()
+        return total_loss, correct, total, loss_dir.item(), loss_exit.item(), collision_penalty
 
     def _monitor_training(
             self,
@@ -355,7 +357,7 @@ class MazeBaseModel(nn.Module):
             validation_loss=0, training_accuracy=0, validation_accuracy=0,
             time_per_step=0., tensorboard_writer=None,
             loss_dir_avg=0., loss_exit_avg=0.,
-            valid_targets=None, exit_weight=None):
+            valid_targets=None, exit_weight=None, collision_penalty=0):
         # Retrieve actual resource usage
         cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
 
@@ -374,7 +376,7 @@ class MazeBaseModel(nn.Module):
                         "model_name", "epoch", "train_loss", "train_loss_dir", "train_loss_exit",
                         "val_loss", "train_acc", "val_acc",
                         "timestamp", "time_per_step", "cpu_load", "gpu_load", "ram_usage",
-                        "exit_weight", "valid_targets"
+                        "exit_weight", "valid_targets", "collision_penalty"
                     ])
                 writer.writerow([
                     self.model_name, epoch + 1,
@@ -383,7 +385,7 @@ class MazeBaseModel(nn.Module):
                     training_accuracy, validation_accuracy,
                     time.time(), time_per_step,
                     cpu_load, gpu_load, ram_usage,
-                    exit_weight, valid_targets
+                    exit_weight, valid_targets, collision_penalty.item()
                 ])
 
         # Load or initialize existing JSON list

@@ -19,6 +19,7 @@ LOSS_DATA = config.get("FILES", "LOSS_DATA", fallback="loss_data.csv")
 LOSS_FILE = f"{OUTPUT}{LOSS_DATA}"
 LOSS_CHART = f"{OUTPUT}loss_chart.html"
 
+
 def load_loss_data():
     try:
         if not os.path.exists(LOSS_FILE):
@@ -31,6 +32,7 @@ def load_loss_data():
         df['train_acc'] = pd.to_numeric(df['train_acc'], errors='coerce')
         df['val_acc'] = pd.to_numeric(df['val_acc'], errors='coerce')
         df['time_per_step'] = (pd.to_numeric(df['time_per_step'], errors='coerce') / 60).round(0)
+        df['collision_penalty'] = pd.to_numeric(df['collision_penalty'], errors='coerce')
     except Exception as e:
         df = pd.DataFrame()
     return df
@@ -48,6 +50,7 @@ app.layout = html.Div([
     dcc.Graph(id="validation-accuracy-graph"),
     dcc.Graph(id="time-per-step-graph"),
     dcc.Graph(id="exit-weight-graph"),  # New graph
+    dcc.Graph(id="collision-penalty-graph"),
     dcc.Interval(id="interval-component", interval=3000, n_intervals=0)
 ])
 
@@ -59,16 +62,15 @@ app.layout = html.Div([
     Output("accuracy-graph", "figure"),
     Output("validation-accuracy-graph", "figure"),
     Output("time-per-step-graph", "figure"),
-    Output("exit-weight-graph", "figure"),  # New output
+    Output("exit-weight-graph", "figure"),
+    Output("collision-penalty-graph", "figure"),
     Input("interval-component", "n_intervals")
 )
-
-
 def update_graphs(n):
     df = load_loss_data()
     if df.empty or 'model_name' not in df.columns:
         logging.debug("No training data available yet. Waiting for loss_data.csv...")
-        return no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     df = df.sort_values('epoch')
 
@@ -156,7 +158,27 @@ def update_graphs(n):
             traceorder="normal")
     )
 
-    return fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step, fig_exit_weight
+    fig_collision_penalty = px.line(
+        df,
+        x='epoch',
+        y='collision_penalty',
+        color='model_name',
+        line_dash='model_name',
+        symbol='model_name',
+        markers=True,
+        title="Collision Penalty per Epoch"
+    )
+    fig_collision_penalty.update_layout(
+        xaxis_title="Epoch",
+        yaxis_title="Collision Penalty",
+        showlegend=True,
+        legend=dict(
+            x=1.02,
+            y=1,
+            traceorder="normal")
+    )
+
+    return fig_training, fig_validation, fig_accuracy, fig_val_accuracy, fig_time_per_step, fig_exit_weight, fig_collision_penalty
 
 
 if __name__ == '__main__':
