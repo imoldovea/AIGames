@@ -164,7 +164,7 @@ class RNN2MazeSolver(MazeSolver):
             # Check if the next position is within bounds or hits a wall
             if not self.maze.is_within_bounds(next_pos) or self.maze.grid[next_pos] == WALL:
                 # If invalid, log the prediction and terminate the solution process
-                logging.warning(f"Predicted invalid move to {next_pos} from {current_pos}.")
+                logging.debug(f"Predicted invalid move to {next_pos} from {current_pos}.")
             else:
                 # Append the valid move to the solution path and update the current position
                 path.append(next_pos)
