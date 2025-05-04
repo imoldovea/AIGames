@@ -66,6 +66,7 @@ class MazeRecurrentModel(MazeBaseModel):
         """
         batch_size = x.size(0)
         device = x.device
+        self.last_input = x  # for collision penalty
 
         if self.mode_type == "LSTM":
             h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=device)

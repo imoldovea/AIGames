@@ -313,6 +313,8 @@ class MazeBaseModel(nn.Module):
             criterion_bce,
             device
     ):
+        collision_penalty = 0.0
+
         dir_flat = outputs_dir.contiguous().view(-1, 4)
         exit_flat = outputs_exit.contiguous().view(-1)
         targets_flat = target_actions.contiguous().view(-1)
@@ -326,7 +328,20 @@ class MazeBaseModel(nn.Module):
         loss_exit = criterion_bce(exit_flat[valid_mask], exit_target[valid_mask])
 
         exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
-        total_loss = loss_dir + exit_weight * loss_exit
+
+        # compute collision penalty
+        batch_size, seq_len, _ = outputs_dir.shape
+        predicted_dir = torch.argmax(outputs_dir, dim=2)  # shape: [B, T]
+
+        # Extract the wall context from the input (assumes first 4 features are [N, E, S, W])
+        with torch.no_grad():
+            wall_context = self.last_input[:, :, :4]  # shape: [B, T, 4]
+            batch_indices = torch.arange(batch_size).unsqueeze(1).expand(-1, seq_len)
+            time_indices = torch.arange(seq_len).unsqueeze(0).expand(batch_size, -1)
+            collision_mask = 1 - wall_context[batch_indices, time_indices, predicted_dir]  # 1 if wall
+            collision_penalty = collision_mask.float().mean() * config.getfloat("DEFAULT", "wall_penalty", fallback=1.0)
+
+        total_loss = loss_dir + exit_weight * loss_exit + collision_penalty
 
         _, predicted = torch.max(dir_flat, dim=1)
         correct = (predicted[valid_mask] == targets_flat[valid_mask]).sum().item()
