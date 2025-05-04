@@ -168,9 +168,9 @@ class MazeBaseModel(nn.Module):
                     with torch.amp.autocast(device_type='cuda'):
                         outputs_dir, outputs_exit = self.forward(inputs)
                         # Compute losses and batch accuracy
-                        loss, correct_batch, total_batch, loss_dir_value, loss_exit_value, collision_penalty = self._compute_dual_head_loss_and_accuracy(
+                        loss, correct_batch, total_batch, loss_dir_value, loss_exit_value, collision_penalty, collision_rate = self._compute_dual_head_loss_and_accuracy(
                             outputs_dir, outputs_exit, target_actions,
-                            criterion_ce, criterion_bce, device
+                            criterion_ce, criterion_bce, epoch
                         )
                         correct += correct_batch
                         total += total_batch
@@ -183,9 +183,9 @@ class MazeBaseModel(nn.Module):
                 else:
                     outputs_dir, outputs_exit = self.forward(inputs)
                     # Compute losses and batch accuracy
-                    loss, correct_batch, total_batch, loss_dir_value, loss_exit_value, collision_penalty = self._compute_dual_head_loss_and_accuracy(
+                    loss, correct_batch, total_batch, loss_dir_value, loss_exit_value, collision_penalty, collision_rate = self._compute_dual_head_loss_and_accuracy(
                         outputs_dir, outputs_exit, target_actions,
-                        criterion_ce, criterion_bce, device
+                        criterion_ce, criterion_bce, epoch
                     )
                     correct += correct_batch
                     total += total_batch
@@ -242,7 +242,6 @@ class MazeBaseModel(nn.Module):
                         tensorboard_writer.add_scalar("BatchLoss/train_dir_only", loss_dir_value, step)
                         tensorboard_writer.add_scalar("BatchLoss/train_exit_only", loss_exit_value, step)
                         tensorboard_writer.add_scalar("GradientNorm/train", grad_norm, step)
-                        tensorboard_writer.add_scalar("Loss/wall_collision", collision_penalty.item(), epoch)
 
                 running_loss += loss.item() * inputs.size(0)
                 running_loss_dir += loss_dir_value * inputs.size(0)
@@ -279,7 +278,8 @@ class MazeBaseModel(nn.Module):
                 loss_exit_avg=epoch_loss_exit,
                 valid_targets=epoch_valid_targets,
                 exit_weight=self.exit_weight,
-                collision_penalty=collision_penalty
+                collision_penalty=collision_penalty,
+                collision_rate=collision_rate,
             )
 
             current_lr = scheduler.get_last_lr()[0]
@@ -313,7 +313,7 @@ class MazeBaseModel(nn.Module):
             target_actions,
             criterion_ce,
             criterion_bce,
-            device
+            epoch=None
     ):
         collision_penalty = 0.0
 
@@ -334,6 +334,8 @@ class MazeBaseModel(nn.Module):
         # compute collision penalty
         batch_size, seq_len, _ = outputs_dir.shape
         predicted_dir = torch.argmax(outputs_dir, dim=2)  # shape: [B, T]
+        base_penalty = config.getfloat("DEFAULT", "wall_penalty", fallback=1.0)
+        wall_penalty_weight = base_penalty * min(1.0, epoch / 5) if epoch is not None else base_penalty
 
         # Extract the wall context from the input (assumes first 4 features are [N, E, S, W])
         with torch.no_grad():
@@ -341,15 +343,15 @@ class MazeBaseModel(nn.Module):
             batch_indices = torch.arange(batch_size).unsqueeze(1).expand(-1, seq_len)
             time_indices = torch.arange(seq_len).unsqueeze(0).expand(batch_size, -1)
             collision_mask = 1 - wall_context[batch_indices, time_indices, predicted_dir]  # 1 if wall
-            collision_penalty = collision_mask.float().mean() * config.getfloat("DEFAULT", "wall_penalty", fallback=1.0)
+            collision_penalty = collision_mask.float().mean() * wall_penalty_weight
+        collision_rate = collision_mask.sum().item() / (batch_size * seq_len)
 
         total_loss = loss_dir + exit_weight * loss_exit + collision_penalty
-
         _, predicted = torch.max(dir_flat, dim=1)
         correct = (predicted[valid_mask] == targets_flat[valid_mask]).sum().item()
         total = valid_mask.sum().item()
 
-        return total_loss, correct, total, loss_dir.item(), loss_exit.item(), collision_penalty
+        return total_loss, correct, total, loss_dir.item(), loss_exit.item(), collision_penalty, collision_rate
 
     def _monitor_training(
             self,
@@ -357,7 +359,7 @@ class MazeBaseModel(nn.Module):
             validation_loss=0, training_accuracy=0, validation_accuracy=0,
             time_per_step=0., tensorboard_writer=None,
             loss_dir_avg=0., loss_exit_avg=0.,
-            valid_targets=None, exit_weight=None, collision_penalty=0):
+            valid_targets=9, exit_weight=0, collision_penalty=0, collision_rate=0):
         # Retrieve actual resource usage
         cpu_load, gpu_load, ram_usage = self._compute_resource_usage()
 
@@ -376,7 +378,7 @@ class MazeBaseModel(nn.Module):
                         "model_name", "epoch", "train_loss", "train_loss_dir", "train_loss_exit",
                         "val_loss", "train_acc", "val_acc",
                         "timestamp", "time_per_step", "cpu_load", "gpu_load", "ram_usage",
-                        "exit_weight", "valid_targets", "collision_penalty"
+                        "exit_weight", "valid_targets", "collision_penalty", "collision_rate"
                     ])
                 writer.writerow([
                     self.model_name, epoch + 1,
@@ -385,7 +387,7 @@ class MazeBaseModel(nn.Module):
                     training_accuracy, validation_accuracy,
                     time.time(), time_per_step,
                     cpu_load, gpu_load, ram_usage,
-                    exit_weight, valid_targets, collision_penalty.item()
+                    exit_weight, valid_targets, round(collision_penalty.item(), 2), round(collision_rate, 2)
                 ])
 
         # Load or initialize existing JSON list
@@ -425,6 +427,8 @@ class MazeBaseModel(nn.Module):
             tensorboard_writer.add_scalar("Resource/CPU_load", cpu_load, epoch)
             tensorboard_writer.add_scalar("Resource/GPU_load", gpu_load, epoch)
             tensorboard_writer.add_scalar("Resource/RAM_usage", ram_usage, epoch)
+            tensorboard_writer.add_scalar("Loss/wall_collision", collision_penalty.item(), epoch),
+            tensorboard_writer.add_scalar("Loss/collision_rate", collision_penalty.item(), epoch),
 
             for name, param in self.named_parameters():
                 tensorboard_writer.add_histogram(f"Weights/{name}", param, epoch)
