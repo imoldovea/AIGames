@@ -1,0 +1,10 @@
+[
+    {
+        "model": "LSTM",
+        "final_train_loss": 0.2461055888004303,
+        "final_val_loss": null,
+        "final_train_acc": null,
+        "final_val_acc": null,
+        "output_file": "input/lstm_model.pth"
+    }
+]
