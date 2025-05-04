@@ -107,7 +107,7 @@ def clean_outupt_folder():
             os.rmdir(exit_folder)
 
         # Remove /exit subfolder and its contents if exist
-        exit_folder = os.path.join(OUTPUT, "exit")
+        exit_folder = os.path.join(OUTPUT, "activations")
         if os.path.exists(exit_folder):
             for filename in glob.glob(os.path.join(exit_folder, "*")):
                 os.remove(filename)
@@ -132,6 +132,7 @@ def clean_outupt_folder():
     # delete the content of output/debug.log
     with open(f"{OUTPUT}debug.log", "w") as f:
         f.write("")
+
 
 # Define a custom PDF class (optional, for adding a header)
 class PDF(FPDF):
@@ -230,7 +231,7 @@ def display_all_mazes(solved_mazes: list) -> None:
     for i, maze in enumerate(solved_mazes):
         try:
             logging.debug(f"Displaying maze {i + 1}...")
-            maze.plot_maze(show_path=False, show_solution=True,show_position=False)
+            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
         except Exception as e:
             logging.warning(f"Could not display maze {i + 1}: {e}")
 
@@ -247,6 +248,7 @@ def encode_video(frame_list, filename, fps_val, w, h):
 
     out.release()
     logging.info(f"Video saved as: {filename}")
+
 
 def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
     """
@@ -460,6 +462,7 @@ def load_mazes(file_path="input/mazes.h5", samples=0):
 
     except Exception as e:
         raise FileNotFoundError(f"Could not load mazes from {file_path}: {e}")
+
 
 if __name__ == "__main__":
     # mazes, count = load_mazes("input/training_mazes.pkl")
