@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import pstats
+import shutil
 import tempfile
 import traceback
 from configparser import ConfigParser
@@ -113,12 +114,10 @@ def clean_outupt_folder():
                 os.remove(filename)
             os.rmdir(exit_folder)
 
-        # Remove /tensorboard subfolder and its contents if exist
-        exit_folder = os.path.join(OUTPUT, "tesnorboard_data")
-        if os.path.exists(exit_folder):
-            for filename in glob.glob(os.path.join(exit_folder, "*")):
-                os.remove(filename)
-            os.rmdir(exit_folder)
+        # Remove /tensorboard subfolder and its contents if exist (including subdirectories)
+        tensorboard_folder = os.path.join(OUTPUT, "tensorboard_data")
+        if os.path.exists(tensorboard_folder):
+            shutil.rmtree(tensorboard_folder)
 
         # Remove .wandb subfolder and its contents if exist
         exit_folder = os.path.join(OUTPUT, "wandb")
