@@ -335,7 +335,9 @@ class MazeBaseModel(nn.Module):
         batch_size, seq_len, _ = outputs_dir.shape
         predicted_dir = torch.argmax(outputs_dir, dim=2)  # shape: [B, T]
         base_penalty = config.getfloat("DEFAULT", "wall_penalty", fallback=1.0)
-        wall_penalty_weight = base_penalty * min(1.0, epoch / 5) if epoch is not None else base_penalty
+        num_epochs = config.getint("DEFAULT", "num_epochs", fallback=10)
+        wall_penalty_weight = base_penalty * min(1.0, epoch / num_epochs) if epoch is not None else base_penalty
+        logging.info(f"Wall penalty weight: {wall_penalty_weight}")
 
         # Extract the wall context from the input (assumes first 4 features are [N, E, S, W])
         with torch.no_grad():
