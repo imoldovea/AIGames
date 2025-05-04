@@ -143,7 +143,7 @@ class RNN2MazeSolver(MazeSolver):
                 (logits_dir, logit_exit), _ = self.model(input_tensor, return_activations=True)
                 exit_prob = torch.sigmoid(logit_exit[0, -1]).item()
                 exit_activations.append(exit_prob)
-                if exit_prob > 0.9:
+                if exit_prob > 0.99:
                     logging.info(f"Step {step_number}: Exit neuron activation = {exit_prob:.4f}")
                     break  # model believes it's at the exit
 
@@ -164,8 +164,7 @@ class RNN2MazeSolver(MazeSolver):
             # Check if the next position is within bounds or hits a wall
             if not self.maze.is_within_bounds(next_pos) or self.maze.grid[next_pos] == WALL:
                 # If invalid, log the prediction and terminate the solution process
-                logging.debug(f"Predicted invalid move to {next_pos} from {current_pos}.")
-                break
+                logging.warning(f"Predicted invalid move to {next_pos} from {current_pos}.")
             else:
                 # Append the valid move to the solution path and update the current position
                 path.append(next_pos)
@@ -183,6 +182,10 @@ class RNN2MazeSolver(MazeSolver):
                 visualize_exit_activations(exit_activations, maze_name=self.maze.index)
 
                 self.maze.move(current_pos)
+
+            # logging.debug(
+            #     f"[Step {step_number}] Current: {current_pos}, Action: {action}, Next: {next_pos}, ExitProb: {exit_prob:.4f}")
+
         else:
             if self.maze.exit != current_pos:
                 logging.debug(f"Reached max steps ({max_steps}) without finding a solution.")
@@ -310,7 +313,7 @@ def rnn2_solver(models, mazes, device='cpu'):
             maze.set_solution(solution_path)
             if len(solution_path) < max_steps and maze.test_solution():
                 # Step 5.b.vi (success): Log and increment successful solutions
-                logging.debug(f"Solved Maze {i + 1}: {solution_path}")
+                logging.info(f"Solved Maze {i + 1}: {solution_path}")
                 successful_solutions += 1
             else:
                 # Step 5.b.vi (failure): Log and add maze to solved_mazes list
@@ -333,6 +336,7 @@ def rnn2_solver(models, mazes, device='cpu'):
                 video_filename=f"recurrent_activations_movie_{model_name}.mp4",
                 fps=25
             )
+
     # Step 8: Return success rates
     return solved_mazes, model_success_rates
 
