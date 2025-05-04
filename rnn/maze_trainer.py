@@ -412,7 +412,6 @@ class RNN2MazeTrainer:
         val_cache_path = os.path.join(INPUT, "validation_dataset_cache.pkl")
 
         use_cache = config.getboolean("DEFAULT", "use_dataset_cache", fallback=False)
-        use_rolling = config.getboolean("DEFAULT", "use_rolling_sampler", fallback=False)
 
         # Remove old cache if caching is disabled
         if not use_cache:
@@ -422,7 +421,7 @@ class RNN2MazeTrainer:
                     logging.info(f"Deleted dataset cache file: {path}")
 
         # Try to use cache if allowed
-        if use_cache and not use_rolling and os.path.exists(cache_path) and os.path.exists(val_cache_path):
+        if use_cache and os.path.exists(cache_path) and os.path.exists(val_cache_path):
             logging.info("Using cached dataset files.")
             with open(cache_path, "rb") as f:
                 dataset = pickle.load(f)
@@ -504,7 +503,7 @@ class RNN2MazeTrainer:
             logging.info("Cached validation dataset.")
 
         # Conditionally cache training set
-        if use_cache and not use_rolling:
+        if use_cache:
             with open(cache_path, "wb") as f:
                 pickle.dump(dataset, f)
             logging.info("Cached training dataset.")
@@ -711,6 +710,7 @@ def train_models(allowed_models=None):
     else:
         raise ValueError(f"Invalid sampler option: {sampler_option}")
     shuffle = (sampler is None)
+    logging.info(f"Using sampler: {sampler}, shuffle: {shuffle}")
     # DataLoader config
     train_loader = DataLoader(train_ds,
                               batch_size=batch_size,

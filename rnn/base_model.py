@@ -261,9 +261,9 @@ class MazeBaseModel(nn.Module):
             train_accuracies["validation"].append(validation_accuracy)
 
             epoch_duration = time.time() - epoch_start  # seconds
-            epoch_time_minutes = round(epoch_duration / 60, 2)  # minute
+            epoch_time_minutes = round(epoch_duration, 2)
             epoch_valid_targets = running_valid_targets
-            
+
             self._monitor_training(
                 epoch=epoch,
                 num_epochs=num_epochs,
