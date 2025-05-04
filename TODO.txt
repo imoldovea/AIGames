@@ -1,2 +1,3 @@
 rptate and flip
 - Genetic algorithm learning
+- Or retrain with penalized wall collisions
