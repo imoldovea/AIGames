@@ -55,7 +55,7 @@ OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
 
 SYSTEM_PROMPT = ("""
-You will help me solve a maze using the Backtracking algorithm.
+You are solving the maze using Backtracking algorithm.
 
 Backtracking means:
 - You explore paths one step at a time.
@@ -74,6 +74,7 @@ Rules:
 - NEVER immediately reverse your previous move unless there is no other valid choice.
 - Always prioritize unexplored paths first.
 - Avoid looping between two positions (e.g., north then south repeatedly).
+- Do not move in a direction that leads to a cell you've already marked as visited on the memory map (value 2), unless there are no unexplored (0 or -) directions left.
 
 Respond with ONLY the next direction to move: north, south, east, or west. No extra text.
 """)
