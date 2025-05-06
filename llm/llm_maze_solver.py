@@ -43,36 +43,34 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
 
-# (SYSTEM_PROMPT remains the same)
-SYSTEM_PROMPT = (
-    """You will help me solve a maze following the Backtracking strategy.
+SYSTEM_PROMPT = ("""
+You will help me solve a maze using the Backtracking algorithm.
 
-    Backtracking is a step-by-step search method where you explore possible paths through the maze by moving one step at a time.
-    If you reach a dead end (no valid moves), you backtrack (undo the last move) and try a different direction.
+Backtracking means:
+- You explore paths one step at a time.
+- If you reach a dead end, you backtrack (reverse the last step) and try a different path.
+- Avoid undoing your last step unless there are no other valid options. 
+You are using Backtracking. This means:
+    * At each step, explore a new path if available.
+    * Only return to your previous position if it is the only option.
+    * Do not alternate back and forth between the same two positions.
 
-    You act as someone **inside** the maze, without a full view of it.
-    You can only see the immediate surroundings: north, south, east, and west.
+Use the list of previous moves to avoid loops.
 
-    You will be provided with the local context at each position in this JSON format:
-    '{"local_context": {"north": "wall", "south": "open", "east": "open", "west": "wall"}, "exit_reached": false}'.
+You are inside the maze, and only see the 4 directions around you: north, south, east, west.
 
-    Meanings:
-    - "wall" means a wall blocks that direction and moving there is not allowed.
-    - "open" means a corridor you can move into.
-    - "outside" means a neighbor position outside the maze, signaling you are at the exit.
+At every step, you’ll be told:
+- What’s around you: each direction can be "open", "wall", or "outside"
+- Your current path history (previous moves)
+- Valid directions you can choose
 
-    **Rules to follow:**
-    - Never move toward a direction labeled as "wall".
-    - Always prefer moving into an "open" corridor.
-    - If a neighboring direction is "outside", immediately move there to exit the maze.
-    - If multiple "open" directions exist, pick any open one.
+Your task:
+- Follow the open paths.
+- Avoid getting stuck in repeated loops (e.g., north, south, north, south).
+- If multiple open paths exist, pick one not recently visited if possible.
 
-    **Important:**
-    - This is an API call.
-    - You must respond with ONLY one word: 'north', 'south', 'east', or 'west'.
-    - No explanations, no extra text.
-    - Limit your output to a single token.
-    """
+Respond ONLY with one word: north, south, east, or west. No explanation.
+"""
 )
 
 
@@ -92,9 +90,9 @@ class LLMMazeSolver(MazeSolver):
 
     def solve(self):
         provider = config.get('LLM', 'provider')
-        max_steps = config.getint('SOLVER', 'max_steps', fallback=20)
+        max_steps = config.getint('SOLVER', 'max_steps', fallback=10)
         if config.getboolean('DEFAULT', 'development_mode'):
-            max_steps = 20
+            max_steps = 5
             logging.warning(f"Development mode is enabled. Setting max_steps to {max_steps}.")
 
         current_position = self.maze.start_position
@@ -116,13 +114,20 @@ class LLMMazeSolver(MazeSolver):
                 "local_context": local_context_dict,  # Use the dictionary directly
                 "exit_reached": self.maze.at_exit()
             }
-            prompt = self._convert_json_to_prompt(payload, history)  # Pass the dict payload
+
+            valid_moves = [
+                name for name, vec in ACTION_TO_DIRECTION.items()
+                if self.maze.can_move(self.maze.current_position, vec)
+            ]
+            logging.info(f"Step {self.steps}, Valid moves: {valid_moves}")
+            prompt = self._convert_json_to_prompt(payload, history, valid_moves)
+            print(prompt)
 
             retries = 0
             move_successful = False
 
             while retries < MAX_RETRIES_PER_STEP and not move_successful:
-                logging.info(f" Step {self.steps}, Position: {self.maze.current_position}, Prompt: {prompt}")
+                logging.debug(f" Step {self.steps}, Position: {self.maze.current_position}, Prompt: {prompt}")
                 response = llm_model.generate_response(prompt)
                 logging.info(f"LLM response: {response}")
                 direction_name = self._process_llm_response(response)  # Expects "north", "south", etc.
@@ -192,7 +197,7 @@ class LLMMazeSolver(MazeSolver):
                 context[direction_name] = "wall"
         return context  # Returns dict like {"north": "wall", "south": "open", ...}
 
-    def _convert_json_to_prompt(self, js: dict, history: list[str]) -> str:
+    def _convert_json_to_prompt(self, js: dict, history: list[str], valid_moves: list[str]) -> str:
         """
         Converts the payload dictionary (containing the context dict) to a prompt string.
         Now expects js['local_context'] to be a dictionary.
@@ -206,6 +211,7 @@ class LLMMazeSolver(MazeSolver):
         context_dict = js["local_context"]  # This should now be the dictionary
         exit_reached = js["exit_reached"]
         history_str = ", ".join(history) if history else "none"
+        available = ", ".join(valid_moves) if valid_moves else "none"
 
         # Basic check to ensure context_dict is actually a dictionary
         if not isinstance(context_dict, dict):
@@ -222,10 +228,15 @@ class LLMMazeSolver(MazeSolver):
             f"- To the east: {context_dict.get('east', 'ERROR')}\n"
             f"- To the west: {context_dict.get('west', 'ERROR')}\n\n"
             f"Have you reached the exit? {exit_reached}\n"
-            f"Path so far: {history_str}\n\n"
-            "Based on your path and surroundings, using Backtracking, what direction should you move next?\n"
-            "Avoid repeating directions that lead to dead ends."
-            "Respond with ONLY one word - either: north, south, east, or west. Do not include any other text."
+            f"Available directions: {available}\n"
+            f"History of previous steps (oldest to newest): {history_str}.\n"
+            f"Avoid looping unless there is no option"
+            f"You are solving this maze using Backtracking:\n"
+            f"- Avoid undoing your last step unless no other path is available.\n"
+            f"- Do not alternate back and forth between two directions.\n"
+            f"- Prefer new unexplored directions.\n"
+            f"Your decision should be based on surroundings and previous moves.\n\n"
+            f"Respond with ONLY one word: north, south, east, or west. Do not include any other text."
         )
         return prompt
 
@@ -265,6 +276,8 @@ if __name__ == "__main__":
         mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
         test_maze = mazes[0]
+        print(f"Testing maze {test_maze.index}...")
+        test_maze.print_ascii()
         test_maze.animate = True  # Disable animation for faster debugging if needed
         test_maze.save_movie = False
 
