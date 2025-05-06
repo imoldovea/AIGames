@@ -717,6 +717,34 @@ class Maze:
         # Join rows with newline to create final ASCII maze
         return '\n'.join(ascii_maze)
 
+    def print_ascii(self) -> None:
+        """
+        Prints the maze in ASCII format using 0, 1, and 3, where:
+        - 0: Corridor
+        - 1: Wall 
+        - 3: Start position
+        - X: current postion
+        """
+
+        for r in range(self.rows):
+            row = []
+            for c in range(self.cols):
+                if (r, c) == self.current_position:
+                    row.append(' X ')
+                elif (r, c) == self.start_position:
+                    row.append(' 3 ')
+                else:
+                    row.append(f" {str(self.grid[r, c])} ")
+                row.append(' ')
+            print(''.join(row))
+
+        # Print legend
+        print("\nLegend:")
+        print("0: corridor")
+        print("1: wall")
+        print("3: start point")
+        print("X: current position")
+
     def plot_maze(self, show_path=True, show_solution=True, show_position=False):
         """
         Plots the current maze configuration as a visual representation.

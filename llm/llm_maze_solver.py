@@ -1,6 +1,9 @@
 #  Python
+# llm_maze_solve.py
 import configparser
 import logging
+
+import numpy as np
 
 from llm.gpt_factory import GPTFactory
 from maze_solver import MazeSolver
@@ -33,6 +36,14 @@ ACTION_TO_DIRECTION = {
 }
 # --- End of Centralized Definitions ---
 
+# Mental Map Cell States
+WALL = '1'  # Wall cell
+PATH = '2'  # Previously visited path
+START = '3'
+CURRENT = 'X'  # Current position
+CORRIDOR = '0'  # Unexplored corridor
+UNKNOWN = '-'  # Yet unknown cells
+
 MAX_RETRIES_PER_STEP = 2
 
 PARAMETERS_FILE = "config.properties"
@@ -49,29 +60,23 @@ You will help me solve a maze using the Backtracking algorithm.
 Backtracking means:
 - You explore paths one step at a time.
 - If you reach a dead end, you backtrack (reverse the last step) and try a different path.
-- Avoid undoing your last step unless there are no other valid options. 
-You are using Backtracking. This means:
-    * At each step, explore a new path if available.
-    * Only return to your previous position if it is the only option.
-    * Do not alternate back and forth between the same two positions.
+- You avoid revisiting the same positions repeatedly unless no other options exist.
 
-Use the list of previous moves to avoid loops.
+You are inside the maze and see only your immediate surroundings (north, south, east, west).
 
-You are inside the maze, and only see the 4 directions around you: north, south, east, west.
+Each step you'll receive:
+- What's around you ("open", "wall", or "outside").
+- Valid moves (directions that lead to unexplored or open spaces).
+- History of moves taken (oldest to newest).
+- A memory map of positions visited.
 
-At every step, you’ll be told:
-- What’s around you: each direction can be "open", "wall", or "outside"
-- Your current path history (previous moves)
-- Valid directions you can choose
+Rules:
+- NEVER immediately reverse your previous move unless there is no other valid choice.
+- Always prioritize unexplored paths first.
+- Avoid looping between two positions (e.g., north then south repeatedly).
 
-Your task:
-- Follow the open paths.
-- Avoid getting stuck in repeated loops (e.g., north, south, north, south).
-- If multiple open paths exist, pick one not recently visited if possible.
-
-Respond ONLY with one word: north, south, east, or west. No explanation.
-"""
-)
+Respond with ONLY the next direction to move: north, south, east, or west. No extra text.
+""")
 
 
 class LLMMazeSolver(MazeSolver):
@@ -87,19 +92,23 @@ class LLMMazeSolver(MazeSolver):
         super().__init__(maze)
         self.maze = maze
         maze.set_algorithm(self.__class__.__name__)
+        self.memory_maze = np.full((3, 3), UNKNOWN)  # Initialize with 3x3 grid
+        self.memory_center = (1, 1)  # This keeps track of the maze start position in memory_maze
 
     def solve(self):
         provider = config.get('LLM', 'provider')
-        max_steps = config.getint('SOLVER', 'max_steps', fallback=10)
+        max_steps = config.getint('SOLVER', 'max_steps', fallback=5)
         if config.getboolean('DEFAULT', 'development_mode'):
-            max_steps = 5
+            max_steps = 10
             logging.warning(f"Development mode is enabled. Setting max_steps to {max_steps}.")
 
         current_position = self.maze.start_position
         self.maze.move(current_position)
         path = [current_position]
         self.steps = 0
+        #history of decissions 
         history = []  # stores 'north', 'south', etc.
+        #mental map of path travel so far. Crete a matrix centered on the start position
 
         llm_model = GPTFactory.create_gpt_model(provider, SYSTEM_PROMPT)
 
@@ -146,6 +155,9 @@ class LLMMazeSolver(MazeSolver):
                         path.append(new_position)
                         history.append(direction_name)
                         logging.info(f"Moved {direction_name} to {new_position}")
+                        # Update mental map with new position and surroundings
+                        self._update_memory_maze(new_position, local_context_dict)
+
                         move_successful = True  # Exit retry loop
                     else:
                         retries += 1
@@ -173,6 +185,11 @@ class LLMMazeSolver(MazeSolver):
 
         return path
 
+    def _memory_maze_to_string(self):
+        legend = "Legend: -=unknown, 0=corridor, 1=wall, 2=visited path, X=current position"
+        grid = '\n'.join(' '.join(row) for row in self.memory_maze)
+        return f"{legend}\n{grid}"
+
     def _compute_local_context(self, maze, position) -> dict:
         """
         Computes the local context around the position.
@@ -186,16 +203,14 @@ class LLMMazeSolver(MazeSolver):
             to their status ('open' or 'wall').
         """
         context = {}
-        # Iterate through the defined directions using the global constants
-        for direction_vector in DIRECTIONS_ORDERED:  # e.g., (-1, 0)
-            direction_name = DIRECTION_NAMES[direction_vector]  # e.g., "north"
+        for vec, direction_name in DIRECTION_NAMES.items():
+            neighbor = (position[0] + vec[0], position[1] + vec[1])
 
-            if maze.can_move(position, direction_vector):
-                context[direction_name] = "open"
+            if maze.is_within_bounds(neighbor):
+                context[direction_name] = "open" if maze.can_move(position, vec) else "wall"
             else:
-                # TODO: Potentially check for "outside" if maze has a method like maze.is_outside(neighbor_pos)
-                context[direction_name] = "wall"
-        return context  # Returns dict like {"north": "wall", "south": "open", ...}
+                context[direction_name] = "outside" if maze.at_exit() else "wall"
+        return context
 
     def _convert_json_to_prompt(self, js: dict, history: list[str], valid_moves: list[str]) -> str:
         """
@@ -212,6 +227,7 @@ class LLMMazeSolver(MazeSolver):
         exit_reached = js["exit_reached"]
         history_str = ", ".join(history) if history else "none"
         available = ", ".join(valid_moves) if valid_moves else "none"
+        memory_maze_str = self._memory_maze_to_string()
 
         # Basic check to ensure context_dict is actually a dictionary
         if not isinstance(context_dict, dict):
@@ -230,6 +246,7 @@ class LLMMazeSolver(MazeSolver):
             f"Have you reached the exit? {exit_reached}\n"
             f"Available directions: {available}\n"
             f"History of previous steps (oldest to newest): {history_str}.\n"
+            f"Memory map of the maze visited so far:\n{memory_maze_str}\n\n"
             f"Avoid looping unless there is no option"
             f"You are solving this maze using Backtracking:\n"
             f"- Avoid undoing your last step unless no other path is available.\n"
@@ -239,6 +256,64 @@ class LLMMazeSolver(MazeSolver):
             f"Respond with ONLY one word: north, south, east, or west. Do not include any other text."
         )
         return prompt
+
+    def _expand_memory_maze(self, direction):
+        """Expand the memory maze in the specified direction."""
+        rows, cols = self.memory_maze.shape
+        if direction == 'vertical':
+            new_maze = np.full((rows + 2, cols), UNKNOWN)
+            new_maze[1:-1, :] = self.memory_maze
+            self.memory_maze = new_maze
+            self.memory_center = (self.memory_center[0] + 1, self.memory_center[1])
+        else:  # horizontal
+            new_maze = np.full((rows, cols + 2), UNKNOWN)
+            new_maze[:, 1:-1] = self.memory_maze
+            self.memory_maze = new_maze
+            self.memory_center = (self.memory_center[0], self.memory_center[1] + 1)
+
+    def _update_memory_maze(self, position, context):
+        rel_row = position[0] - self.maze.start_position[0] + self.memory_center[0]
+        rel_col = position[1] - self.maze.start_position[1] + self.memory_center[1]
+
+        # Expand memory maze vertically if needed
+        while rel_row <= 0 or rel_row >= self.memory_maze.shape[0] - 1:
+            self._expand_memory_maze('vertical')
+            rel_row = position[0] - self.maze.start_position[0] + self.memory_center[0]
+
+        # Expand memory maze horizontally if needed
+        while rel_col <= 0 or rel_col >= self.memory_maze.shape[1] - 1:
+            self._expand_memory_maze('horizontal')
+            rel_col = position[1] - self.maze.start_position[1] + self.memory_center[1]
+
+        # Update previous position
+        self.memory_maze[self.memory_maze == CURRENT] = START
+
+        # Mark current position
+        self.memory_maze[rel_row, rel_col] = CURRENT
+
+        # Update walls or corridors around current position
+        directions = {'north': (-1, 0), 'south': (1, 0), 'east': (0, 1), 'west': (0, -1)}
+        for direction, (dr, dc) in directions.items():
+            nr, nc = rel_row + dr, rel_col + dc
+            if 0 <= nr < self.memory_maze.shape[0] and 0 <= nc < self.memory_maze.shape[1]:
+                if context[direction] == "wall":
+                    self.memory_maze[nr, nc] = WALL
+                elif context[direction] == "open":
+                    self.memory_maze[nr, nc] = CORRIDOR
+
+    def _expand_memory_maze(self, direction):
+        """Expand the memory maze in the specified direction."""
+        rows, cols = self.memory_maze.shape
+        if direction == 'vertical':
+            new_maze = np.full((rows + 2, cols), CORRIDOR)
+            new_maze[1:-1, :] = self.memory_maze
+            self.memory_maze = new_maze
+            self.memory_center = (self.memory_center[0] + 1, self.memory_center[1])
+        else:  # horizontal
+            new_maze = np.full((rows, cols + 2), CORRIDOR)
+            new_maze[:, 1:-1] = self.memory_maze
+            self.memory_maze = new_maze
+            self.memory_center = (self.memory_center[0], self.memory_center[1] + 1)
 
     def _process_llm_response(self, response: str) -> str | None:
         """
