@@ -186,9 +186,42 @@ class LLMMazeSolver(MazeSolver):
         return path
 
     def _memory_maze_to_string(self):
-        legend = "Legend: -=unknown, 0=corridor, 1=wall, 2=visited path, X=current position"
-        grid = '\n'.join(' '.join(row) for row in self.memory_maze)
-        return f"{legend}\n{grid}"
+        """
+        Converts the agent's memory maze into a readable string for better communication with the LLM.
+        """
+        # Adding row and column headers for better referencing
+        header = "    " + " ".join([f"{col:2}" for col in range(self.memory_maze.shape[1])])
+        border = "   " + "-" * (3 * self.memory_maze.shape[1])
+
+        # Build grid with row numbers for easy referencing
+        grid = "\n".join(
+            f"{row:2} | " + " ".join(self._map_symbol(value) for value in self.memory_maze[row])
+            for row in range(self.memory_maze.shape[0])
+        )
+
+        # Legend for the symbols
+        legend = (
+            "\nLegend:\n"
+            "  - : Unknown\n"
+            "  0 : Corridor\n"
+            "  1 : Wall\n"
+            "  2 : Visited Path\n"
+            "  X : Current Position\n"
+        )
+
+        return f"{legend}\n{header}\n{border}\n{grid}\n{border}"
+
+    def _map_symbol(self, value):
+        """
+        Maps memory maze values to their corresponding symbols.
+        """
+        return {
+            UNKNOWN: "-",
+            CORRIDOR: "0",
+            WALL: "1",
+            PATH: "2",
+            CURRENT: "X"
+        }.get(value, "?")  # Fallback for unexpected values
 
     def _compute_local_context(self, maze, position) -> dict:
         """
