@@ -1,11 +1,17 @@
 # model.py
 # MazeRecurrentModel
 
+from configparser import ConfigParser
+
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
 from rnn.base_model import MazeBaseModel
+
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
 
 
 # implement len>1 to remember te path
