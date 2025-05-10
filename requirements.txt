@@ -10,7 +10,7 @@ torchviz
 tqdm
 wandb
 tensorflow
-fpdf
+fpdf2
 pytest
 kaleido
 flask
