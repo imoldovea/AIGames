@@ -3,6 +3,7 @@
 import configparser
 import logging
 
+import https
 from openai import OpenAI
 
 from gpt_model import GPTModel  # Assuming gpt_model.py is in Python's search path or same dir
@@ -33,6 +34,8 @@ class DeepSeekAIModel(GPTModel):
         logging.info("Initializing DeepSeekModel")
         self.provider = "DeepSeek"
         self.name = "DeepSeek"
+        self.model = "deepseek-chat"
+        self.api_url = "https://api.deepseek.com/v1/chat/completions"
 
         try:
             # Same section name as in the secrets.properties file

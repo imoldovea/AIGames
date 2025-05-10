@@ -57,10 +57,68 @@ INPUT = config.get("FILES", "INPUT", fallback="input/")
 SYSTEM_PROMPT = ("""
 You are solving the maze using Backtracking algorithm.
 
+Sample algorithm: 
+def non_recursive_backtracking(N):
+    stack = []  # Stack holds (solution_so_far, candidate_index)
+    stack.append(([], 1))  # Start with an empty solution, first candidate is 1
+
+    while stack:
+        solution, candidate = stack.pop()
+
+        # If solution is complete, return it
+        if len(solution) == N:
+            return solution
+
+        # Try candidates in reverse order so lower numbers are tried first
+        for next_candidate in reversed(range(1, 4)):
+            if not solution or solution[-1] != next_candidate:
+                new_solution = solution + [next_candidate]
+                stack.append((new_solution, next_candidate))
+
+    return None  # No solution found
+
+Description:
+Backtracking is a general problem-solving strategy used to find solutions by exploring all potential candidates and abandoning paths that violate constraints. The non-recursive version implements this idea using an explicit stack, rather than relying on recursive function calls.
+
+Step-by-step logic:
+
+1. Initialize the Search
+- Start with an empty solution and push it onto a stack.
+- The stack keeps track of all the partial solutions that need to be explored.
+
+2. Iterate Until Stack is Empty
+- Repeatedly pop the top partial solution from the stack — this is the current state to explore.
+- If this solution is complete (i.e., reaches the required length or satisfies the goal), it is returned as a valid result.
+- If it's incomplete, continue to the next step.
+
+3. Generate Candidates
+- For the current position in the solution, generate all possible candidates (for example, numbers, choices, moves).
+- For each candidate:
+  - Check constraints: determine whether adding this candidate would violate any rule (e.g., no repeated elements, illegal moves, revisited positions).
+  - If the candidate is valid, create a new solution by extending the current one with the candidate.
+  - Push this new partial solution onto the stack for future exploration.
+
+4. Backtracking Happens Naturally
+- If all candidates from a state are invalid or already explored, that state is simply discarded (popped and not extended).
+- This is the essence of backtracking — moving backward in the decision tree to explore unexplored branches.
+
+5. Repeat
+- The algorithm continues exploring new paths by popping from the stack, trying valid extensions, and pushing those back onto the stack.
+- This process continues until a complete solution is found, or all paths have been exhausted.
+
+Core principles:
+- Explicit state tracking: Instead of recursive call stacks, the algorithm uses a manual stack to hold decisions.
+- Constraint enforcement: Invalid partial solutions are discarded early.
+- Exhaustive exploration: All possibilities are explored unless a valid solution is found early (if only one is needed).
+- Memory-efficient control: The stack-based approach prevents stack overflow and gives more control over search order.
+
 Backtracking means:
 - You explore paths one step at a time.
 - If you reach a dead end, you backtrack (reverse the last step) and try a different path.
 - You avoid revisiting the same positions repeatedly unless no other options exist.
+- NEVER go back and forth between directions like north-south-north ot east-south-east
+- NEVER go back and forth between two positions (e.g., north then south repeatedly)
+
 
 You are inside the maze and see only your immediate surroundings (north, south, east, west).
 
@@ -78,6 +136,7 @@ Rules:
 
 Respond with ONLY the next direction to move: north, south, east, or west. No extra text.
 """)
+
 
 
 class LLMMazeSolver(MazeSolver):
@@ -98,7 +157,7 @@ class LLMMazeSolver(MazeSolver):
 
     def solve(self):
         provider = config.get('LLM', 'provider')
-        max_steps = config.getint('SOLVER', 'max_steps', fallback=5)
+        max_steps = config.getint('SOLVER', 'max_steps', fallback=20)
         if config.getboolean('DEFAULT', 'development_mode'):
             max_steps = 10
             logging.warning(f"Development mode is enabled. Setting max_steps to {max_steps}.")
@@ -181,7 +240,7 @@ class LLMMazeSolver(MazeSolver):
                 break
 
         if self.steps >= max_steps and not self.maze.at_exit():
-            logging.error("Maximum steps exceeded without reaching the exit.")
+            logging.warning("Maximum steps exceeded without reaching the exit.")
             # Consider if you need the LLM response here or just log the error
 
         return path
@@ -384,7 +443,7 @@ if __name__ == "__main__":
 
         mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-        test_maze = mazes[0]
+        test_maze = mazes[1]
         print(f"Testing maze {test_maze.index}...")
         test_maze.print_ascii()
         test_maze.animate = True  # Disable animation for faster debugging if needed

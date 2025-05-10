@@ -43,6 +43,8 @@ class MazeBaseModel(nn.Module):
         self.exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
         # Set up early stopping patience to monitor overfitting
         self.patience = config.getint("DEFAULT", "patience", fallback=5)
+        self.criterion_ce = nn.CrossEntropyLoss(ignore_index=-100, label_smoothing=0.1)
+        self.temp_scaler = TemperatureScaler()
 
     def _build_one_hot_target(self, targets_flat, exit_weight):
         """
@@ -136,7 +138,8 @@ class MazeBaseModel(nn.Module):
         early_stopping_counter = 0
         accumulation_steps = 2
 
-        criterion_ce = nn.CrossEntropyLoss(ignore_index=-100)
+        # criterion_ce = nn.CrossEntropyLoss(ignore_index=-100)
+        criterion_ce = self.criterion_ce
         criterion_bce = nn.BCEWithLogitsLoss()
 
         for epoch in range(num_epochs):
@@ -253,7 +256,7 @@ class MazeBaseModel(nn.Module):
             training_accuracy = correct / total if total > 0 else 0.0
 
             # Validate model (using val_loader with similar reshaping steps)...
-            validation_loss, validation_accuracy = self._validate_model(val_loader, criterion, device, epoch)
+            validation_loss, validation_accuracy = self._validate_model(val_loader, device, epoch)
 
             train_losses["train"].append(epoch_loss)
             train_losses["validation"].append(validation_loss)
@@ -329,7 +332,10 @@ class MazeBaseModel(nn.Module):
         loss_dir = criterion_ce(dir_flat[direction_mask], targets_flat[direction_mask])
         loss_exit = criterion_bce(exit_flat[valid_mask], exit_target[valid_mask])
 
-        exit_weight = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+        # Dynamically increase exit_weight over training
+        exit_weight_base = config.getfloat("DEFAULT", "exit_weight", fallback=5.0)
+        num_epochs = config.getint("DEFAULT", "num_epochs", fallback=10)
+        exit_weight = exit_weight_base * min(1.0, epoch / (num_epochs * 0.4)) if epoch is not None else exit_weight_base
 
         # compute collision penalty
         batch_size, seq_len, _ = outputs_dir.shape
@@ -437,7 +443,7 @@ class MazeBaseModel(nn.Module):
                 if param.grad is not None:
                     tensorboard_writer.add_histogram(f"Gradients/{name}", param.grad, epoch)
 
-    def _validate_model(self, val_loader, criterion, device, epoch):
+    def _validate_model(self, val_loader, device, epoch):
         """
         Runs the validation phase using sequence inputs.
         Parameters:
@@ -457,7 +463,7 @@ class MazeBaseModel(nn.Module):
         correct = 0
         total = 0
 
-        criterion_ce = nn.CrossEntropyLoss(ignore_index=-100)
+        criterion_ce = self.criterion_ce
         criterion_bce = nn.BCEWithLogitsLoss()
 
         with torch.no_grad():
@@ -500,3 +506,12 @@ class MazeBaseModel(nn.Module):
         average_val_loss = val_loss_sum / num_batches if num_batches > 0 else float("inf")
         validation_accuracy = correct / total if total > 0 else 0.0
         return average_val_loss, validation_accuracy
+
+
+class TemperatureScaler(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.temperature = nn.Parameter(torch.ones(1) * 1.5)
+
+    def forward(self, logits):
+        return logits / self.temperature
