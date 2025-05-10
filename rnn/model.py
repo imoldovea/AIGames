@@ -47,6 +47,8 @@ class MazeRecurrentModel(MazeBaseModel):
 
         self.fig, self.ax = plt.subplots()
         self.img = None
+        self.use_attention = config.getboolean("DEFAULT", "use_attention", fallback=True)
+        self.mha = nn.MultiheadAttention(embed_dim=hidden_size, num_heads=4, batch_first=True)
 
     def _initialize_weights(self):
         for name, param in self.recurrent.named_parameters():
@@ -75,6 +77,10 @@ class MazeRecurrentModel(MazeBaseModel):
         else:
             h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=device)
             out, _ = self.recurrent(x, h0)
+            if self.use_attention:
+                # MHA expects (batch, seq_len, embed_dim), so it's ready
+                attn_out, _ = self.mha(out, out, out)
+                out = out + attn_out  # residual connection (optional)
 
         logits_dir = self.fc_dir(out)  # shape: [B, T, 4]
         logit_exit = self.fc_exit(out).squeeze(-1)  # shape: [B, T]
