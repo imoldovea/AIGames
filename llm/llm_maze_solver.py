@@ -55,30 +55,28 @@ OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
 
 SYSTEM_PROMPT = ("""
-You are solving the maze using Backtracking algorithm.
+You are expected to find the exit form a maze using Backtracking algorithm. You are inside the maze and see only your immediate surroundings (north, south, east, west). 
 
-Sample algorithm: 
-def non_recursive_backtracking(N):
-    stack = []  # Stack holds (solution_so_far, candidate_index)
-    stack.append(([], 1))  # Start with an empty solution, first candidate is 1
+Each step you'll receive:
+- What's around you ("open", "wall", or "outside").
+- Valid moves (directions that lead to unexplored or open spaces).
+- History of moves taken (oldest to newest).
+- A memory map of positions visited.
 
-    while stack:
-        solution, candidate = stack.pop()
+Rules:
+- NEVER immediately reverse your previous move unless there is no other valid choice.
+- Always prioritize unexplored paths first.
+- Avoid looping between two positions (e.g., north then south repeatedly).
+- Do not move in a direction that leads to a cell you've already marked as visited on the memory map (value 2), unless there are no unexplored (0 or -) directions left.
 
-        # If solution is complete, return it
-        if len(solution) == N:
-            return solution
-
-        # Try candidates in reverse order so lower numbers are tried first
-        for next_candidate in reversed(range(1, 4)):
-            if not solution or solution[-1] != next_candidate:
-                new_solution = solution + [next_candidate]
-                stack.append((new_solution, next_candidate))
-
-    return None  # No solution found
-
-Description:
 Backtracking is a general problem-solving strategy used to find solutions by exploring all potential candidates and abandoning paths that violate constraints. The non-recursive version implements this idea using an explicit stack, rather than relying on recursive function calls.
+
+Backtracking means:
+- You explore paths one step at a time.
+- If you reach a dead end, you backtrack (reverse the last step) and try a different path.
+- You avoid revisiting the same positions repeatedly unless no other options exist.
+- NEVER go back and forth between directions like north-south-north ot east-south-east
+- NEVER go back and forth between two positions (e.g., north then south repeatedly)
 
 Step-by-step logic:
 
@@ -112,32 +110,8 @@ Core principles:
 - Exhaustive exploration: All possibilities are explored unless a valid solution is found early (if only one is needed).
 - Memory-efficient control: The stack-based approach prevents stack overflow and gives more control over search order.
 
-Backtracking means:
-- You explore paths one step at a time.
-- If you reach a dead end, you backtrack (reverse the last step) and try a different path.
-- You avoid revisiting the same positions repeatedly unless no other options exist.
-- NEVER go back and forth between directions like north-south-north ot east-south-east
-- NEVER go back and forth between two positions (e.g., north then south repeatedly)
-
-
-You are inside the maze and see only your immediate surroundings (north, south, east, west).
-
-Each step you'll receive:
-- What's around you ("open", "wall", or "outside").
-- Valid moves (directions that lead to unexplored or open spaces).
-- History of moves taken (oldest to newest).
-- A memory map of positions visited.
-
-Rules:
-- NEVER immediately reverse your previous move unless there is no other valid choice.
-- Always prioritize unexplored paths first.
-- Avoid looping between two positions (e.g., north then south repeatedly).
-- Do not move in a direction that leads to a cell you've already marked as visited on the memory map (value 2), unless there are no unexplored (0 or -) directions left.
-
 Respond with ONLY the next direction to move: north, south, east, or west. No extra text.
 """)
-
-
 
 class LLMMazeSolver(MazeSolver):
     """
@@ -157,7 +131,7 @@ class LLMMazeSolver(MazeSolver):
 
     def solve(self):
         provider = config.get('LLM', 'provider')
-        max_steps = config.getint('SOLVER', 'max_steps', fallback=20)
+        max_steps = config.getint('SOLVER', 'max_steps', fallback=50)
         if config.getboolean('DEFAULT', 'development_mode'):
             max_steps = 10
             logging.warning(f"Development mode is enabled. Setting max_steps to {max_steps}.")
@@ -168,7 +142,7 @@ class LLMMazeSolver(MazeSolver):
         self.steps = 0
         #history of decissions 
         history = []  # stores 'north', 'south', etc.
-        #mental map of path travel so far. Crete a matrix centered on the start position
+        #
 
         llm_model = GPTFactory.create_gpt_model(provider, SYSTEM_PROMPT)
 
@@ -340,7 +314,7 @@ class LLMMazeSolver(MazeSolver):
             f"Available directions: {available}\n"
             f"History of previous steps (oldest to newest): {history_str}.\n"
             f"Memory map of the maze visited so far:\n{memory_maze_str}\n\n"
-            f"Avoid looping unless there is no option"
+            f"Avoid looping unless there is no option\n"
             f"You are solving this maze using Backtracking:\n"
             f"- Avoid undoing your last step unless no other path is available.\n"
             f"- Do not alternate back and forth between two directions.\n"

@@ -28,7 +28,7 @@ class OpenAIModel(GPTModel):
         # Same section name as in the secrets.properties file
         self.api_key = secrets.get('ChatGPT', 'api_key')
         openai.api_key = self.api_key
-        logging.info("OpenAIModel initialized with system prompt:\n%s", self.system_prompt)
+        # logging.info("OpenAIModel initialized with system prompt:\n%s", self.system_prompt)
 
     def generate_response(self, prompt: str) -> str:
         try:
