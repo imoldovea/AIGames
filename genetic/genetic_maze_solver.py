@@ -124,7 +124,7 @@ def main():
     logging.info("Starting Genetic Maze Solver")
 
     max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
-    mazes = load_mazes(TEST_MAZES_FILE, 5)
+    mazes = load_mazes(TEST_MAZES_FILE, 10)
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
     total_mazes = len(mazes)  # Total mazes to solve
