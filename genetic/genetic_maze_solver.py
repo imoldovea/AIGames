@@ -130,7 +130,7 @@ def main():
     total_mazes = len(mazes)  # Total mazes to solve
 
     population_size = config.getint("GENETIC", "population_size", fallback=50)
-    chromosome_length = config.getint("GENETIC", "chromosome_length", fallback=100)
+    chromosome_length = config.getint("DEFAULt", "max_steps", fallback=100)
     crossover_rate = config.getfloat("GENETIC", "crossover_rate", fallback=0.8)
     mutation_rate = config.getfloat("GENETIC", "mutation_rate", fallback=0.1)
     generations = config.getint("GENETIC", "generations", fallback=200)
