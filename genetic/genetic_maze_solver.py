@@ -1,8 +1,20 @@
+import logging
 import random
+from configparser import ConfigParser
 
 from maze import Maze
 from maze_solver import MazeSolver
+from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf, clean_outupt_folder
 
+PARAMETERS_FILE = "config.properties"
+config = ConfigParser()
+config.read(PARAMETERS_FILE)
+OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
+INPUT = config.get("FILES", "INPUT", fallback="input/")
+
+MAZES = LSTM_MODEL = config.get("FILES", "MAZES", fallback="mazes.pkl")
+TEST_MAZES_FILE = f"{INPUT}{MAZES}"
+OUTPUT_PDF = f"{OUTPUT}solved_mazes_rnn.pdf"
 
 class GeneticMazeSolver(MazeSolver):
     """
@@ -104,3 +116,52 @@ class GeneticMazeSolver(MazeSolver):
 
         self.maze.path = path
         return path
+
+
+def main():
+    setup_logging()
+    clean_outupt_folder()
+    logging.info("Starting Genetic Maze Solver")
+
+    max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
+    mazes = load_mazes(TEST_MAZES_FILE, 5)
+    solved_mazes = []
+    successful_solutions = 0  # Successful solution counter
+    total_mazes = len(mazes)  # Total mazes to solve
+
+    population_size = config.getint("GENETIC", "population_size", fallback=50)
+    chromosome_length = config.getint("GENETIC", "chromosome_length", fallback=100)
+    crossover_rate = config.getfloat("GENETIC", "crossover_rate", fallback=0.8)
+    mutation_rate = config.getfloat("GENETIC", "mutation_rate", fallback=0.1)
+    generations = config.getint("GENETIC", "generations", fallback=200)
+
+    for i, maze_data in enumerate(mazes):
+        # Step 5.b.i: Create a Maze object
+        maze = maze_data
+        maze.animate = False  # Disable animation for faster debugging if needed
+        maze.save_movie = True
+        if config.getboolean("MONITORING", "save_solution_movie", fallback=False):
+            maze.set_save_movie(True)
+
+        solver = GeneticMazeSolver(maze, population_size, chromosome_length, crossover_rate, mutation_rate, generations)
+        solution_path = solver.solve()
+        maze.set_solution(solution_path)
+
+        if len(solution_path) < max_steps and maze.test_solution():
+            logging.info(f"Solved Maze {i + 1}: {solution_path}")
+            solved_mazes.append(maze)
+            successful_solutions += 1
+        else:
+            logging.warning(
+                f"Maze {i + 1} failed self-test. after {generations} generations, {len(solution_path)} steps")
+
+    # **Calculate the *cumulative* rate so far, not always for all mazes**:
+    success_rate = successful_solutions / total_mazes * 100
+    logging.info(f"Success rate: {success_rate:.1f}%")
+
+    save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
+    save_mazes_as_pdf(mazes, OUTPUT_PDF)
+
+
+if __name__ == "__main__":
+    main()
