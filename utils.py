@@ -61,6 +61,7 @@ def setup_logging():
     werkzeug_logger.setLevel(logging.CRITICAL)
     werkzeug_logger.disabled = True
     werkzeug_logger.propagate = False
+    os.environ["WANDB_MODE"] = "disabled"
 
     flask.cli.show_server_banner = lambda *args, **kwargs: None  # Suppress Flask's startup messages
     logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
@@ -73,7 +74,7 @@ def setup_logging():
     forbidden_logs = [
         "findfont", "werkzeug", "werkzeug:_internal.py", "dash-update-component",
         "internal.py", "pydevd", "TF_ENABLE_ONEDNN_OPTS",
-        "Training batch", "tqdm", "client.py", "HTTP Request"
+        "Training batch", "tqdm", "client.py", "HTTP Request", "wandb"
     ]
 
     # Console handler for INFO level and above

@@ -776,7 +776,7 @@ class Maze:
         # Prepare the overlay text
         text = f"Valid Solution = {valid_solution}"
 
-        plt.title(f"{self.algorithm} - Maze Visualization\n{text}\nSolution steps: {len(self.path) - 1}",
+        plt.title(f"{self.algorithm} - Maze Visualization: {self.index}\n{text}\nSolution steps: {len(self.path) - 1}",
                   color=text_color, pad=-60)
         plt.axis("off")
         plt.show()
