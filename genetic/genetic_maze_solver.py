@@ -185,7 +185,7 @@ class GeneticMazeSolver(MazeSolver):
                 futures = [executor.submit(self._fitness, chrom, population, gen) for chrom in population]
                 return [(chrom, f.result()) for chrom, f in zip(population, futures)]
 
-        for gen in tqdm.tqdm(range(self.generations), desc=f"Evolving Population maze #{maze.index}"):
+        for gen in tqdm.tqdm(range(self.generations), desc=f"Evolving Population maze #{self.maze.index}"):
             # Evaluate fitness
             if self.max_workers <= 1:
                 scored = [(chrom, self._fitness(chrom, population, generation=gen)) for chrom in population]
