@@ -51,6 +51,7 @@ class GeneticMazeSolver(MazeSolver):
         self.generations = generations
         self.directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N,S,W,E
         self.threshold = -min(5, 0.05 * max_steps)
+        self.max_workers = config.getint("GENETIC", "max_workers", fallback=1)
 
         # Config-driven maze size bounds
         min_size = config.getint("MAZE", "min_size", fallback=5)
@@ -73,52 +74,59 @@ class GeneticMazeSolver(MazeSolver):
         self.maze.set_algorithm(self.__class__.__name__)
 
     def _random_chromosome(self):
-        # A chromosome is a sequence of direction indices
+        """
+        Generate a random chromosome representing a sequence of moves.
+        Each gene is an index corresponding to a direction (N,S,W,E).
+        Returns:
+            list: Random sequence of direction indices of length chromosome_length
+        """
         return [random.randrange(len(self.directions)) for _ in range(self.chromosome_length)]
 
     def _fitness(self, chromosome, population=None, generation=None):
-        # Evaluate a path: shorter distance to exit plus penalize invalid moves
+        """
+        Calculate fitness score for a chromosome based on how close it gets to maze exit.
+        Higher scores are better. Includes penalties for invalid moves and low diversity.
+        
+        Args:
+            chromosome: Sequence of direction indices
+            population: Current population for diversity calculations
+            generation: Current generation number for logging
+        Returns:
+            float: Fitness score for the chromosome
+        """
         pos = self.maze.start_position
         penalty = 0
         steps = 0
-
         diversity_penalty = 0
-        if population is not None:
-            # Hamming distance to every other chromosome
-            distances = [
-                np.sum(np.array(chromosome) != np.array(other))
-                for other in population if other != chromosome
-            ]
-            if distances:
-                avg_distance = np.mean(distances)
-                # Lower distance → higher penalty
-                diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
-                threshold = self.chromosome_length * diversity_penalty_threshold  # or 0.5 for stricter diversity
-                diversity_penalty = max(0, threshold - avg_distance)  # tweak 10 as threshold
+        chrom_array = np.array(chromosome)
+
+        diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
+        if diversity_penalty_weight > 0 and population is not None:
+            pop_array = np.array(population)
+            if pop_array.ndim == 2:  # valid shape
+                diffs = pop_array != chrom_array
+                mask = ~np.all(pop_array == chrom_array, axis=1)
+                if np.any(mask):
+                    distances = diffs[mask].sum(axis=1)
+                    avg_distance = distances.mean()
+                    threshold = self.chromosome_length * config.getfloat("GENETIC", "diversity_penalty_threshold",
+                                                                         fallback=0.0)
+                    diversity_penalty = max(0, threshold - avg_distance)
 
         for gene in chromosome:
             steps += 1
             move = self.directions[gene]
             new_pos = (pos[0] + move[0], pos[1] + move[1])
-
             if not self.maze.is_valid_move(new_pos):
-                penalty += 5  # invalid move penalty
+                penalty += 5
             else:
                 pos = new_pos
             if pos == self.maze.exit:
                 break
 
-        # Manhattan distance to exit
         dist = abs(pos[0] - self.maze.exit[0]) + abs(pos[1] - self.maze.exit[1])
-
-        if pos == self.maze.exit:
-            fitness = max_steps - steps  # reward fast solutions
-        else:
-            fitness = - (0.5 * dist + 0.5 * penalty)
-
-        # apply diversity penalty
-        diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
-        fitness -= diversity_penalty_weight * diversity_penalty  # Apply penalty here
+        fitness = max_steps - steps if pos == self.maze.exit else - (0.5 * dist + 0.5 * penalty)
+        fitness -= diversity_penalty_weight * diversity_penalty
 
         if generation is not None and generation % 50 == 0 and diversity_penalty > 0:
             logging.debug(f"Applied diversity penalty: {diversity_penalty:.2f} at generation {generation}")
@@ -126,6 +134,15 @@ class GeneticMazeSolver(MazeSolver):
         return fitness
 
     def _crossover(self, parent1, parent2):
+        """
+        Perform single-point crossover between two parent chromosomes.
+        
+        Args:
+            parent1: First parent chromosome
+            parent2: Second parent chromosome
+        Returns:
+            tuple: Two child chromosomes created by crossing over parents
+        """
         if random.random() > self.crossover_rate:
             return parent1[:], parent2[:]
         pt = random.randrange(1, self.chromosome_length)
@@ -134,6 +151,15 @@ class GeneticMazeSolver(MazeSolver):
         return child1, child2
 
     def _mutate(self, chromosome, mutation_rate=0.1):
+        """
+        Randomly mutate genes in a chromosome based on mutation rate.
+        
+        Args:
+            chromosome: Sequence to mutate
+            mutation_rate: Probability of each gene mutating
+        Returns:
+            list: Mutated chromosome
+        """
         for i in range(len(chromosome)):
             if random.random() < mutation_rate:
                 chromosome[i] = random.randrange(len(self.directions))
@@ -159,9 +185,9 @@ class GeneticMazeSolver(MazeSolver):
                 futures = [executor.submit(self._fitness, chrom, population, gen) for chrom in population]
                 return [(chrom, f.result()) for chrom, f in zip(population, futures)]
 
-        for gen in tqdm.tqdm(range(self.generations), desc="Evolving Population"):
+        for gen in tqdm.tqdm(range(self.generations), desc=f"Evolving Population maze #{maze.index}"):
             # Evaluate fitness
-            if max_workers <= 1:
+            if self.max_workers <= 1:
                 scored = [(chrom, self._fitness(chrom, population, generation=gen)) for chrom in population]
             else:
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -245,17 +271,34 @@ class GeneticMazeSolver(MazeSolver):
         return path
 
     def population_diversity(self, pop):
+        """
+        Calculate population diversity using average Hamming distance between chromosomes.
+        
+        Args:
+            pop: List of chromosomes in population
+        Returns:
+            float: Average Hamming distance between all pairs
+        """
         pop_arr = np.array(pop)
-        n = len(pop)
+        n = len(pop_arr)
         if n < 2:
-            return 0
-        distances = [
-            np.sum(pop_arr[i] != pop_arr[j])
-            for i in range(n) for j in range(i + 1, n)
-        ]
-        return np.mean(distances)
+            return 0.0
+
+        diffs = np.bitwise_xor(pop_arr[:, None, :], pop_arr[None, :, :])
+        upper = np.triu_indices(n, k=1)
+        hamming_matrix = diffs.sum(axis=2)
+        return hamming_matrix[upper].mean()
 
     def _print_fitness(self, fitness_history, avg_fitness_history, diversity_history, show=False):
+        """
+        Plot and save fitness metrics over generations.
+        
+        Args:
+            fitness_history: Best fitness scores per generation
+            avg_fitness_history: Average fitness scores per generation
+            diversity_history: Population diversity measures per generation
+            show: Whether to display plot interactively
+        """
         plt.figure(figsize=(10, 5))
         plt.plot(fitness_history, label="Best Fitness")
         plt.plot(avg_fitness_history, label="Avg Fitness")
@@ -272,6 +315,11 @@ class GeneticMazeSolver(MazeSolver):
 
 
 def main():
+    """
+    Main execution function to solve multiple mazes using genetic algorithm.
+    Sets up environment, loads mazes, solves them and saves results.
+    """
+    # Initialize logging and clean output directory
     setup_logging()
     clean_outupt_folder()
     logging.info("Starting Genetic Maze Solver")
