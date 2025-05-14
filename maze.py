@@ -53,6 +53,9 @@ class Maze:
         self._wall_cache = {}
         self._corridor_cache = {}
 
+        self.grid = np.array(self.grid)  # Ensure grid is a NumPy array
+        self._wall_table = (self.grid == self.WALL)  # Precompute wall positions as boolean array
+
         # Locate the starting position using the provided start_marker
         start_indices = np.where(self.grid == self.START)
         if len(start_indices[0]) == 0:
@@ -204,10 +207,15 @@ class Maze:
         raise ValueError("No valid exit found on the maze border.")
 
     def is_wall(self, position):
-        if not self.is_within_bounds(position):
-            return True  # Out-of-bounds is treated as a wall.
-        r, c = position
-        return self.grid[r, c] == self.WALL
+        """Return True if the position is a wall."""
+        if position is None or not hasattr(position, "__iter__") or len(position) != 2:
+            return False
+
+        x, y = position
+        # Fast lookup in _wall_table
+        if 0 <= x < self._wall_table.shape[0] and 0 <= y < self._wall_table.shape[1]:
+            return self._wall_table[x, y]
+        return False  # Out-of-bounds treated as not wall (optional: you could return True)
 
     def is_corridor(self, position):
         if not self.is_within_bounds(position):
@@ -216,10 +224,14 @@ class Maze:
         return self.grid[r, c] == self.CORRIDOR
 
     def is_valid_move(self, position):
-        """
-        Checks if moving to the given position is valid (within bounds and not hitting a wall).
-        """
-        return self.is_within_bounds(position) and not self.is_wall(position)
+        """Return True if within bounds and not a wall."""
+        if position is None or not hasattr(position, "__iter__") or len(position) != 2:
+            return False
+
+        x, y = position
+        if 0 <= x < self._wall_table.shape[0] and 0 <= y < self._wall_table.shape[1]:
+            return not self._wall_table[x, y]
+        return False
 
     def can_move(self, current_position, move):
         """

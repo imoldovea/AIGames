@@ -386,7 +386,7 @@ def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
                 # Optionally save the cProfile data if output_file is provided
                 if output_file:
                     stats_obj.dump_stats(f"{OUTPUT}{output_file}.prof")
-                    logging.info(f"Profile data saved to {output_file}.prof")
+                    logging.debug(f"Profile data saved to {output_file}.prof")
 
                     with open(f"{OUTPUT}{output_file}.txt", "w") as f:
                         f.write(s.getvalue())
