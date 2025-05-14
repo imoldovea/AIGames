@@ -31,6 +31,11 @@ DIVERSITY_THRESHOLD = 5  # average Hamming distance in chromosome positions
 DIVERSITY_PATIENCE = 20  # how many generations to tolerate below threshold
 MIN_POP = 50
 
+random_seed = config.getint("GENETIC", "random_seed", fallback=42)
+random.seed(random_seed)
+
+np.random.seed(random_seed)
+
 class GeneticMazeSolver(MazeSolver):
     """
     Maze solver using a Genetic Algorithm. Maintains a population of candidate paths
@@ -52,8 +57,6 @@ class GeneticMazeSolver(MazeSolver):
         self.directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N,S,W,E
         self.threshold = -min(5, 0.05 * max_steps)
         self.max_workers = config.getint("GENETIC", "max_workers", fallback=1)
-        self.penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
-        self.penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
         self.diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
         self.diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
 
@@ -105,7 +108,7 @@ class GeneticMazeSolver(MazeSolver):
         chrom_array = np.array(chromosome)
 
         if self.diversity_penalty_weight > 0 and population is not None:
-            pop_array = np.array(population)
+            pop_array = population
             if pop_array.ndim == 2:  # valid shape
                 diffs = pop_array != chrom_array
                 mask = ~np.all(pop_array == chrom_array, axis=1)
@@ -128,7 +131,7 @@ class GeneticMazeSolver(MazeSolver):
 
         dist = abs(pos[0] - self.maze.exit[0]) + abs(pos[1] - self.maze.exit[1])
         fitness = max_steps - steps if pos == self.maze.exit else - (0.5 * dist + 0.5 * penalty)
-        fitness -= self.diversity_penalty_weight * self.penalty_weight
+        fitness -= self.diversity_penalty_weight * diversity_penalty
 
         if generation is not None and generation % 50 == 0 and diversity_penalty > 0:
             logging.debug(f"Applied diversity penalty: {diversity_penalty:.2f} at generation {generation}")
@@ -179,21 +182,25 @@ class GeneticMazeSolver(MazeSolver):
         diversity_history = []
         diversity_collapse_events = 0
         low_diversity_counter = 0
+        generations = 0
         wandb.init(project="genetic-maze-solver", name=f"maze_{self.maze.index}")
 
         # multithreading
         def evaluate_population(population):
             with ThreadPoolExecutor() as executor:
-                futures = [executor.submit(self._fitness, chrom, population, gen) for chrom in population]
+                futures = [executor.submit(self._fitness, chrom, pop_array, gen) for chrom in population]
                 return [(chrom, f.result()) for chrom, f in zip(population, futures)]
 
-        for gen in tqdm.tqdm(range(self.generations), desc=f"Evolving Population maze #{self.maze.index}"):
+        for gen in tqdm.tqdm(range(self.generations),
+                             desc=f"Evolving Population maze #{self.maze.index} complexity: {self.maze.complexity}"):
+            generaitons = gen
+            pop_array = np.array(population)
             # Evaluate fitness
             if self.max_workers <= 1:
-                scored = [(chrom, self._fitness(chrom, population, generation=gen)) for chrom in population]
+                scored = [(chrom, self._fitness(chrom, pop_array, generation=gen)) for chrom in population]
             else:
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = [executor.submit(self._fitness, chrom, population, gen) for chrom in population]
+                    futures = [executor.submit(self._fitness, chrom, pop_array, gen) for chrom in population]
                     scored = [(chrom, f.result()) for chrom, f in zip(population, futures)]
 
             scored.sort(key=lambda x: x[1], reverse=True)
@@ -271,7 +278,7 @@ class GeneticMazeSolver(MazeSolver):
                 break
 
         self.maze.path = path
-        return path
+        return path, generaitons
 
     def population_diversity(self, pop):
         """
@@ -330,8 +337,8 @@ def main():
     max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
     mazes = load_mazes(TEST_MAZES_FILE, 10)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
-    MIN = 0
-    MAX = 4
+    MIN = 5
+    MAX = 7
     mazes = mazes[MIN:MAX]  # Select only first 4 mazes
 
     solved_mazes = []
@@ -353,11 +360,11 @@ def main():
             maze.set_save_movie(True)
 
         solver = GeneticMazeSolver(maze, population_size, chromosome_length, crossover_rate, mutation_rate, generations)
-        solution_path = solver.solve()
+        solution_path, generaitons = solver.solve()
         maze.set_solution(solution_path)
 
         if len(solution_path) < max_steps and maze.test_solution():
-            logging.info(f"Solved Maze {i + 1}: {solution_path}")
+            logging.info(f"Solved Maze {i + 1}, generaitons: {generaitons}, solution path: {solution_path}")
             solved_mazes.append(maze)
             successful_solutions += 1
         else:
