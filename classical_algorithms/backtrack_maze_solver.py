@@ -1,12 +1,11 @@
 # backtrack_maze_solver.py
 
 import logging
-import pickle
 import traceback
 
 from maze import Maze
 from maze_solver import MazeSolver
-from utils import setup_logging
+from utils import setup_logging, load_mazes
 
 
 class BacktrackingMazeSolver(MazeSolver):
@@ -130,13 +129,10 @@ def backtracking_solver() -> None:
     """
     try:
         # Load the numpy file containing an array of mazes
-        with open('../input/mazes.pkl', 'rb') as f:
-            mazes = pickle.load(f)
-        logging.info(f"Loaded {len(mazes)} mazes.")
+        mazes = load_mazes("input/mazes.h5")
 
         # Iterate through each maze in the array
-        for i, maze_matrix in enumerate(mazes):
-            maze = Maze(maze_matrix)
+        for i, maze in enumerate(mazes):
             # logging.debug(f"Solving maze {i + 1}...")
 
             # Instantiate the backtracking maze solver

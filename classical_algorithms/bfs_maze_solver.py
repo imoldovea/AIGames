@@ -1,5 +1,4 @@
 import logging
-import pickle
 import traceback
 from collections import deque
 
@@ -7,7 +6,7 @@ from numpy.f2py.auxfuncs import throw_error
 
 from maze import Maze
 from maze_solver import MazeSolver
-from utils import setup_logging
+from utils import setup_logging, load_mazes
 
 
 class BFSMazeSolver(MazeSolver):
@@ -49,8 +48,10 @@ class BFSMazeSolver(MazeSolver):
                 path = []
                 while current is not None:
                     path.append(current)
+                    prev = current
                     current = parent[current]
-                    self.maze.move(current)
+                    if current is not None:
+                        self.maze.move(current)
                 path.reverse()
                 # Optionally update the maze's path with the found solution.
                 self.maze.path = path
@@ -77,13 +78,10 @@ def bfs_solver():
     """
     try:
         # Load mazes
-        with open('../input/mazes.pkl', 'rb') as f:
-            mazes = pickle.load(f)
-        logging.info(f"Loaded {len(mazes)} mazes.")
+        mazes = load_mazes("input/mazes.h5")
 
         # Iterate through each maze in the array
-        for i, maze_matrix in enumerate(mazes):
-            maze = Maze(maze_matrix)
+        for i, maze in enumerate(mazes):
 
             logging.debug(f"Solving maze {i + 1}...")
 
@@ -108,7 +106,6 @@ def bfs_solver():
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
         throw_error(e)
-
 
 if __name__ == '__main__':
     #setup logging

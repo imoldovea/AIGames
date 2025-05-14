@@ -57,7 +57,7 @@ def main():
     # Construct absolute paths for PDF and MP4 outputs
     output_pdf = os.path.join(project_root, "output", "solved_mazes.pdf")
     output_mp4 = os.path.join(project_root, "output", "solved_mazes.mp4")
-    input_mazes = os.path.join(project_root, "input", "mazes.pkl")
+    input_mazes = os.path.join(project_root, "input", "mazes.h5")
 
     try:
         # Step 1: Load mazes
