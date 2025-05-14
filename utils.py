@@ -98,7 +98,7 @@ def clean_outupt_folder():
     # Delete all OUTPUT folder content
     if config.getboolean("DEFAULT", "retrain_model", fallback=True):
         for pattern in ["*.html", "*.pdf", "*.mp4", "*.prof", "*.csv", "*.json", "*.png", "*.properties",
-                        "*.txt", "*.png"]:
+                        "*.txt", "*.png", "*.gif"]:
             for filename in glob.glob(os.path.join(OUTPUT, pattern)):
                 os.remove(filename)
         # Remove /exit subfolder and its contents if exist
@@ -117,6 +117,11 @@ def clean_outupt_folder():
 
         # Remove /tensorboard subfolder and its contents if exist (including subdirectories)
         tensorboard_folder = os.path.join(OUTPUT, "tensorboard_data")
+        if os.path.exists(tensorboard_folder):
+            shutil.rmtree(tensorboard_folder)
+
+        # Remove /frames subfolder and its contents if exist (including subdirectories)
+        tensorboard_folder = os.path.join(OUTPUT, "frames")
         if os.path.exists(tensorboard_folder):
             shutil.rmtree(tensorboard_folder)
 
@@ -390,7 +395,7 @@ def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
 
                     with open(f"{OUTPUT}{output_file}.txt", "w") as f:
                         f.write(s.getvalue())
-                    logging.info(f"Profile results saved to {output_file}.txt")
+                    logging.debug(f"Profile results saved to {output_file}.txt")
 
                     # Save profiling results as JSON in the OUTPUT directory
                     json_output = f"{OUTPUT}{output_file}.json"
@@ -407,7 +412,7 @@ def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
                         }
                     with open(json_output, "w") as f:
                         json.dump(stats_dict, f, indent=4)
-                    logging.info(f"Profile JSON data saved to {json_output}")
+                    logging.debug(f"Profile JSON data saved to {json_output}")
             else:
                 result = func(*args, **kwargs)
             return result

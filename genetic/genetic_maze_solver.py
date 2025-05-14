@@ -9,6 +9,7 @@ import numpy as np
 import tqdm
 import wandb
 
+from genetic_monitoring import visualize_evolution
 from maze import Maze
 from maze_solver import MazeSolver
 from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf, clean_outupt_folder
@@ -33,8 +34,8 @@ MIN_POP = 50
 
 random_seed = config.getint("GENETIC", "random_seed", fallback=42)
 random.seed(random_seed)
-
 np.random.seed(random_seed)
+
 
 class GeneticMazeSolver(MazeSolver):
     """
@@ -59,6 +60,8 @@ class GeneticMazeSolver(MazeSolver):
         self.max_workers = config.getint("GENETIC", "max_workers", fallback=1)
         self.diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
         self.diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
+        self.diversity_infusion = config.getfloat("GENETIC", "diversity_infusion", fallback=0.01)
+        self.evolution_chromosomes = config.getint("MONITORING", "evolution_chromosomes", fallback=5)
 
         # Config-driven maze size bounds
         min_size = config.getint("MAZE", "min_size", fallback=5)
@@ -107,6 +110,7 @@ class GeneticMazeSolver(MazeSolver):
         diversity_penalty = 0
         chrom_array = np.array(chromosome)
 
+        # Diversity penalty
         if self.diversity_penalty_weight > 0 and population is not None:
             pop_array = population
             if pop_array.ndim == 2:  # valid shape
@@ -115,8 +119,8 @@ class GeneticMazeSolver(MazeSolver):
                 if np.any(mask):
                     distances = diffs[mask].sum(axis=1)
                     avg_distance = distances.mean()
-                    threshold = self.chromosome_length * self.diversity_penalty_threshold
-                    diversity_penalty = max(0, threshold - avg_distance)
+                    diversity_threshold = self.chromosome_length * self.diversity_penalty_threshold
+                    diversity_penalty = max(0, diversity_threshold - avg_distance)
 
         for gene in chromosome:
             steps += 1
@@ -183,6 +187,8 @@ class GeneticMazeSolver(MazeSolver):
         diversity_collapse_events = 0
         low_diversity_counter = 0
         generations = 0
+        monitoring_data = []
+
         wandb.init(project="genetic-maze-solver", name=f"maze_{self.maze.index}")
 
         # multithreading
@@ -214,12 +220,12 @@ class GeneticMazeSolver(MazeSolver):
             # Early exit if solution reached
             min_generations = 5
             if gen >= min_generations and best_score > self.threshold:
-                logging.info(f"Early stopping at generation {gen} with score {best_score:.2f}")
+                tqdm.write(f"\nEarly stopping at generation {gen} with score {best_score:.2f}")
                 break
 
             fitness_values = [score for _, score in scored]
             avg_fitness = sum(fitness_values) / len(fitness_values)
-            if gen % 3 == 0:  # only check diversity every 3 generations
+            if gen % 5 == 0:  # only check diversity every 3 generations
                 diversity = self.population_diversity([chrom for chrom, _ in scored])
 
             if diversity < DIVERSITY_THRESHOLD:
@@ -228,8 +234,7 @@ class GeneticMazeSolver(MazeSolver):
                     diversity_collapse_events += 1
                     logging.warning(
                         f"Diversity collapse at generation {gen}, #{diversity_collapse_events} (value = {diversity:.2f})")
-                    diversity_infusion = config.getfloat("GENETIC", "diversity_infusion", fallback=0.01)
-                    num_random = int(self.population_size * diversity_infusion)
+                    num_random = int(self.population_size * self.diversity_infusion)
                     num_random = max(1, num_random)  # Ensure at least one is injected
                     population[:num_random] = [self._random_chromosome() for _ in range(num_random)]
                     logging.info("Injected random chromosomes to restore diversity.")
@@ -249,7 +254,8 @@ class GeneticMazeSolver(MazeSolver):
                 wandb.log({"generation": gen, "diversity": diversity})
             # Selection (tournament)
             new_pop = elites[:]
-            mutation_rate = self.initial_rate * (1 - gen / self.generations)  #adaptive mutation rate
+            # mutation_rate = self.initial_rate * (1 - gen / self.generations)  #adaptive mutation rate
+            mutation_rate = self.initial_rate
             while len(new_pop) < self.population_size:
                 # pick two
                 a, b = random.sample(scored[:10], 2)
@@ -261,8 +267,17 @@ class GeneticMazeSolver(MazeSolver):
                     new_pop.append(self._mutate(c2, mutation_rate))
             population = new_pop
 
-        self._print_fitness(fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
-                            diversity_history=diversity_history, show=True)
+            # Select chromosomes you wish to visualize (e.g., top 3 by fitness)
+            selected = scored[:self.evolution_chromosomes]  # Already sorted desc by fitness
+            paths = [self.decode_path(chromosome) for chromosome, _ in selected]
+            mon_fitnesses = [fitness for _, fitness in selected]
+
+            monitoring_data.append({
+                "maze": self.maze,  # The maze layout, as before
+                "paths": paths,  # List of (row, col) tuples for each path
+                "fitnesses": mon_fitnesses,  # Corresponding list of fitness scores
+                "generation": gen
+            })
 
         # Decode best into a path and move through maze
         pos = self.maze.start_position
@@ -276,8 +291,23 @@ class GeneticMazeSolver(MazeSolver):
                 pos = next_pos
             if pos == self.maze.exit:
                 break
-
         self.maze.path = path
+
+        save_evolution_movie = config.getboolean("MONITORING", "save_evolution_movie", fallback=False)
+        if save_evolution_movie:
+            # Add final solution as a frame
+            paths = [path] * self.evolution_chromosomes
+            fitness = [best_score] * self.evolution_chromosomes
+            monitoring_data.append({
+                "maze": self.maze,
+                "paths": paths,  # just the final solution
+                "fitnesses": fitness,  # Corresponding list of fitness scores
+                "generation": generations + 1  # distinguish from last generation
+            })
+            visualize_evolution(monitoring_data, mode="video", index=self.maze.index)  # or mode="gif/video"
+        self._print_fitness(fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
+                            diversity_history=diversity_history, show=True)
+
         return path, generaitons
 
     def population_diversity(self, pop):
@@ -323,6 +353,21 @@ class GeneticMazeSolver(MazeSolver):
             plt.show()
         plt.close()  # Always close to release memory
 
+    def decode_path(self, chromosome):
+        """
+        Given a chromosome (list of direction indices), decodes it into a list of maze positions.
+        """
+        pos = self.maze.start_position
+        path = [pos]
+        for gene in chromosome:
+            move = self.directions[gene]
+            next_pos = (pos[0] + move[0], pos[1] + move[1])
+            if self.maze.is_valid_move(next_pos):
+                path.append(next_pos)
+                pos = next_pos
+            if pos == self.maze.exit:
+                break
+        return path
 
 def main():
     """
