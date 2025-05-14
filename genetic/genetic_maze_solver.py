@@ -52,6 +52,10 @@ class GeneticMazeSolver(MazeSolver):
         self.directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N,S,W,E
         self.threshold = -min(5, 0.05 * max_steps)
         self.max_workers = config.getint("GENETIC", "max_workers", fallback=1)
+        self.penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
+        self.penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
+        self.diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
+        self.diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
 
         # Config-driven maze size bounds
         min_size = config.getint("MAZE", "min_size", fallback=5)
@@ -69,7 +73,7 @@ class GeneticMazeSolver(MazeSolver):
 
         self.population_size = population_size
         logging.info(
-            f"Adaptive population size for maze {self.maze.index} ({self.maze.rows}x{self.maze.cols}): {population_size}")
+            f"Adaptive population size for maze #{self.maze.index} ({self.maze.rows}x{self.maze.cols}): {population_size}")
 
         self.maze.set_algorithm(self.__class__.__name__)
 
@@ -100,8 +104,7 @@ class GeneticMazeSolver(MazeSolver):
         diversity_penalty = 0
         chrom_array = np.array(chromosome)
 
-        diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
-        if diversity_penalty_weight > 0 and population is not None:
+        if self.diversity_penalty_weight > 0 and population is not None:
             pop_array = np.array(population)
             if pop_array.ndim == 2:  # valid shape
                 diffs = pop_array != chrom_array
@@ -109,8 +112,7 @@ class GeneticMazeSolver(MazeSolver):
                 if np.any(mask):
                     distances = diffs[mask].sum(axis=1)
                     avg_distance = distances.mean()
-                    threshold = self.chromosome_length * config.getfloat("GENETIC", "diversity_penalty_threshold",
-                                                                         fallback=0.0)
+                    threshold = self.chromosome_length * self.diversity_penalty_threshold
                     diversity_penalty = max(0, threshold - avg_distance)
 
         for gene in chromosome:
@@ -126,7 +128,7 @@ class GeneticMazeSolver(MazeSolver):
 
         dist = abs(pos[0] - self.maze.exit[0]) + abs(pos[1] - self.maze.exit[1])
         fitness = max_steps - steps if pos == self.maze.exit else - (0.5 * dist + 0.5 * penalty)
-        fitness -= diversity_penalty_weight * diversity_penalty
+        fitness -= self.diversity_penalty_weight * self.penalty_weight
 
         if generation is not None and generation % 50 == 0 and diversity_penalty > 0:
             logging.debug(f"Applied diversity penalty: {diversity_penalty:.2f} at generation {generation}")
@@ -210,7 +212,8 @@ class GeneticMazeSolver(MazeSolver):
 
             fitness_values = [score for _, score in scored]
             avg_fitness = sum(fitness_values) / len(fitness_values)
-            diversity = self.population_diversity([chrom for chrom, _ in scored])
+            if gen % 3 == 0:  # only check diversity every 3 generations
+                diversity = self.population_diversity([chrom for chrom, _ in scored])
 
             if diversity < DIVERSITY_THRESHOLD:
                 low_diversity_counter += 1
@@ -325,7 +328,12 @@ def main():
     logging.info("Starting Genetic Maze Solver")
 
     max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
-    mazes = load_mazes(TEST_MAZES_FILE, 6)
+    mazes = load_mazes(TEST_MAZES_FILE, 10)
+    mazes.sort(key=lambda maze: maze.complexity, reverse=False)
+    MIN = 0
+    MAX = 4
+    mazes = mazes[MIN:MAX]  # Select only first 4 mazes
+
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
     total_mazes = len(mazes)  # Total mazes to solve
