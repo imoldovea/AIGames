@@ -41,6 +41,9 @@ def create_video_from_frames(frames_dir="frames", output_file="output/evolution.
     for frame in frames:
         img = cv2.imread(frame)
         video.write(img)
+    for _ in range(fps * 5):
+        img = cv2.imread(frames[-1])
+        video.write(img)
     video.release()
     logging.debug(f"Video saved as {output_file}")
 

@@ -199,7 +199,7 @@ class GeneticMazeSolver(MazeSolver):
 
         for gen in tqdm.tqdm(range(self.generations),
                              desc=f"Evolving Population maze #{self.maze.index} complexity: {self.maze.complexity}"):
-            generaitons = gen
+            generations = gen
             pop_array = np.array(population)
             # Evaluate fitness
             if self.max_workers <= 1:
@@ -276,7 +276,7 @@ class GeneticMazeSolver(MazeSolver):
                 "maze": self.maze,  # The maze layout, as before
                 "paths": paths,  # List of (row, col) tuples for each path
                 "fitnesses": mon_fitnesses,  # Corresponding list of fitness scores
-                "generation": gen
+                "generation": generations + 1
             })
 
         # Decode best into a path and move through maze
@@ -296,19 +296,20 @@ class GeneticMazeSolver(MazeSolver):
         save_evolution_movie = config.getboolean("MONITORING", "save_evolution_movie", fallback=False)
         if save_evolution_movie:
             # Add final solution as a frame
-            paths = [path] * self.evolution_chromosomes
-            fitness = [best_score] * self.evolution_chromosomes
-            monitoring_data.append({
-                "maze": self.maze,
-                "paths": paths,  # just the final solution
-                "fitnesses": fitness,  # Corresponding list of fitness scores
-                "generation": generations + 1  # distinguish from last generation
-            })
+            final_path = self.decode_path(best)  # safe, tested decode method
+
+            if final_path and len(final_path) > 1:
+                monitoring_data.append({
+                    "maze": self.maze,
+                    "paths": [final_path],
+                    "fitnesses": [best_score],
+                    "generation": generations + 1
+                })
             visualize_evolution(monitoring_data, mode="video", index=self.maze.index)  # or mode="gif/video"
         self._print_fitness(fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
                             diversity_history=diversity_history, show=True)
 
-        return path, generaitons
+        return path, generations
 
     def population_diversity(self, pop):
         """
@@ -414,7 +415,7 @@ def main():
             successful_solutions += 1
         else:
             logging.warning(
-                f"Maze {i + 1} failed self-test. after {generations} generations, {len(solution_path)} steps")
+                f"Maze {i + 1} failed self-test. after {generations} generations, {len(solution_path)} steps: {solution_path}")
         maze.plot_maze(show_path=True, show_solution=True, show_position=False)
 
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
