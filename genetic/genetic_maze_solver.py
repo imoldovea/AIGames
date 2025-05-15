@@ -220,7 +220,7 @@ class GeneticMazeSolver(MazeSolver):
             # Early exit if solution reached
             min_generations = 5
             if gen >= min_generations and best_score > self.threshold:
-                tqdm.write(f"\nEarly stopping at generation {gen} with score {best_score:.2f}")
+                tqdm.tqdm.write(f"\nEarly stopping at generation {gen} with score {best_score:.2f}")
                 break
 
             fitness_values = [score for _, score in scored]
@@ -383,7 +383,7 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 10)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
     MIN = 5
-    MAX = 7
+    MAX = 6  # 7
     mazes = mazes[MIN:MAX]  # Select only first 4 mazes
 
     solved_mazes = []
@@ -409,7 +409,7 @@ def main():
         maze.set_solution(solution_path)
 
         if len(solution_path) < max_steps and maze.test_solution():
-            logging.info(f"Solved Maze {i + 1}, generaitons: {generaitons}, solution path: {solution_path}")
+            logging.info(f"Solved Maze {i + 1}, generaitons: {generaitons}")
             solved_mazes.append(maze)
             successful_solutions += 1
         else:
