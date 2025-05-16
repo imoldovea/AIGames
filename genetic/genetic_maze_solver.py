@@ -1,3 +1,4 @@
+# genetic_maze_solver.py
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -103,38 +104,46 @@ class GeneticMazeSolver(MazeSolver):
             float: Fitness score for the chromosome
         """
         pos = self.maze.start_position
-        penalty = 0
         steps = 0
+        penalty = 0
         diversity_penalty = 0
         chrom_array = np.array(chromosome)
 
-        # Diversity penalty
+        # Calculate diversity penalty directly if enabled
         if self.diversity_penalty_weight > 0 and population is not None:
-            pop_array = population
-            if pop_array.ndim == 2:  # valid shape
+            pop_array = population if population.ndim == 2 else None
+            if pop_array is not None:
                 diffs = pop_array != chrom_array
                 mask = ~np.all(pop_array == chrom_array, axis=1)
                 if np.any(mask):
-                    distances = diffs[mask].sum(axis=1)
-                    avg_distance = distances.mean()
-                    diversity_threshold = self.chromosome_length * self.diversity_penalty_threshold
-                    diversity_penalty = max(0, diversity_threshold - avg_distance)
+                    # Average Hamming distance
+                    diversity_penalty = max(
+                        0,
+                        self.chromosome_length * self.diversity_penalty_threshold - diffs[mask].sum(axis=1).mean()
+                    )
 
+        # Traverse the chromosome and evaluate movement
         for gene in chromosome:
             steps += 1
-            move = self.directions[gene]
+            move = self.directions[gene]  # Inline move calculation
             new_pos = (pos[0] + move[0], pos[1] + move[1])
+
+            # Inline invalid move check
             if not self.maze.is_valid_move(new_pos):
                 penalty += 5
             else:
                 pos = new_pos
+
+            # Inline exit condition
             if pos == self.maze.exit:
                 break
 
+        # Calculate distance to exit and fitness score
         dist = abs(pos[0] - self.maze.exit[0]) + abs(pos[1] - self.maze.exit[1])
-        fitness = max_steps - steps if pos == self.maze.exit else - (0.5 * dist + 0.5 * penalty)
+        fitness = (max_steps - steps if pos == self.maze.exit else -0.5 * dist - 0.5 * penalty)
         fitness -= self.diversity_penalty_weight * diversity_penalty
 
+        # Inline logging for generation-specific debug
         if generation is not None and generation % 50 == 0 and diversity_penalty > 0:
             logging.debug(f"Applied diversity penalty: {diversity_penalty:.2f} at generation {generation}")
 
@@ -151,6 +160,26 @@ class GeneticMazeSolver(MazeSolver):
         child1 = np.concatenate((parent1[:pt], parent2[pt:]))
         child2 = np.concatenate((parent2[:pt], parent1[pt:]))
         return child1.tolist(), child2.tolist()
+
+    def batch_crossover(parents, crossover_rate):
+        N, L = parents.shape
+        assert N % 2 == 0  # Should be even for simple pairing
+
+        pts = np.random.randint(1, L, size=N // 2)
+        do_cross = np.random.rand(N // 2) < crossover_rate
+
+        children = np.empty_like(parents)
+        for i, (pt, cross) in enumerate(zip(pts, do_cross)):
+            p1 = parents[2 * i]
+            p2 = parents[2 * i + 1]
+            if cross:
+                children[2 * i, :pt] = p1[:pt]
+                children[2 * i, pt:] = p2[pt:]
+                children[2 * i + 1, :pt] = p2[:pt]
+                children[2 * i + 1, pt:] = p1[pt:]
+            else:
+                children[2 * i], children[2 * i + 1] = p1, p2
+        return children
 
     def _mutate(self, chromosome, mutation_rate=0.1):
         """
@@ -171,6 +200,12 @@ class GeneticMazeSolver(MazeSolver):
         )
         return chromosome.tolist()
 
+    def batch_mutate(population, mutation_rate, directions):
+        N, L = population.shape
+        mutation_mask = np.random.rand(N, L) < mutation_rate
+        random_genes = np.random.randint(0, len(directions), size=(N, L))
+        population[mutation_mask] = random_genes[mutation_mask]
+        return population
 
     @profile_method(output_file=f"solve_genetic_maze_solver.py")
     def solve(self):
@@ -303,7 +338,8 @@ class GeneticMazeSolver(MazeSolver):
                     "fitnesses": [best_score],
                     "generation": generations + 1
                 })
-            visualize_evolution(monitoring_data, mode="video", index=self.maze.index)  # or mode="gif/video"
+            visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
+            visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
         self._print_fitness(fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
                             diversity_history=diversity_history, show=True)
 

@@ -225,13 +225,18 @@ class Maze:
 
     def is_valid_move(self, position):
         """Return True if within bounds and not a wall."""
-        if position is None or not hasattr(position, "__iter__") or len(position) != 2:
+        # Inline check for None or invalid iterable
+        if not position or len(position) != 2:
             return False
 
         x, y = position
-        if 0 <= x < self._wall_table.shape[0] and 0 <= y < self._wall_table.shape[1]:
-            return not self._wall_table[x, y]
-        return False
+
+        # Check within precomputed bounds
+        if not (0 <= x < self.rows and 0 <= y < self.cols):
+            return False
+
+        # Use precomputed wall lookup
+        return not self._wall_table[x, y]
 
     def can_move(self, current_position, move):
         """
