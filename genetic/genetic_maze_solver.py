@@ -205,7 +205,7 @@ class GeneticMazeSolver(MazeSolver):
             if self.max_workers <= 1:
                 scored = [(chrom, self._fitness(chrom, pop_array, generation=gen)) for chrom in population]
             else:
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     futures = [executor.submit(self._fitness, chrom, pop_array, gen) for chrom in population]
                     scored = [(chrom, f.result()) for chrom, f in zip(population, futures)]
 
@@ -370,6 +370,20 @@ class GeneticMazeSolver(MazeSolver):
                 break
         return path
 
+    # Function to monitor active threads
+    def monitor_threads(duration=10, interval=0.1):
+        thread_counts = []
+        timestamps = []
+
+        start_time = time.time()
+        while time.time() - start_time < duration:
+            thread_counts.append(threading.active_count())
+            timestamps.append(time.time() - start_time)
+            time.sleep(interval)
+
+        return timestamps, thread_counts
+
+
 def main():
     """
     Main execution function to solve multiple mazes using genetic algorithm.
@@ -383,8 +397,8 @@ def main():
     max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
     mazes = load_mazes(TEST_MAZES_FILE, 10)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
-    MIN = 5
-    MAX = 6  # 7
+    MIN = 6
+    MAX = 7  # 7
     mazes = mazes[MIN:MAX]  # Select only first 4 mazes
 
     solved_mazes = []

@@ -5,6 +5,7 @@ import shutil
 import cv2
 import imageio
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def plot_maze_paths(maze, paths, generation, fitnesses=None, out_dir="frames"):
@@ -57,6 +58,10 @@ def create_gif_from_frames(frames_dir="frames", output_gif="output/evolution.gif
     logging.debug(f"GIF saved as {output_gif}")
 
 
+def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
+    df = pd.DataFrame(data)
+    df.to_csv(filename, index=False)
+
 def visualize_evolution(monitoring_data, mode="video", index=0):
     frames_dir = "output/frames"
 
@@ -72,6 +77,10 @@ def visualize_evolution(monitoring_data, mode="video", index=0):
             fitnesses=data.get("fitnesses"),
             out_dir=frames_dir
         )
+    # save the evolution data in output/evolution_data.csv
+    data_to_csv(monitoring_data, "output/evolution_data.csv")
+
+    # save video
     if mode == "video":
         output_file = f"output/evolution_{index}.mp4"
         create_video_from_frames(frames_dir, output_file, fps=4)
