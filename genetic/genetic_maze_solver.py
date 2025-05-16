@@ -183,21 +183,33 @@ class GeneticMazeSolver(MazeSolver):
 
     def _mutate(self, chromosome, mutation_rate=0.1):
         """
-        Randomly mutate genes in a chromosome based on mutation rate.
-
+        Apply mutations to a chromosome. The mutation rate increases toward the end of the chromosome to
+        promote exploration in later genes while keeping earlier genes stable.
+    
         Args:
-            chromosome: Sequence to mutate
-            mutation_rate: Probability of each gene mutating
+            chromosome: List of genes representing the chromosome.
+            mutation_rate: Base mutation rate.
+    
         Returns:
-            list: Mutated chromosome
+            list: Mutated chromosome.
         """
         chromosome = np.array(chromosome)
-        # Decide which genes to mutate using a boolean mask
-        mutation_mask = np.random.rand(self.chromosome_length) < mutation_rate
-        # Apply random mutations only where needed
+
+        # Generate a gradient of mutation probabilities (low at the start, high at the end)
+        start_multiplier = config.getfloat("GENETIC", "start_multiplier", fallback=0.5)
+        stop_multiplier = config.getfloat("GENETIC", "stop_multiplier", fallback=1.5)
+        gradient = np.linspace(start_multiplier, stop_multiplier,
+                               self.chromosome_length)  # Adjust 0.5 - 1.5 for impact strength
+        dynamic_mutation_rate = mutation_rate * gradient
+
+        # Decide which genes to mutate using the dynamic mutation probabilities
+        mutation_mask = np.random.rand(self.chromosome_length) < dynamic_mutation_rate
+
+        # Apply mutations to the selected positions
         chromosome[mutation_mask] = np.random.randint(
             0, len(self.directions), mutation_mask.sum()
         )
+
         return chromosome.tolist()
 
     def batch_mutate(population, mutation_rate, directions):
@@ -439,7 +451,7 @@ def main():
     successful_solutions = 0  # Successful solution counter
     total_mazes = len(mazes)  # Total mazes to solve
 
-    population_size = config.getint("GENETIC", "max_population_size", fallback=50)
+    population_size = config.getint("GENETIC", "max_population_size", fallback=500)
     chromosome_length = max_steps
     crossover_rate = config.getfloat("GENETIC", "crossover_rate", fallback=0.8)
     mutation_rate = config.getfloat("GENETIC", "mutation_rate", fallback=0.1)
