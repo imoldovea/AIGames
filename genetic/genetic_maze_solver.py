@@ -190,7 +190,7 @@ class GeneticMazeSolver(MazeSolver):
         # Compose final fitness score
         fitness = (
                 exit_bonus  # Reward for reaching the exit (encourages finding a solution)
-                + 2.0 * exploration_score  # Encourage exploration of unique, non-repeated cells (promotes map coverage)
+                + 3.0 * exploration_score  # Encourage exploration of unique, non-repeated cells (promotes map coverage)
                 + 1.0 * path_diversity_bonus  # Bonus for paths that are novel compared to others in the population (maintains variety for genetic search)
                 + 1.0 * recover_bonus  # Reward for recovering from dead ends or making progress after setbacks
                 + 1.0 * backtrack_penalty  # Penalize excessive backtracking (reduces inefficient movement)
