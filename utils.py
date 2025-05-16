@@ -66,7 +66,7 @@ def setup_logging():
     flask.cli.show_server_banner = lambda *args, **kwargs: None  # Suppress Flask's startup messages
     logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
 
-    logger.setLevel(logging.DEBUG)  # Capture all levels of logs
+    logger.setLevel(logging.INFO)  # Capture all levels of logs
 
     # Create formatter
     formatter = logging.Formatter('%(asctime)s - %(filename)s - %(levelname)s - %(message)s')

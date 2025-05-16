@@ -1,6 +1,5 @@
 import logging
 import os
-import random
 from concurrent.futures import ThreadPoolExecutor
 from configparser import ConfigParser
 
@@ -33,7 +32,6 @@ DIVERSITY_PATIENCE = 20  # how many generations to tolerate below threshold
 MIN_POP = 50
 
 random_seed = config.getint("GENETIC", "random_seed", fallback=42)
-random.seed(random_seed)
 np.random.seed(random_seed)
 
 
@@ -90,7 +88,7 @@ class GeneticMazeSolver(MazeSolver):
         Returns:
             list: Random sequence of direction indices of length chromosome_length
         """
-        return [random.randrange(len(self.directions)) for _ in range(self.chromosome_length)]
+        return np.random.randint(0, len(self.directions), size=self.chromosome_length).tolist()
 
     def _fitness(self, chromosome, population=None, generation=None):
         """
@@ -143,36 +141,36 @@ class GeneticMazeSolver(MazeSolver):
         return fitness
 
     def _crossover(self, parent1, parent2):
-        """
-        Perform single-point crossover between two parent chromosomes.
-        
-        Args:
-            parent1: First parent chromosome
-            parent2: Second parent chromosome
-        Returns:
-            tuple: Two child chromosomes created by crossing over parents
-        """
-        if random.random() > self.crossover_rate:
-            return parent1[:], parent2[:]
-        pt = random.randrange(1, self.chromosome_length)
-        child1 = parent1[:pt] + parent2[pt:]
-        child2 = parent2[:pt] + parent1[pt:]
-        return child1, child2
+        # Convert to NumPy arrays for fast slicing
+        parent1 = np.array(parent1)
+        parent2 = np.array(parent2)
+        if np.random.randint(0, int(1 / self.crossover_rate)) != 0:
+            return parent1.copy().tolist(), parent2.copy().tolist()
+
+        pt = np.random.randint(1, self.chromosome_length)
+        child1 = np.concatenate((parent1[:pt], parent2[pt:]))
+        child2 = np.concatenate((parent2[:pt], parent1[pt:]))
+        return child1.tolist(), child2.tolist()
 
     def _mutate(self, chromosome, mutation_rate=0.1):
         """
         Randomly mutate genes in a chromosome based on mutation rate.
-        
+
         Args:
             chromosome: Sequence to mutate
             mutation_rate: Probability of each gene mutating
         Returns:
             list: Mutated chromosome
         """
-        for i in range(len(chromosome)):
-            if random.random() < mutation_rate:
-                chromosome[i] = random.randrange(len(self.directions))
-        return chromosome
+        chromosome = np.array(chromosome)
+        # Decide which genes to mutate using a boolean mask
+        mutation_mask = np.random.rand(self.chromosome_length) < mutation_rate
+        # Apply random mutations only where needed
+        chromosome[mutation_mask] = np.random.randint(
+            0, len(self.directions), mutation_mask.sum()
+        )
+        return chromosome.tolist()
+
 
     @profile_method(output_file=f"solve_genetic_maze_solver.py")
     def solve(self):
@@ -258,7 +256,7 @@ class GeneticMazeSolver(MazeSolver):
             mutation_rate = self.initial_rate
             while len(new_pop) < self.population_size:
                 # pick two
-                a, b = random.sample(scored[:10], 2)
+                a, b = [scored[:10][i] for i in np.random.choice(len(scored[:10]), size=2, replace=False)]
                 p1 = a[0]
                 p2 = b[0]
                 c1, c2 = self._crossover(p1, p2)
