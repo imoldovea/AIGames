@@ -61,6 +61,7 @@ class GeneticMazeSolver(MazeSolver):
         self.diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
         self.diversity_infusion = config.getfloat("GENETIC", "diversity_infusion", fallback=0.01)
         self.evolution_chromosomes = config.getint("MONITORING", "evolution_chromosomes", fallback=5)
+        self.elitism_count = config.getint("GENETIC", "elitism_count", fallback=2)
 
         # Config-driven maze size bounds
         min_size = config.getint("MAZE", "min_size", fallback=5)
@@ -221,7 +222,7 @@ class GeneticMazeSolver(MazeSolver):
 
     @profile_method(output_file=f"solve_genetic_maze_solver.py")
     def solve(self):
-        elitism_count = config.getint("GENETIC", "elitism_count", fallback=2)
+
         # Initialize population
         population = [self._random_chromosome() for _ in range(self.population_size)]
         best = None
@@ -259,8 +260,7 @@ class GeneticMazeSolver(MazeSolver):
                 best_score = scored[0][1]
                 best = scored[0][0]
 
-            elitism_count = config.getint("GENETIC", "elitism_count", fallback=2)
-            elites = [chrom for chrom, _ in scored[:elitism_count]]
+            elites = [chrom for chrom, _ in scored[:self.elitism_count]]
 
             # Early exit if solution reached
             min_generations = 5
