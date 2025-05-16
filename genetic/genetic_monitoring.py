@@ -61,7 +61,8 @@ def create_gif_from_frames(frames_dir="frames", output_gif="output/evolution.gif
 def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
     # replace maze with maze.index in monitoring_data
     for data in monitoring_data:
-        data["maze"] = data["maze"].index
+        data["maze_index"] = data["maze"].index
+        data["complexity"] = data["maze"].complexity
     df = pd.DataFrame(monitoring_data)
     df.to_csv(filename, index=False)
 
