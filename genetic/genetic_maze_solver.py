@@ -33,7 +33,9 @@ DIVERSITY_PATIENCE = 20  # how many generations to tolerate below threshold
 MIN_POP = 50
 
 random_seed = config.getint("GENETIC", "random_seed", fallback=42)
-np.random.seed(random_seed)
+
+
+# np.random.seed(random_seed)
 
 
 class GeneticMazeSolver(MazeSolver):
@@ -301,7 +303,7 @@ class GeneticMazeSolver(MazeSolver):
                 return [(chrom, f.result()) for chrom, f in zip(population, futures)]
 
         for gen in tqdm.tqdm(range(self.generations),
-                             desc=f"Evolving Population maze #{self.maze.index} complexity: {self.maze.complexity}"):
+                             desc=f"Evolving Population maze index:{self.maze.index} complexity: {self.maze.complexity}"):
             generations = gen
             pop_array = np.array(population)
             # Evaluate fitness
@@ -321,8 +323,8 @@ class GeneticMazeSolver(MazeSolver):
 
             # Early exit if solution reached
             min_generations = 5
-            if gen >= min_generations and best_score > self.threshold:
-                tqdm.tqdm.write(f"\nEarly stopping at generation {gen} with score {best_score:.2f}")
+            if gen >= min_generations and best_score > self.threshold and self.maze.exit in self.decode_path(best):
+                # tqdm.tqdm.write(f"\nEarly stopping at generation {gen} with score {best_score:.2f} and exit reached")
                 break
 
             fitness_values = [score for _, score in scored]
@@ -498,11 +500,12 @@ def main():
     logging.info("Starting Genetic Maze Solver")
 
     max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
-    mazes = load_mazes(TEST_MAZES_FILE, 10)
+    mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
-    MIN = 5
-    MAX = 7  # 7
-    mazes = mazes[MIN:MAX]  # Select only first 4 mazes
+
+    # mazes = [mazes[5], mazes[-1]]
+    test_maze_index = []
+    # mazes = [maze for maze in mazes if maze.index in test_maze_index]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -526,15 +529,20 @@ def main():
         solution_path, generaitons = solver.solve()
         maze.set_solution(solution_path)
 
+        solved_mazes.append((maze, generaitons))
         if len(solution_path) < max_steps and maze.test_solution():
             logging.info(f"Solved Maze {i + 1}, generaitons: {generaitons}")
-            solved_mazes.append(maze)
             successful_solutions += 1
         else:
             logging.warning(
-                f"Maze {i + 1} failed self-test. after {generations} generations, {len(solution_path)} steps: {solution_path}")
+                f"Maze {maze.index} failed self-test. after {generations} generations, {len(solution_path)} steps: {solution_path}")
         maze.plot_maze(show_path=True, show_solution=True, show_position=False)
 
+    print("Statistics:")
+    for maze, generations in solved_mazes:
+        print(
+            f"Maze {maze.index}, solved: {maze.valid_solution}, solution length {len(maze.get_solution())},"
+            f" generations: {generations}")
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
     success_rate = successful_solutions / total_mazes * 100
     logging.info(f"Success rate: {success_rate:.1f}%")
@@ -542,6 +550,7 @@ def main():
     save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
     save_mazes_as_pdf(mazes, OUTPUT_PDF)
     wandb.finish()
+
 
 if __name__ == "__main__":
     main()

@@ -14,21 +14,26 @@ def plot_maze_frames(maze, paths, generation, fitnesses=None):
     """
     plt.figure(figsize=(5, 5))
     plt.imshow(maze.grid, cmap="binary")
-    colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta']
+
+    colors = ['red', 'blue', 'green', 'orange', 'yellow', 'cyan', 'magenta', 'brown', 'pink', 'purple']
     for i, path in enumerate(paths):
         if path:
             px, py = zip(*path)
             color = colors[i % len(colors)]
             label = f'Path {i + 1}' + (f' (fit={fitnesses[i]:.2f})' if fitnesses else '')
             plt.plot(py, px, color=color, linewidth=2, marker='o', markersize=3, label=label)
+
     plt.title(f"Maze {maze.index} - Generation {generation}")
-    plt.legend()
+
+    # Move the legend to the right of the plot
+    plt.legend(loc="center left", bbox_to_anchor=(1.05, 0.5), borderaxespad=0., frameon=False)
+
     plt.axis("off")
     plt.tight_layout()
 
     # Save the plot to a memory buffer (BytesIO) as a PNG and read it as a NumPy array
     buffer = BytesIO()
-    plt.savefig(buffer, format='png')
+    plt.savefig(buffer, format='png', bbox_inches="tight")  # Adjust bounding box to include the legend
     plt.close()
     buffer.seek(0)
 
@@ -40,18 +45,31 @@ def plot_maze_frames(maze, paths, generation, fitnesses=None):
 
 def create_video_from_memory(frames, output_file="output/evolution.mp4", fps=4):
     """
-    Create a video from in-memory NumPy frames.
+    Create a video from in-memory NumPy frames with doubled resolution.
     """
     if not frames:
         raise ValueError("No frames provided!")
 
-    height, width, _ = frames[0].shape
-    video = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+    # Get the original frame dimensions
+    original_height, original_width, _ = frames[0].shape
+
+    # Double the resolution
+    doubled_width = original_width * 2
+    doubled_height = original_height * 2
+
+    # Initialize the video writer with the new resolution
+    video = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (doubled_width, doubled_height))
 
     for frame in frames:
-        video.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))  # OpenCV uses BGR
-    for _ in range(fps * 5):  # Add final frame a few times (pause at end)
-        video.write(cv2.cvtColor(frames[-1], cv2.COLOR_RGB2BGR))
+        # Resize the frame to double its resolution
+        resized_frame = cv2.resize(frame, (doubled_width, doubled_height), interpolation=cv2.INTER_LINEAR)
+        video.write(cv2.cvtColor(resized_frame, cv2.COLOR_RGB2BGR))  # OpenCV uses BGR format
+
+    # Add the final frame a few times (pause at the end)
+    for _ in range(fps * 5):
+        final_resized_frame = cv2.resize(frames[-1], (doubled_width, doubled_height), interpolation=cv2.INTER_LINEAR)
+        video.write(cv2.cvtColor(final_resized_frame, cv2.COLOR_RGB2BGR))
+
     video.release()
     logging.debug(f"Video saved as {output_file}")
 
@@ -65,6 +83,7 @@ def create_gif_from_memory(frames, output_gif="output/evolution.gif", duration=0
     imageio.imwrite(output_gif, frames, duration=duration, format="GIF")
     logging.debug(f"GIF saved as {output_gif}")
 
+
 def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
     # replace maze with maze.index in monitoring_data
     for data in monitoring_data:
@@ -72,6 +91,7 @@ def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
         data["complexity"] = data["maze"].complexity
     df = pd.DataFrame(monitoring_data)
     df.to_csv(filename, index=False)
+
 
 def visualize_evolution(monitoring_data, mode="video", index=0):
     """
