@@ -81,8 +81,8 @@ class GeneticMazeSolver(MazeSolver):
         population_size = max(MIN_POP, min(max_population_size, population_size))  # clamp
 
         self.population_size = population_size
-        logging.info(
-            f"Adaptive population size for maze #{self.maze.index} ({self.maze.rows}x{self.maze.cols}): {population_size}")
+        # logging.debug(
+        #    f"Adaptive population size for maze #{self.maze.index} ({self.maze.rows}x{self.maze.cols}): {population_size}")
 
         self.maze.set_algorithm(self.__class__.__name__)
 
