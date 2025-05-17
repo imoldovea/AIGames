@@ -504,8 +504,12 @@ def main():
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
     mazes = mazes[60:]
-    test_maze_index = []
-    # mazes = [maze for maze in mazes if maze.index in test_maze_index]
+    # of intesrest 55
+    # nice solutios 44,52,0
+    failed_maze_index = [4, 10, 15, 53, 55, 66, 70, 99]
+    long_solutions_index = [56, 95, 0, 34, 41, 31]
+    indexs = failed_maze_index + long_solutions_index
+    mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -535,18 +539,26 @@ def main():
             successful_solutions += 1
         else:
             logging.warning(
-                f"Maze {maze.index} failed self-test. after {generations} generations, {len(solution_path)} steps: {solution_path}")
+                f"Maze index {maze.index} failed self-test. after {generations} generations, {len(solution_path)}")
         maze.plot_maze(show_path=True, show_solution=True, show_position=False)
 
     print("Statistics:")
-    for maze, generations in solved_mazes:
+    # Sort mazes by multiple criteria
+    sorted_mazes = sorted(solved_mazes,
+                          key=lambda x: (-x[0].valid_solution,  # Solved first (True = 1, False = 0)
+                                         x[1],  # Lower generations better
+                                         len(x[0].get_solution()) if x[0].get_solution() else float('inf'),
+                                         # Shorter solutions better
+                                         -x[0].fitness if hasattr(x[0], 'fitness') else float(
+                                             '-inf')))  # Higher fitness better
+
+    for maze, generations in sorted_mazes:
         print(
             f"Maze {maze.index}, "
             f"solved: {maze.valid_solution}, "
             f"solution length {len(maze.get_solution())}, "
             f"generations: {generations}, "
-            f"fitness: {fitness:.2f}"
-            f" generations: {generations}")
+            f"fitness: {maze.fitness if hasattr(maze, 'fitness') else 'N/A'}")
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
     success_rate = successful_solutions / total_mazes * 100
     logging.info(f"Success rate: {success_rate:.1f}%")
