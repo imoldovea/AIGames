@@ -503,7 +503,7 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    mazes = [mazes[60], mazes[-1]]
+    mazes = mazes[60:]
     test_maze_index = []
     # mazes = [maze for maze in mazes if maze.index in test_maze_index]
 
@@ -545,7 +545,7 @@ def main():
             f"solved: {maze.valid_solution}, "
             f"solution length {len(maze.get_solution())}, "
             f"generations: {generations}, "
-            f"fitness: {maze.fitness:.2f}"
+            f"fitness: {fitness:.2f}"
             f" generations: {generations}")
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
     success_rate = successful_solutions / total_mazes * 100
