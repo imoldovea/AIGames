@@ -414,7 +414,7 @@ class GeneticMazeSolver(MazeSolver):
         self._print_fitness(fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
                             diversity_history=diversity_history, show=True)
 
-        return path, generations
+        return path, generations, best_score
 
     def population_diversity(self, pop):
         """
@@ -503,7 +503,7 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    # mazes = [mazes[5], mazes[-1]]
+    mazes = [mazes[60], mazes[-1]]
     test_maze_index = []
     # mazes = [maze for maze in mazes if maze.index in test_maze_index]
 
@@ -526,12 +526,12 @@ def main():
             maze.set_save_movie(True)
 
         solver = GeneticMazeSolver(maze, population_size, chromosome_length, crossover_rate, mutation_rate, generations)
-        solution_path, generaitons = solver.solve()
+        solution_path, generaitons, fitness = solver.solve()
         maze.set_solution(solution_path)
 
         solved_mazes.append((maze, generaitons))
         if len(solution_path) < max_steps and maze.test_solution():
-            logging.info(f"Solved Maze {i + 1}, generaitons: {generaitons}")
+            logging.info(f"[{i + 1}] Solved Maze {maze.index}, generaitons: {generaitons}, fitness: {fitness:.2f}")
             successful_solutions += 1
         else:
             logging.warning(
@@ -541,7 +541,11 @@ def main():
     print("Statistics:")
     for maze, generations in solved_mazes:
         print(
-            f"Maze {maze.index}, solved: {maze.valid_solution}, solution length {len(maze.get_solution())},"
+            f"Maze {maze.index}, "
+            f"solved: {maze.valid_solution}, "
+            f"solution length {len(maze.get_solution())}, "
+            f"generations: {generations}, "
+            f"fitness: {maze.fitness:.2f}"
             f" generations: {generations}")
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
     success_rate = successful_solutions / total_mazes * 100
