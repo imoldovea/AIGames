@@ -119,5 +119,3 @@ def visualize_evolution(monitoring_data, mode="video", index=0):
     elif mode == "gif":
         output_gif = f"output/evolution_{index}.gif"
         create_gif_from_memory(frames, output_gif, duration=0.4)
-    else:
-        logging.info("Visualization complete. Frames stored in memory.")
