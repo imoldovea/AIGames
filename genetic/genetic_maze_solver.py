@@ -504,12 +504,11 @@ def main():
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
     mazes = mazes[60:]
-    # of intesrest 55
-    # nice solutios 44,52,0
-    failed_maze_index = [4, 10, 15, 53, 55, 66, 70, 99]
-    long_solutions_index = [56, 95, 0, 34, 41, 31]
-    indexs = failed_maze_index + long_solutions_index
-    mazes = [maze for maze in mazes if maze.index in indexs]
+   
+    # failed_maze_index = []
+    # long_solutions_index = []
+    # indexs = failed_maze_index + long_solutions_index
+    # mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -559,6 +558,15 @@ def main():
             f"solution length {len(maze.get_solution())}, "
             f"generations: {generations}, "
             f"fitness: {maze.fitness if hasattr(maze, 'fitness') else 'N/A'}")
+
+    # Print list of unsolved maze indices
+    if not any(maze.valid_solution for maze, _ in sorted_mazes):
+        print(f"Unsolved mazes: {[maze.index for maze, _ in sorted_mazes if not maze.valid_solution]}")
+    # Print list of top 5 maze indices having the highest generations count. Print only for solved mazes
+    if any(maze.valid_solution for maze, _ in sorted_mazes):
+        print(f"Top 5 mazes having the highest generations count: {[maze.index for maze, _ in sorted_mazes[:5]]}")
+
+
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
     success_rate = successful_solutions / total_mazes * 100
     logging.info(f"Success rate: {success_rate:.1f}%")
