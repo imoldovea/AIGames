@@ -89,6 +89,8 @@ def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
     for data in monitoring_data:
         data["maze_index"] = data["maze"].index
         data["complexity"] = data["maze"].complexity
+        del data["maze"]
+        del data["paths"]
     df = pd.DataFrame(monitoring_data)
     df.to_csv(filename, index=False)
 

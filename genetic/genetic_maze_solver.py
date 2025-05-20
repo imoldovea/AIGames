@@ -192,7 +192,7 @@ class GeneticMazeSolver(MazeSolver):
         # Compose final fitness score
         fitness = (
                 exit_bonus  # Reward for reaching the exit (encourages finding a solution)
-                + 3.0 * exploration_score  # Encourage exploration of unique, non-repeated cells (promotes map coverage)
+                + 5.0 * exploration_score  # Encourage exploration of unique, non-repeated cells (promotes map coverage)
                 + 1.0 * path_diversity_bonus  # Bonus for paths that are novel compared to others in the population (maintains variety for genetic search)
                 + 1.0 * recover_bonus  # Reward for recovering from dead ends or making progress after setbacks
                 + 1.0 * backtrack_penalty  # Penalize excessive backtracking (reduces inefficient movement)
@@ -499,16 +499,16 @@ def main():
     clean_outupt_folder()
     logging.info("Starting Genetic Maze Solver")
 
-    max_steps = config.getint("DEFAULT", "max_steps", fallback=40)
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    mazes = mazes[60:]
-   
-    # failed_maze_index = []
-    # long_solutions_index = []
-    # indexs = failed_maze_index + long_solutions_index
-    # mazes = [maze for maze in mazes if maze.index in indexs]
+    # mazes = mazes[60:]
+
+    long_solutions_index = []  # 83,45
+    failed_maze_index = [70]  # 77, 86
+
+    indexs = failed_maze_index + long_solutions_index
+    mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -532,7 +532,7 @@ def main():
         solution_path, generaitons, fitness = solver.solve()
         maze.set_solution(solution_path)
 
-        solved_mazes.append((maze, generaitons))
+        solved_mazes.append((maze, generaitons, fitness))
         if len(solution_path) < max_steps and maze.test_solution():
             logging.info(f"[{i + 1}] Solved Maze {maze.index}, generaitons: {generaitons}, fitness: {fitness:.2f}")
             successful_solutions += 1
@@ -551,21 +551,19 @@ def main():
                                          -x[0].fitness if hasattr(x[0], 'fitness') else float(
                                              '-inf')))  # Higher fitness better
 
-    for maze, generations in sorted_mazes:
+    for maze, generations, fitness in sorted_mazes:
         print(
             f"Maze {maze.index}, "
             f"solved: {maze.valid_solution}, "
             f"solution length {len(maze.get_solution())}, "
             f"generations: {generations}, "
-            f"fitness: {maze.fitness if hasattr(maze, 'fitness') else 'N/A'}")
-
+            f"fitness: {fitness:1f}"
+        )
     # Print list of unsolved maze indices
-    if not any(maze.valid_solution for maze, _ in sorted_mazes):
-        print(f"Unsolved mazes: {[maze.index for maze, _ in sorted_mazes if not maze.valid_solution]}")
-    # Print list of top 5 maze indices having the highest generations count. Print only for solved mazes
-    if any(maze.valid_solution for maze, _ in sorted_mazes):
-        print(f"Top 5 mazes having the highest generations count: {[maze.index for maze, _ in sorted_mazes[:5]]}")
-
+    unsolved = [maze.index for maze, _, _ in sorted_mazes if not maze.valid_solution]
+    if unsolved:
+        logging.info(
+            f"Unsolved mazes: e highest generations count: {[int(maze.index) for maze, _, _ in sorted_mazes[:5]]}")
 
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
     success_rate = successful_solutions / total_mazes * 100
@@ -574,6 +572,10 @@ def main():
     save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
     save_mazes_as_pdf(mazes, OUTPUT_PDF)
     wandb.finish()
+    # Print list of top 5 maze indices having the highest generations count. Print only for solved mazes
+    if any(maze.valid_solution for maze, _, _ in sorted_mazes):
+        logging.info(
+            f"Top 5 mazes having th{unsolved}")
 
 
 if __name__ == "__main__":
