@@ -65,6 +65,7 @@ class GeneticMazeSolver(MazeSolver):
         self.evolution_chromosomes = config.getint("MONITORING", "evolution_chromosomes", fallback=5)
         self.elitism_count = config.getint("GENETIC", "elitism_count", fallback=2)
         self.max_steps = config.getint("DEFAULT", "max_steps", fallback=100)
+        self.loop_penalty_weight = config.getint("DEFAULT", "loop_penalty_weight", fallback=10)
 
         # Config-driven maze size bounds
         min_size = config.getint("MAZE", "min_size", fallback=5)
@@ -97,11 +98,8 @@ class GeneticMazeSolver(MazeSolver):
 
     def _fitness(self, chromosome, population=None, generation=None, unique_paths_seen=None):
         """
-        Enhanced fitness function:
-        1. Rewards unique maze positions visited (exploration).
-        2. Adds a path diversity bonus for unique valid paths.
-        3. Softly penalizes excessive backtracking and dead ends.
-        4. Still gives exit bonus and accounts for diversity in population.
+        Fitness function with separate computation blocks for each factor.
+        Differentiates loops from backtracking and relies on weights defined in the `config.properties`.
 
         Args:
             chromosome: Sequence of direction indices.
@@ -110,102 +108,119 @@ class GeneticMazeSolver(MazeSolver):
             unique_paths_seen: Optional set or dict to track unique valid paths.
 
         Returns:
-            float: Fitness score for the chromosome.
+            float: Computed fitness score for the given chromosome.
         """
+        # Configurable weights and penalties
+        loop_penalty_weight = config.getint("GENETIC", "loop_penalty_weight", fallback=10)
+        backtrack_penalty_weight = config.getint("GENETIC", "backtrack_penalty_weight", fallback=5)
+        exit_bonus_weight = config.getfloat("GENETIC", "exit_weight", fallback=10.0)
+        exploration_bonus_weight = config.getfloat("DEFAULT", "exploration_weight", fallback=2.0)
+        diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.1)
+        max_distance_penalty_weight = config.getfloat("DEFAULT", "distance_penalty_weight", fallback=0.5)
+        dead_end_recover_bonus_weight = config.getfloat("DEFAULT", "recover_bonus_weight", fallback=5.0)
+
+        # Trackers for computation
         pos = self.maze.start_position
+        visited = set()
+        prev_positions = []
+        path = [pos]  # Tracks the path taken by the chromosome
+        backtracks = 0
+        loops = 0
         steps = 0
         penalty = 0
         diversity_penalty = 0
-        chrom_array = np.array(chromosome)
+        dead_end_recovered = False
 
-        visited = set()  # Track unique cells visited
-        visited.add(pos)
-        backtracks = 0
-        revisits = 0
-        path = [pos]  # For path diversity calculation
-
-        # Diversity penalty (same as before)
-        if self.diversity_penalty_weight > 0 and population is not None:
-            pop_array = population if population.ndim == 2 else None
-            if pop_array is not None:
-                diffs = pop_array != chrom_array
-                mask = ~np.all(pop_array == chrom_array, axis=1)
-                if np.any(mask):
-                    diversity_penalty = max(
-                        0,
-                        self.chromosome_length * self.diversity_penalty_threshold - diffs[mask].sum(axis=1).mean()
-                    )
-
-        prev_positions = []  # Track backtracking
-        dead_end_recovered = False  # Did we recover from a dead end?
-
+        # --- Decode Path and Track Movement ---
         for gene in chromosome:
             steps += 1
             move = self.directions[gene]
             new_pos = (pos[0] + move[0], pos[1] + move[1])
 
+            # Dead-end or invalid move penalty
             if not self.maze.is_valid_move(new_pos):
-                penalty += 5  # Dead-end or wall
-            else:
-                if new_pos in visited:
-                    revisits += 1
-                else:
-                    visited.add(new_pos)
+                penalty += 1
+                continue
 
-                if prev_positions and new_pos == prev_positions[-1]:  # Backtrack detected
-                    backtracks += 1
-                prev_positions.append(pos)
-                pos = new_pos
-                path.append(pos)
+            # Separate loops from backtracking
+            is_backtrack = prev_positions and new_pos == prev_positions[-1]
+            is_revisit = new_pos in visited and not is_backtrack
 
-            # If we're at a dead end and we later move to a new position, reward recovery
-            if penalty and self.maze.is_valid_move(new_pos) and not dead_end_recovered:
+            if is_backtrack:
+                backtracks += 1
+            elif is_revisit:
+                loops += 1
+
+            # Update path tracking
+            visited.add(new_pos)
+            prev_positions.append(pos)
+            pos = new_pos
+            path.append(pos)
+
+            # Detect recovery from a dead-end
+            if penalty > 0 and self.maze.is_valid_move(new_pos) and not dead_end_recovered:
                 dead_end_recovered = True
 
+            # Break early if the exit has been reached
             if pos == self.maze.exit:
                 break
 
-        # Reward for exploration: unique tiles visited
+        # --- Exploration Reward ---
         exploration_score = len(visited)
 
-        # Reward for path diversity: bonus if the valid path is new
+        # --- Exit Bonus ---
+        exit_bonus = (exit_bonus_weight * (self.max_steps - steps)) if pos == self.maze.exit else 0
+
+        # --- Diversity Penalty ---
+        # Penalize chromosomes that are too similar to others
+        if diversity_penalty_weight > 0 and population is not None:
+            pop_array = np.array(population)
+            chrom_array = np.array(chromosome)
+            diffs = pop_array != chrom_array
+            mask = ~np.all(pop_array == chrom_array, axis=1)
+            if np.any(mask):
+                diversity_penalty = max(
+                    0,
+                    self.chromosome_length * self.diversity_penalty_threshold - diffs[mask].sum(axis=1).mean()
+                )
+
+        # --- Path Diversity Reward ---
+        path_diversity_bonus = 0
         path_tuple = tuple(path)
-        path_diversity_bonus = 0.0
         if unique_paths_seen is not None:
             if path_tuple not in unique_paths_seen:
-                path_diversity_bonus += 10.0  # Bonus for a new valid path
+                path_diversity_bonus += 10.0  # Reward for discovering a new path
                 unique_paths_seen.add(path_tuple)
             else:
-                path_diversity_bonus -= 2.0  # Small penalty if path is not unique
+                path_diversity_bonus -= 2.0  # Small penalty for duplicates
 
-        # Backtracking and dead-end penalty/reward
-        backtrack_penalty = -0.5 * backtracks
-        revisit_penalty = -0.2 * revisits
-        recover_bonus = 3.0 if dead_end_recovered else 0.0
+        # --- Distance Penalty ---
+        # Heuristic penalty for distance to exit at the end
+        dist_to_exit = abs(pos[0] - self.maze.exit[0]) + abs(pos[1] - self.maze.exit[1])
+        distance_penalty = max_distance_penalty_weight * dist_to_exit
 
-        # Distance to exit as fail-safe
-        dist = abs(pos[0] - self.maze.exit[0]) + abs(pos[1] - self.maze.exit[1])
+        # --- Dead-End Recovery Bonus ---
+        recover_bonus = (dead_end_recover_bonus_weight if dead_end_recovered else 0)
 
-        # Basic exit reward
-        exit_bonus = (self.max_steps - steps + 10) if pos == self.maze.exit else 0
-
-        # Compose final fitness score
+        # --- Compute Final Fitness ---
         fitness = (
-                exit_bonus  # Reward for reaching the exit (encourages finding a solution)
-                + 5.0 * exploration_score  # Encourage exploration of unique, non-repeated cells (promotes map coverage)
-                + 1.0 * path_diversity_bonus  # Bonus for paths that are novel compared to others in the population (maintains variety for genetic search)
-                + 1.0 * recover_bonus  # Reward for recovering from dead ends or making progress after setbacks
-                + 1.0 * backtrack_penalty  # Penalize excessive backtracking (reduces inefficient movement)
-                + 1.0 * revisit_penalty  # Penalize revisiting previously visited cells (discourages loops and wasted steps)
-                - 0.5 * dist  # Penalize distance from the exit at the end of the trial (pushes solutions closer to the goal)
-                - 0.5 * penalty  # Additional custom penalty, may capture things like hitting walls, breaking constraints, etc.
-                - 1.0 * self.diversity_penalty_weight * diversity_penalty
-            # Scales and applies a penalty for paths that are too similar to others (prevents premature convergence)
+                exit_bonus  # + Reward for reaching the exit
+                + exploration_bonus_weight * exploration_score  # + Exploration reward
+                + path_diversity_bonus  # + Reward for diversity in paths
+                + recover_bonus  # + Reward for recovering from dead ends
+                - backtrack_penalty_weight * backtracks  # - Penalty for backtracking
+                - loop_penalty_weight * loops  # - Penalty for loops/revisits
+                - distance_penalty  # - Penalty for distance to exit
+                - diversity_penalty_weight * diversity_penalty  # - Penalty for repeated chromosomes in population
+                - penalty  # - Penalty for invalid moves
         )
 
-        # Optional debug logging
-        if generation is not None and generation % 50 == 0 and diversity_penalty > 0:
-            logging.debug(f"Applied diversity penalty: {diversity_penalty:.2f} at generation {generation}")
+        # Debugging log
+        if generation is not None and generation % 50 == 0:
+            logging.debug(
+                f"Generation {generation}: Fitness={fitness:.2f}, "
+                f"Exploration={exploration_score}, Backtracks={backtracks}, Loops={loops}, ExitBonus={exit_bonus}"
+            )
 
         return fitness
 
@@ -245,11 +260,11 @@ class GeneticMazeSolver(MazeSolver):
         """
         Apply mutations to a chromosome. The mutation rate increases toward the end of the chromosome to
         promote exploration in later genes while keeping earlier genes stable.
-    
+
         Args:
             chromosome: List of genes representing the chromosome.
             mutation_rate: Base mutation rate.
-    
+
         Returns:
             list: Mutated chromosome.
         """
@@ -419,7 +434,7 @@ class GeneticMazeSolver(MazeSolver):
     def population_diversity(self, pop):
         """
         Calculate population diversity using average Hamming distance between chromosomes.
-        
+
         Args:
             pop: List of chromosomes in population
         Returns:
@@ -438,7 +453,7 @@ class GeneticMazeSolver(MazeSolver):
     def _print_fitness(self, fitness_history, avg_fitness_history, diversity_history, show=False):
         """
         Plot and save fitness metrics over generations.
-        
+
         Args:
             fitness_history: Best fitness scores per generation
             avg_fitness_history: Average fitness scores per generation
@@ -504,8 +519,9 @@ def main():
 
     # mazes = mazes[60:]
 
-    long_solutions_index = []  # 83,45
-    failed_maze_index = [70]  # 77, 86
+    long_solutions_index = []
+    # long_solutions_index = [83,45, 4, 10, 15, 53, 55, 66, 99]  # 83,45
+    failed_maze_index = [55, 70]
 
     indexs = failed_maze_index + long_solutions_index
     mazes = [maze for maze in mazes if maze.index in indexs]

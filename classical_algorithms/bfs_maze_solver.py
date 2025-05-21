@@ -6,7 +6,7 @@ from numpy.f2py.auxfuncs import throw_error
 
 from maze import Maze
 from maze_solver import MazeSolver
-from utils import setup_logging, load_mazes
+from utils import setup_logging, load_mazes, save_movie
 
 
 class BFSMazeSolver(MazeSolver):
@@ -78,8 +78,9 @@ def bfs_solver():
     """
     try:
         # Load mazes
-        mazes = load_mazes("input/mazes.h5")
-
+        mazes = load_mazes("input/mazes.h5", 10)
+        mazes = sorted(mazes, key=lambda maze: maze.complexity, reverse=False)
+        mazes = mazes[9:]
         # Iterate through each maze in the array
         for i, maze in enumerate(mazes):
 
@@ -87,7 +88,7 @@ def bfs_solver():
 
             # Create a Maze object from the maze matrix
             maze.set_animate(False)
-            maze.set_save_movie(False)
+            maze.set_save_movie(True)
 
             # Instantiate the BFS maze solver
             solver = BFSMazeSolver(maze)
@@ -102,6 +103,7 @@ def bfs_solver():
             # Visualize the solved maze (with the solution path highlighted)
             maze.set_solution(solution)
             maze.plot_maze(show_path=False, show_solution=True)
+            save_movie([maze], f"output/solved_maze_{maze.index}.mp4")
         logging.info("All mazes solved.")
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")

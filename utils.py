@@ -360,7 +360,7 @@ def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
             p = Process(target=encode_video, args=(frames, output_filename, fps, width, height))
             p.start()
             p.join()
-            logging.info("Video encoding completed.")
+            logging.info(f"Video encoding completed {output_filename}.")
         else:
             logging.error("No frames to encode. Video file will not be created.")
 
@@ -422,7 +422,7 @@ def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
     return decorator
 
 
-def load_mazes(file_path="input/mazes.h5", samples=0):
+def load_mazes(file_path="input/mazes.h5", samples=10):
     """
     Loads mazes from an HDF5 file into Maze objects, restoring grids, index, and solution if present.
     

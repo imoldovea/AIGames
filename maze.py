@@ -55,7 +55,8 @@ class Maze:
 
         self.grid = np.array(self.grid)  # Ensure grid is a NumPy array
         self._wall_table = (self.grid == self.WALL)  # Precompute wall positions as boolean array
-
+        self._wall_table = self._compute_wall_table()
+        self._valid_moves_cache = self.precompute_all_valid_moves()
         # Locate the starting position using the provided start_marker
         start_indices = np.where(self.grid == self.START)
         if len(start_indices[0]) == 0:
@@ -74,6 +75,7 @@ class Maze:
         # Exit can be defined later using set_exit()
         self.set_exit()
         self.self_test()
+
 
     def reset_solution(self):
         """
@@ -223,8 +225,16 @@ class Maze:
         r, c = position
         return self.grid[r, c] == self.CORRIDOR
 
-    def is_valid_move(self, position):
-        """Return True if within bounds and not a wall."""
+    def _compute_is_valid_move(self, position):
+        """
+        Compute the validity of a move without using the cache.
+
+        Args:
+            position (tuple): (x, y) coordinates of the position.
+
+        Returns:
+            bool: True if the move is valid, False otherwise.
+        """
         # Inline check for None or invalid iterable
         if not position or len(position) != 2:
             return False
@@ -237,6 +247,56 @@ class Maze:
 
         # Use precomputed wall lookup
         return not self._wall_table[x, y]
+
+    def _compute_wall_table(self):
+        """
+        Precompute a table representing wall positions for fast lookups.
+
+        Returns:
+            numpy.ndarray: A binary table of wall positions (1 if wall, 0 otherwise).
+        """
+        # NumPy operation to create a boolean table: True for walls, False otherwise
+        return self.grid == self.WALL
+
+    def reset_cache(self):
+        """
+        Clear the cache of valid moves.
+        Use this method if the maze changes dynamically.
+        """
+        self._valid_moves_cache = {}
+
+    def precompute_all_valid_moves(self):
+        """
+        Precompute valid moves for all positions in the maze and store them in the cache.
+        """
+        valid_moves_cache = {}
+        for r in range(self.rows):
+            for c in range(self.cols):
+                position = (r, c)
+                valid_moves_cache[position] = self._compute_is_valid_move(position)
+        return valid_moves_cache
+
+    def is_valid_move(self, position):
+        """
+        Check if a move is valid, using the cache if available.
+
+        Args:
+            position (tuple): (x, y) coordinates of the position.
+
+        Returns:
+            bool: True if the move is valid, False otherwise.
+        """
+        if position in self._valid_moves_cache:
+            # Return cached result if it exists
+            return self._valid_moves_cache[position]
+
+        # Compute validity if not in cache
+        is_valid = self._compute_is_valid_move(position)
+
+        # Store the result in the cache
+        self._valid_moves_cache[position] = is_valid
+
+        return is_valid
 
     def can_move(self, current_position, move):
         """
