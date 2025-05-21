@@ -9,10 +9,10 @@ import numpy as np
 import tqdm
 import wandb
 
-from genetic_monitoring import visualize_evolution
+from genetic_monitoring import visualize_evolution, print_fitness
 from maze import Maze
 from maze_solver import MazeSolver
-from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf, clean_outupt_folder, print_fitness
+from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf, clean_outupt_folder
 from utils import profile_method
 
 PARAMETERS_FILE = "config.properties"
@@ -426,7 +426,7 @@ class GeneticMazeSolver(MazeSolver):
                 })
             visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
-        print_fitness(fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
+        print_fitness(maze=maze, fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
                             diversity_history=diversity_history, show=True)
 
         return path, generations, best_score

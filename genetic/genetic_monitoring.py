@@ -123,7 +123,7 @@ def visualize_evolution(monitoring_data, mode="video", index=0):
         create_gif_from_memory(frames, output_gif, duration=0.4)
 
 
-def print_fitness(fitness_history, avg_fitness_history, diversity_history, show=False):
+def print_fitness(maze, fitness_history, avg_fitness_history, diversity_history, show=False):
     """
     Plot and save fitness metrics over generations.
 
@@ -139,10 +139,10 @@ def print_fitness(fitness_history, avg_fitness_history, diversity_history, show=
     plt.plot(diversity_history, label="Diversity")
     plt.xlabel("Generation")
     plt.ylabel("Fitness")
-    plt.title(f"Fitness Over Generations {self.maze.index}")
+    plt.title(f"Fitness Over Generations {maze.index}")
     plt.legend()
     plt.grid(True)
-    plt.savefig(f"{OUTPUT}fitness_plot+{self.maze.index}.png")  # Save to output directory
+    plt.savefig(f"output/fitness_plot+{maze.index}.png")  # Save to output directory
     if show:
         plt.show()
     plt.close()  # Always close to release memory
