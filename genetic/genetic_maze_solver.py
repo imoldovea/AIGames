@@ -1,6 +1,7 @@
 # genetic_maze_solver.py
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from configparser import ConfigParser
 
@@ -517,14 +518,14 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    # mazes = mazes[60:]
+    mazes = [mazes[-1]]
 
     long_solutions_index = []
     # long_solutions_index = [83,45, 4, 10, 15, 53, 55, 66, 99]  # 83,45
     failed_maze_index = [55, 70]
 
     indexs = failed_maze_index + long_solutions_index
-    mazes = [maze for maze in mazes if maze.index in indexs]
+    # mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -573,7 +574,7 @@ def main():
             f"solved: {maze.valid_solution}, "
             f"solution length {len(maze.get_solution())}, "
             f"generations: {generations}, "
-            f"fitness: {fitness:1f}"
+            f"fitness: {fitness:.1f}"
         )
     # Print list of unsolved maze indices
     unsolved = [maze.index for maze, _, _ in sorted_mazes if not maze.valid_solution]
