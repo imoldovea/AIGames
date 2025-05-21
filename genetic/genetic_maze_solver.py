@@ -433,22 +433,27 @@ class GeneticMazeSolver(MazeSolver):
 
     def population_diversity(self, pop):
         """
-        Calculate population diversity using average Hamming distance between chromosomes.
-
-        Args:
-            pop: List of chromosomes in population
-        Returns:
-            float: Average Hamming distance between all pairs
+        Optimized method to calculate population diversity.
         """
         pop_arr = np.array(pop)
         n = len(pop_arr)
         if n < 2:
             return 0.0
 
-        diffs = np.bitwise_xor(pop_arr[:, None, :], pop_arr[None, :, :])
-        upper = np.triu_indices(n, k=1)
-        hamming_matrix = diffs.sum(axis=2)
-        return hamming_matrix[upper].mean()
+        # Limit sample size for efficiency
+        sample_size = min(n, 100)
+        sampled_indices = np.random.choice(n, size=sample_size, replace=False)
+        sampled_population = pop_arr[sampled_indices]
+
+        # Use NumPy broadcasting for faster comparisons
+        pairwise_diffs = np.count_nonzero(
+            sampled_population[:, None, :] != sampled_population[None, :, :], axis=2
+        )
+
+        # Extract upper triangular elements for diversity calculation
+        mean_hamming_distance = np.mean(pairwise_diffs[np.triu_indices(sample_size, k=1)])
+
+        return mean_hamming_distance
 
     def decode_path(self, chromosome):
         """
