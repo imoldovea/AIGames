@@ -5,7 +5,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from configparser import ConfigParser
 
-import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 import wandb
@@ -13,7 +12,7 @@ import wandb
 from genetic_monitoring import visualize_evolution
 from maze import Maze
 from maze_solver import MazeSolver
-from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf, clean_outupt_folder
+from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf, clean_outupt_folder, print_fitness
 from utils import profile_method
 
 PARAMETERS_FILE = "config.properties"
@@ -427,7 +426,7 @@ class GeneticMazeSolver(MazeSolver):
                 })
             visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
-        self._print_fitness(fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
+        print_fitness(fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
                             diversity_history=diversity_history, show=True)
 
         return path, generations, best_score
@@ -450,30 +449,6 @@ class GeneticMazeSolver(MazeSolver):
         upper = np.triu_indices(n, k=1)
         hamming_matrix = diffs.sum(axis=2)
         return hamming_matrix[upper].mean()
-
-    def _print_fitness(self, fitness_history, avg_fitness_history, diversity_history, show=False):
-        """
-        Plot and save fitness metrics over generations.
-
-        Args:
-            fitness_history: Best fitness scores per generation
-            avg_fitness_history: Average fitness scores per generation
-            diversity_history: Population diversity measures per generation
-            show: Whether to display plot interactively
-        """
-        plt.figure(figsize=(10, 5))
-        plt.plot(fitness_history, label="Best Fitness")
-        plt.plot(avg_fitness_history, label="Avg Fitness")
-        plt.plot(diversity_history, label="Diversity")
-        plt.xlabel("Generation")
-        plt.ylabel("Fitness")
-        plt.title(f"Fitness Over Generations {self.maze.index}")
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(f"{OUTPUT}fitness_plot+{self.maze.index}.png")  # Save to output directory
-        if show:
-            plt.show()
-        plt.close()  # Always close to release memory
 
     def decode_path(self, chromosome):
         """
