@@ -62,10 +62,12 @@ class GeneticMazeSolver(MazeSolver):
         self.diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
         self.diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
         self.diversity_infusion = config.getfloat("GENETIC", "diversity_infusion", fallback=0.01)
-        self.evolution_chromosomes = config.getint("MONITORING", "evolution_chromosomes", fallback=5)
+        self.evolution_chromosomes = config.getint("GENETIC", "evolution_chromosomes", fallback=5)
         self.elitism_count = config.getint("GENETIC", "elitism_count", fallback=2)
-        self.max_steps = config.getint("DEFAULT", "max_steps", fallback=100)
-        self.loop_penalty_weight = config.getint("DEFAULT", "loop_penalty_weight", fallback=10)
+        self.max_steps = config.getint("GENETIC", "max_steps", fallback=100)
+        self.loop_penalty_weight = config.getint("GENETIC", "loop_penalty_weight", fallback=10)
+        self.improvement_threshold = config.getfloat("GENETIC", "improvement_threshold", fallback=0.1)
+        self.max_patience = config.getfloat("GENETIC", "patience", fallback=5)
 
         # Config-driven maze size bounds
         min_size = config.getint("MAZE", "min_size", fallback=5)
@@ -308,6 +310,7 @@ class GeneticMazeSolver(MazeSolver):
         low_diversity_counter = 0
         generations = 0
         monitoring_data = []
+        patience = 0
 
         wandb.init(project="genetic-maze-solver", name=f"maze_{self.maze.index}")
 
@@ -398,6 +401,33 @@ class GeneticMazeSolver(MazeSolver):
                 "generation": generations + 1
             })
 
+            # break out if no improvement in the fitness over the  max_ patience generation and early_stopping_threshold
+            # Check for early stopping based on fitness improvement
+            # Calculate relative improvement if there's a valid previous fitness
+            if len(fitness_history) > 1:
+                previous_best_fitness = fitness_history[-2]
+                if previous_best_fitness != 0:
+                    relative_improvement = (best_score - previous_best_fitness) / abs(previous_best_fitness)
+                else:
+                    relative_improvement = 0  # Treat as no improvement if the previous score is 0
+
+                # Compare with improvement threshold
+                if relative_improvement < self.improvement_threshold:
+                    patience += 1
+                else:
+                    patience = 0  # Reset patience if there's significant improvement
+            else:
+                # No previous fitness to compare, so no patience increment
+                patience = 0
+
+            # Check for early stopping
+            if patience >= self.max_patience:
+                logging.warning(
+                    f"\nNo significant improvement ({relative_improvement * 100:.2f}%) "
+                    f"over the last {self.max_patience} generations. Stopping early at generation {gen}."
+                )
+                break
+
         # Decode best into a path and move through maze
         pos = self.maze.start_position
         path = [pos]
@@ -426,7 +456,7 @@ class GeneticMazeSolver(MazeSolver):
                 })
             visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
-        print_fitness(maze=maze, fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
+        print_fitness(maze=self.maze, fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
                             diversity_history=diversity_history, show=True)
 
         return path, generations, best_score
