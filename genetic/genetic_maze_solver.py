@@ -113,8 +113,8 @@ class GeneticMazeSolver(MazeSolver):
             float: Computed fitness score for the given chromosome.
         """
         # Configurable weights and penalties
-        loop_penalty_weight = config.getint("GENETIC", "loop_penalty_weight", fallback=10)
-        backtrack_penalty_weight = config.getint("GENETIC", "backtrack_penalty_weight", fallback=5)
+        loop_penalty_weight = config.getfloat("GENETIC", "loop_penalty_weight", fallback=10.0)
+        backtrack_penalty_weight = config.getfloat("GENETIC", "backtrack_penalty_weight", fallback=5.0)
         exit_bonus_weight = config.getfloat("GENETIC", "exit_weight", fallback=10.0)
         exploration_bonus_weight = config.getfloat("DEFAULT", "exploration_weight", fallback=2.0)
         diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.1)
@@ -528,14 +528,14 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    mazes = [mazes[-1]]
+    # mazes = [mazes[-1]]
 
     long_solutions_index = []
-    # long_solutions_index = [83,45, 4, 10, 15, 53, 55, 66, 99]  # 83,45
-    failed_maze_index = [55, 70]
+    long_solutions_index = [84]
+    failed_maze_index = [82, 98]
 
     indexs = failed_maze_index + long_solutions_index
-    # mazes = [maze for maze in mazes if maze.index in indexs]
+    mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -565,7 +565,7 @@ def main():
             successful_solutions += 1
         else:
             logging.warning(
-                f"Maze index {maze.index} failed self-test. after {generations} generations, {len(solution_path)}")
+                f"Maze index {maze.index} failed self-test. after {generations} generations, Solution lenght: {len(solution_path)}")
         maze.plot_maze(show_path=True, show_solution=True, show_position=False)
 
     print("Statistics:")
@@ -602,7 +602,7 @@ def main():
     # Print list of top 5 maze indices having the highest generations count. Print only for solved mazes
     if any(maze.valid_solution for maze, _, _ in sorted_mazes):
         logging.info(
-            f"Top 5 mazes having th{unsolved}")
+            f"Top 5 mazes having complex unsolved {unsolved}")
 
 
 if __name__ == "__main__":
