@@ -475,19 +475,27 @@ class GeneticMazeSolver(MazeSolver):
         if n < 2:
             return 0.0
 
-        # Hash genotypes for frequency counting
+        # Hash genotypes for frequency counting [convert ALL elements to int]
         # Assumes pop_arr elements are arrays convertible to tuple
-        genotype_hashes = [tuple(ind) for ind in pop_arr]
+        genotype_hashes = [tuple(int(x) for x in ind) for ind in pop_arr]
         unique, counts = np.unique(genotype_hashes, return_counts=True)
+        if len(unique) < 2:
+            return 0.0  # All individuals are identical, so diversity is zero
+
         genotype_to_count = dict(zip(unique, counts))
 
         # Assign weights: rarer genotypes get higher weights (inverse frequency)
-        weights = np.array([1.0 / genotype_to_count[tuple(ind)] for ind in pop_arr])
+        weights = np.array([
+            1.0 / genotype_to_count.get(tuple(int(x) for x in ind), 1.0)
+            for ind in pop_arr
+        ])
         weights /= weights.sum()  # normalize
-    
+
         # Limit sample size for efficiency
         sample_size = min(n, 100)
-        sampled_indices = np.random.choice(n, size=sample_size, replace=False, p=weights)
+        # If population has fewer unique genotypes than the sample_size, fall back to sampling with replacement
+        replace = n < sample_size
+        sampled_indices = np.random.choice(n, size=sample_size, replace=replace, p=weights)
         sampled_population = pop_arr[sampled_indices]
 
         # Pairwise Hamming distances between sampled genotypes
@@ -550,7 +558,7 @@ def main():
     failed_maze_index = [28, 86]  #
 
     indexs = failed_maze_index + long_solutions_index
-    mazes = [maze for maze in mazes if maze.index in indexs]
+    # mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -601,11 +609,6 @@ def main():
             f"generations: {generations}, "
             f"fitness: {fitness:.1f}"
         )
-    # Print list of unsolved maze indices
-    unsolved = [maze.index for maze, _, _ in sorted_mazes if not maze.valid_solution]
-    if unsolved:
-        logging.info(
-            f"Unsolved mazes: e highest generations count: {[int(maze.index) for maze, _, _ in sorted_mazes[:5]]}")
 
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
     success_rate = successful_solutions / total_mazes * 100
@@ -614,11 +617,18 @@ def main():
     save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
     save_mazes_as_pdf(mazes, OUTPUT_PDF)
     wandb.finish()
+
+    # Print list of unsolved maze indices
+    unsolved = [maze.index for maze, _, _ in sorted_mazes if not maze.valid_solution]
+    if unsolved:
+        logging.info(
+            f"Unsolved mazes: e highest generations count: {[int(maze.index) for maze, _, _ in sorted_mazes[:5]]}")
+
     # Print list of top 5 solved maze indices having the highest generations count. Print only for solved mazes
     logging.info(
         "Top 5 solved maze indexes with the highest generations count: %s",
         [m.index for m in sorted([mz for mz in mazes if getattr(mz, "valid_solution", False)],
-                                 key=lambda x: getattr(x, "generations", 0), reverse=False)[:5]]
+                                 key=lambda x: getattr(x, "generations", 0), reverse=True)[:5]]
     )
 if __name__ == "__main__":
     main()
