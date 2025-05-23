@@ -492,7 +492,7 @@ class GeneticMazeSolver(MazeSolver):
         weights /= weights.sum()  # normalize
 
         # Limit sample size for efficiency
-        sample_size = min(n, 100)
+        sample_size = min(n, self.max_steps)
         # If population has fewer unique genotypes than the sample_size, fall back to sampling with replacement
         replace = n < sample_size
         sampled_indices = np.random.choice(n, size=sample_size, replace=replace, p=weights)
