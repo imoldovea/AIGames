@@ -86,7 +86,7 @@ def setup_logging():
 
     # File handler for DEBUG level and above
     file_handler = logging.FileHandler(f"{OUTPUT}debug.log")
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     file_handler.addFilter(CustomLogFilter(forbidden_logs))
     logger.addHandler(file_handler)

@@ -89,10 +89,27 @@ def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
     for data in monitoring_data:
         data["maze_index"] = data["maze"].index
         data["complexity"] = data["maze"].complexity
+        data["longest_path"] = max(len(path) for path in data["paths"]) if data["paths"] else 0
+        data["generation"] = data["generation"] + 1
+        data["avg_fitness"] = round(data["avg_fitness"], 2)
+        data["max_fitness"] = round(data["max_fitness"], 2)
+        data["diversity"] = round(data["diversity"], 2)
         del data["maze"]
         del data["paths"]
+
+    ordered_columns = [
+        "maze_index",
+        "complexity",
+        "generation",
+        "max_fitness",
+        "avg_fitness",
+        "diversity",
+        "longest_path"
+    ]
+
+
     df = pd.DataFrame(monitoring_data)
-    df.to_csv(filename, index=False)
+    df.to_csv(filename, mode='a', header=not os.path.exists(filename), index=False)
 
 
 def visualize_evolution(monitoring_data, mode="video", index=0):

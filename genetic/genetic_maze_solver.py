@@ -65,7 +65,7 @@ class GeneticMazeSolver(MazeSolver):
         self.evolution_chromosomes = config.getint("GENETIC", "evolution_chromosomes", fallback=5)
         self.elitism_count = config.getint("GENETIC", "elitism_count", fallback=2)
         self.max_steps = config.getint("GENETIC", "max_steps", fallback=100)
-        self.loop_penalty_weight = config.getint("GENETIC", "loop_penalty_weight", fallback=10)
+        self.loop_penalty_weight = config.getfloat("GENETIC", "loop_penalty_weight", fallback=10)
         self.improvement_threshold = config.getfloat("GENETIC", "improvement_threshold", fallback=0.1)
         self.max_patience = config.getfloat("GENETIC", "patience", fallback=5)
 
@@ -397,8 +397,10 @@ class GeneticMazeSolver(MazeSolver):
             monitoring_data.append({
                 "maze": self.maze,  # The maze layout, as before
                 "paths": paths,  # List of (row, col) tuples for each path
-                "fitnesses": mon_fitnesses,  # Corresponding list of fitness scores
-                "generation": generations + 1
+                "avg_fitness": avg_fitness,  # Corresponding list of fitness scores
+                "max_fitness": best_score,  # Maximum fitness score in the current generation
+                "generation": generations + 1,
+                "diversity": diversity
             })
 
             # break out if no improvement in the fitness over the  max_ patience generation and early_stopping_threshold
@@ -451,9 +453,12 @@ class GeneticMazeSolver(MazeSolver):
                 monitoring_data.append({
                     "maze": self.maze,
                     "paths": [final_path],
-                    "fitnesses": [best_score],
-                    "generation": generations + 1
+                    "avg_fitness": avg_fitness,  # Corresponding list of fitness scores
+                    "max_fitness": best_score,
+                    "generation": generations + 1,
+                    "diversity": diversity
                 })
+
             visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
         print_fitness(maze=self.maze, fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
