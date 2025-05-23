@@ -533,14 +533,13 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    # mazes = [mazes[-1]]
+    mazes = [mazes[-50]]
 
-    long_solutions_index = []
-    long_solutions_index = [84]
-    failed_maze_index = [82, 98]
+    long_solutions_index = [97, 62, 49, 56, 66]
+    failed_maze_index = [86, 40, 28, 92, 27, 17, 12]
 
     indexs = failed_maze_index + long_solutions_index
-    mazes = [maze for maze in mazes if maze.index in indexs]
+    # mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -605,9 +604,11 @@ def main():
     save_mazes_as_pdf(mazes, OUTPUT_PDF)
     wandb.finish()
     # Print list of top 5 maze indices having the highest generations count. Print only for solved mazes
-    if any(maze.valid_solution for maze, _, _ in sorted_mazes):
+    if successful_solutions:
         logging.info(
-            f"Top 5 mazes having complex unsolved {unsolved}")
+            f"Top 5 mazes having the highest generations count: e highest generations count: {[int(maze.index) for maze, _, _ in sorted_mazes[:5]]}")
+
+
 
 
 if __name__ == "__main__":
