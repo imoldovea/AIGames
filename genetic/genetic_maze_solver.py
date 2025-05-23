@@ -34,8 +34,7 @@ MIN_POP = 50
 
 random_seed = config.getint("GENETIC", "random_seed", fallback=42)
 
-
-# np.random.seed(random_seed)
+np.random.seed(random_seed)
 
 
 class GeneticMazeSolver(MazeSolver):
@@ -468,18 +467,30 @@ class GeneticMazeSolver(MazeSolver):
 
     def population_diversity(self, pop):
         """
-        Optimized method to calculate population diversity.
+        Calculate weighted population diversity prioritizing rare genotypes.
+        Uses Hamming distance, with samples chosen by giving rare genotypes higher probability.
         """
         pop_arr = np.array(pop)
         n = len(pop_arr)
         if n < 2:
             return 0.0
 
+        # Hash genotypes for frequency counting
+        # Assumes pop_arr elements are arrays convertible to tuple
+        genotype_hashes = [tuple(ind) for ind in pop_arr]
+        unique, counts = np.unique(genotype_hashes, return_counts=True)
+        genotype_to_count = dict(zip(unique, counts))
+
+        # Assign weights: rarer genotypes get higher weights (inverse frequency)
+        weights = np.array([1.0 / genotype_to_count[tuple(ind)] for ind in pop_arr])
+        weights /= weights.sum()  # normalize
+    
         # Limit sample size for efficiency
         sample_size = min(n, 100)
-        sampled_indices = np.random.choice(n, size=sample_size, replace=False)
+        sampled_indices = np.random.choice(n, size=sample_size, replace=False, p=weights)
         sampled_population = pop_arr[sampled_indices]
 
+        # Pairwise Hamming distances between sampled genotypes
         # Use NumPy broadcasting for faster comparisons
         pairwise_diffs = np.count_nonzero(
             sampled_population[:, None, :] != sampled_population[None, :, :], axis=2
@@ -533,13 +544,13 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    mazes = [mazes[-50]]
+    # mazes = [mazes[-50]]
 
-    long_solutions_index = [97, 62, 49, 56, 66]
-    failed_maze_index = [86, 40, 28, 92, 27, 17, 12]
+    long_solutions_index = []
+    failed_maze_index = [28, 86]  #
 
     indexs = failed_maze_index + long_solutions_index
-    # mazes = [maze for maze in mazes if maze.index in indexs]
+    mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -603,13 +614,11 @@ def main():
     save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
     save_mazes_as_pdf(mazes, OUTPUT_PDF)
     wandb.finish()
-    # Print list of top 5 maze indices having the highest generations count. Print only for solved mazes
-    if successful_solutions:
-        logging.info(
-            f"Top 5 mazes having the highest generations count: e highest generations count: {[int(maze.index) for maze, _, _ in sorted_mazes[:5]]}")
-
-
-
-
+    # Print list of top 5 solved maze indices having the highest generations count. Print only for solved mazes
+    logging.info(
+        "Top 5 solved maze indexes with the highest generations count: %s",
+        [m.index for m in sorted([mz for mz in mazes if getattr(mz, "valid_solution", False)],
+                                 key=lambda x: getattr(x, "generations", 0), reverse=False)[:5]]
+    )
 if __name__ == "__main__":
     main()
