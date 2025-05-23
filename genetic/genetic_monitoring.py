@@ -109,6 +109,7 @@ def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
 
 
     df = pd.DataFrame(monitoring_data)
+    df.sort_values(by=["maze_index", "generation"], inplace=True)
     df.to_csv(filename, mode='a', header=not os.path.exists(filename), index=False)
 
 
