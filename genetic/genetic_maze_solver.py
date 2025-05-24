@@ -58,6 +58,7 @@ class GeneticMazeSolver(MazeSolver):
         self.directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N,S,W,E
         self.threshold = -min(5, 0.05 * max_steps)
         self.max_workers = config.getint("GENETIC", "max_workers", fallback=1)
+        self.path_diversity_bonus = config.getfloat("GENETIC", "path_diversity_bonus", fallback=10)
         self.diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
         self.diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
         self.diversity_infusion = config.getfloat("GENETIC", "diversity_infusion", fallback=0.01)
@@ -184,16 +185,15 @@ class GeneticMazeSolver(MazeSolver):
                     0,
                     self.chromosome_length * self.diversity_penalty_threshold - diffs[mask].sum(axis=1).mean()
                 )
-
-        # --- Path Diversity Reward ---
         path_diversity_bonus = 0
+        # --- Path Diversity Reward ---
         path_tuple = tuple(path)
         if unique_paths_seen is not None:
             if path_tuple not in unique_paths_seen:
-                path_diversity_bonus += 10.0  # Reward for discovering a new path
+                path_diversity_bonus += self.path_diversity_bonus  # Reward for discovering a new path
                 unique_paths_seen.add(path_tuple)
             else:
-                path_diversity_bonus -= 2.0  # Small penalty for duplicates
+                path_diversity_bonus -= self.path_diversity_bonus / 3  # Small penalty for duplicates
 
         # --- Distance Penalty ---
         # Heuristic penalty for distance to exit at the end
@@ -554,11 +554,11 @@ def main():
 
     # mazes = [mazes[-50]]
 
-    long_solutions_index = []
-    failed_maze_index = [28, 86]  #
+    long_solutions_index = []  #
+    failed_maze_index = [86]  #
 
     indexs = failed_maze_index + long_solutions_index
-    # mazes = [maze for maze in mazes if maze.index in indexs]
+    mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
