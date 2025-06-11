@@ -482,7 +482,10 @@ class GeneticMazeSolver(MazeSolver):
         genotype_to_count = dict(zip(unique, counts))
 
         # Assign weights: rarer genotypes get higher weights (inverse frequency)
-        weights = np.array([1.0 / genotype_to_count[tuple(ind)] for ind in pop_arr])
+        weights = np.array([
+            1.0 / genotype_to_count.get(tuple(int(x) for x in ind), 1)
+            for ind in pop_arr
+        ])
         weights /= weights.sum()  # normalize
     
         # Limit sample size for efficiency
