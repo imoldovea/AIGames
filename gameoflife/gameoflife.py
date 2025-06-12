@@ -36,7 +36,7 @@ patterns = {
 class GameOfLife:
     def __init__(self, master):
         self.master = master
-        self.is_running = False  # Game starts paused
+        self.is_running = False
 
         # Pattern buttons
         pattern_frame = tk.Frame(master)
@@ -56,19 +56,22 @@ class GameOfLife:
         self.next_btn = tk.Button(control_frame, text="Next Step", command=self.next_step)
         self.next_btn.pack(side=tk.LEFT)
 
+        self.clear_btn = tk.Button(control_frame, text="Clear", command=self.clear_board)
+        self.clear_btn.pack(side=tk.LEFT)
+
         # Canvas
         self.canvas = tk.Canvas(master, width=cols * cell_size, height=rows * cell_size)
         self.canvas.pack()
 
-        # Board
+        # Board initialization
         self.board = np.zeros((rows, cols), dtype=int)
         self.set_pattern("Glider")
         self.draw_board()
 
-        # Mouse binding for editing
+        # Bind for editing
         self.canvas.bind("<Button-1>", self.toggle_cell)
 
-        # Start the update loop
+        # Start update loop
         self.update()
 
     def set_pattern(self, pattern_name):
@@ -110,7 +113,7 @@ class GameOfLife:
         self.is_running = not self.is_running
         self.update_controls()
         if self.is_running:
-            self.update()  # Restart the update loop if running
+            self.update()
 
     def update_controls(self):
         if self.is_running:
@@ -139,6 +142,10 @@ class GameOfLife:
                     if neighbors == 3:
                         new_board[r, c] = 1
         self.board = new_board
+        self.draw_board()
+
+    def clear_board(self):
+        self.board.fill(0)
         self.draw_board()
 
 if __name__ == "__main__":
