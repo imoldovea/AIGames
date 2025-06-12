@@ -4,12 +4,11 @@ import tkinter as tk
 
 import numpy as np
 
-# Define the grid size and cell display size
 rows, cols = 20, 20
-cell_size = 20  # Size of each cell in pixels
+cell_size = 20
 
-# Define multiple starting patterns
 patterns = {
+    # Patterns remain the same
     "Glider": [
         (1, 2), (2, 3), (3, 1), (3, 2), (3, 3)
     ],
@@ -37,18 +36,17 @@ patterns = {
 class GameOfLife:
     def __init__(self, master):
         self.master = master
-        self.is_running = False  # Game starts in paused state
+        self.is_running = False  # Game starts paused
 
-        # Pattern selection buttons
+        # Pattern buttons
         pattern_frame = tk.Frame(master)
         pattern_frame.pack()
-
         for pattern_name in patterns:
             btn = tk.Button(pattern_frame, text=pattern_name,
                             command=lambda name=pattern_name: self.set_pattern(name))
             btn.pack(side=tk.LEFT)
 
-        # Control buttons frame
+        # Control buttons
         control_frame = tk.Frame(master)
         control_frame.pack()
 
@@ -58,17 +56,20 @@ class GameOfLife:
         self.next_btn = tk.Button(control_frame, text="Next Step", command=self.next_step)
         self.next_btn.pack(side=tk.LEFT)
 
-        # Canvas for grid display
+        # Canvas
         self.canvas = tk.Canvas(master, width=cols * cell_size, height=rows * cell_size)
         self.canvas.pack()
 
-        # Initialize the game board
+        # Board
         self.board = np.zeros((rows, cols), dtype=int)
         self.set_pattern("Glider")
         self.draw_board()
 
-        # Optional: Disable/update controls based on running state
-        self.update_controls()
+        # Mouse binding for editing
+        self.canvas.bind("<Button-1>", self.toggle_cell)
+
+        # Start the update loop
+        self.update()
 
     def set_pattern(self, pattern_name):
         self.board.fill(0)
@@ -88,6 +89,13 @@ class GameOfLife:
                     fill=color, outline="gray"
                 )
 
+    def toggle_cell(self, event):
+        c = event.x // cell_size
+        r = event.y // cell_size
+        if 0 <= r < rows and 0 <= c < cols:
+            self.board[r, c] = 1 - self.board[r, c]
+            self.draw_board()
+
     def count_neighbors(self, r, c):
         total = 0
         for i in range(r - 1, r + 2):
@@ -99,14 +107,12 @@ class GameOfLife:
         return total
 
     def toggle_run(self):
-        # Switch between playing and paused
         self.is_running = not self.is_running
         self.update_controls()
         if self.is_running:
-            self.update()
+            self.update()  # Restart the update loop if running
 
     def update_controls(self):
-        # Update button texts/enabled states based on running state
         if self.is_running:
             self.play_pause_btn.config(text="Pause")
         else:
