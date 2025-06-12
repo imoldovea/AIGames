@@ -34,19 +34,12 @@ patterns = {
     ],
 }
 
-
 class GameOfLife:
-    """
-    A class to simulate Conway's Game of Life using Tkinter with multiple starting patterns.
-    """
-
     def __init__(self, master):
-        """
-        Initialize the GUI and set up controls for pattern selection.
-        """
         self.master = master
+        self.is_running = False  # Game starts in paused state
 
-        # Frame for pattern selection buttons
+        # Pattern selection buttons
         pattern_frame = tk.Frame(master)
         pattern_frame.pack()
 
@@ -55,39 +48,40 @@ class GameOfLife:
                             command=lambda name=pattern_name: self.set_pattern(name))
             btn.pack(side=tk.LEFT)
 
-        # Create a canvas widget for drawing the grid
+        # Control buttons frame
+        control_frame = tk.Frame(master)
+        control_frame.pack()
+
+        self.play_pause_btn = tk.Button(control_frame, text="Play", command=self.toggle_run)
+        self.play_pause_btn.pack(side=tk.LEFT)
+
+        self.next_btn = tk.Button(control_frame, text="Next Step", command=self.next_step)
+        self.next_btn.pack(side=tk.LEFT)
+
+        # Canvas for grid display
         self.canvas = tk.Canvas(master, width=cols * cell_size, height=rows * cell_size)
         self.canvas.pack()
 
         # Initialize the game board
         self.board = np.zeros((rows, cols), dtype=int)
-        self.set_pattern("Glider")  # Default pattern
-
-        # Draw initial state
+        self.set_pattern("Glider")
         self.draw_board()
 
-        # Schedule updates
-        self.running = True
-        self.master.after(500, self.update)
+        # Optional: Disable/update controls based on running state
+        self.update_controls()
 
     def set_pattern(self, pattern_name):
-        """
-        Set the initial live cells based on selected pattern.
-        """
         self.board.fill(0)
-        for (r, c) in patterns[pattern_name]:
+        for (r, c) in patterns.get(pattern_name, []):
             if 0 <= r < rows and 0 <= c < cols:
                 self.board[r, c] = 1
         self.draw_board()
 
     def draw_board(self):
-        """
-        Render the current state of the game board on the Tkinter canvas.
-        """
         self.canvas.delete("all")
         for r in range(rows):
             for c in range(cols):
-                color = "black" if self.board[r, c] == 1 else "white"
+                color = "black" if self.board[r, c] else "white"
                 self.canvas.create_rectangle(
                     c * cell_size, r * cell_size,
                     (c + 1) * cell_size, (r + 1) * cell_size,
@@ -95,9 +89,6 @@ class GameOfLife:
                 )
 
     def count_neighbors(self, r, c):
-        """
-        Count live neighbors around a cell.
-        """
         total = 0
         for i in range(r - 1, r + 2):
             for j in range(c - 1, c + 2):
@@ -107,10 +98,30 @@ class GameOfLife:
                     total += self.board[i, j]
         return total
 
+    def toggle_run(self):
+        # Switch between playing and paused
+        self.is_running = not self.is_running
+        self.update_controls()
+        if self.is_running:
+            self.update()
+
+    def update_controls(self):
+        # Update button texts/enabled states based on running state
+        if self.is_running:
+            self.play_pause_btn.config(text="Pause")
+        else:
+            self.play_pause_btn.config(text="Play")
+
     def update(self):
-        """
-        Compute next generation and refresh display.
-        """
+        if self.is_running:
+            self.next_generation()
+            self.master.after(500, self.update)
+
+    def next_step(self):
+        if not self.is_running:
+            self.next_generation()
+
+    def next_generation(self):
         new_board = np.copy(self.board)
         for r in range(rows):
             for c in range(cols):
@@ -123,13 +134,8 @@ class GameOfLife:
                         new_board[r, c] = 1
         self.board = new_board
         self.draw_board()
-        self.master.after(500, self.update)
-
 
 if __name__ == "__main__":
-    """
-    Run the Game of Life with options for different starting patterns.
-    """
     root = tk.Tk()
     root.title("Game of Life")
     game = GameOfLife(root)
