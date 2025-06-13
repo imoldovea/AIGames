@@ -6,6 +6,7 @@ import string
 
 import matplotlib.pyplot as plt
 from deap import base, creator, tools, algorithms
+from tqdm import tqdm
 
 OUTPUT_FOLDER = "output"
 HTML_FILE_PATH = os.path.join(OUTPUT_FOLDER, "guesssentence.html")
@@ -27,7 +28,7 @@ CHARS = string.ascii_letters + string.punctuation + " "
 # 🧬 Genetic Algorithm hyperparameters
 POP_SIZE = 300  # Number of individuals in the population
 CX_PROB = 0.5  # Crossover probability
-MUT_PROB = 0.2  # Mutation probability
+MUT_PROB = 0.1  # Mutation probability
 N_GEN = 1000  # Maximum number of generations
 IND_SIZE = len(TARGET)  # Length of each individual (same as target sentence)
 
@@ -97,7 +98,7 @@ def run_ga():
     fitnesses = []
 
     # During your generation loop, when printing the top two individuals:
-    for gen in range(N_GEN):
+    for gen in tqdm(range(N_GEN)):
         # Apply crossover and mutation
         offspring = algorithms.varAnd(pop, toolbox, cxpb=CX_PROB, mutpb=MUT_PROB)
         # Evaluate new offspring
@@ -128,7 +129,7 @@ def run_ga():
         if hof[0].fitness.values[0] == IND_SIZE:
             break
 
-    print("✅ Best sentence found:", decode(hof[0]))
+    print(f"✅ Best sentence found:in {gen + 1} steps :, {decode(hof[0])}")
     # Finally, close the HTML after processing:
     # (add this at the end of run_ga after the loop)
     with open(HTML_FILE_PATH, "a", encoding="utf-8") as f:
