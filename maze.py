@@ -403,7 +403,7 @@ class Maze:
                 self.raw_movie.append(frame)
 
             return True
-        self.logger.warning("Invalid move attempted to position %s", position)
+        self.logger.debug("Invalid move attempted to position %s", position)
         return False
 
     def set_animate(self, value):

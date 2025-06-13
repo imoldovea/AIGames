@@ -26,3 +26,4 @@ openai
 httpx
 httpcore
 imageio
+deap
