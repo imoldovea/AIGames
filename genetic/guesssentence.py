@@ -28,7 +28,7 @@ CHARS = string.ascii_letters + string.punctuation + " "
 # 🧬 Genetic Algorithm hyperparameters
 POP_SIZE = 300  # Number of individuals in the population
 CX_PROB = 0.5  # Crossover probability
-MUT_PROB = 0.1  # Mutation probability
+MUT_PROB = 0.2  # Mutation probability
 N_GEN = 1000  # Maximum number of generations
 IND_SIZE = len(TARGET)  # Length of each individual (same as target sentence)
 
