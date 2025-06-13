@@ -159,8 +159,18 @@ if __name__ == "__main__":
     # Optionally, initialize the HTML file
     with open(os.path.join(OUTPUT_FOLDER, "generation_progress.html"), "w", encoding="utf-8") as f:
         f.write("<html><body><h1>GA Progress</h1>")
-    fitnesses = run_ga()
-    plot_fitness(fitnesses)
+    fitness_records = run_ga()
+
+    # Save the fitness data to an HTML file
+    html_output_path = os.path.join(OUTPUT_FOLDER, "fitness_history.html")
+    with open(html_output_path, "w", encoding="utf-8") as f:
+        f.write("<html><head><title>Fitness History</title></head><body>")
+        f.write("<h1>Fitness over Generations</h1>")
+        f.write("<table border='1'><tr><th>Generation</th><th>Max Fitness</th><th>Average Fitness</th></tr>")
+        for gen, max_fit, avg_fit in fitness_records:
+            f.write(f"<tr><td>{gen}</td><td>{max_fit}</td><td>{avg_fit}</td></tr>")
+        f.write("</table></body></html>")
+    plot_fitness(fitness_records)
 
 
 def color_correct_char_terminal(individual_str, target_str):
