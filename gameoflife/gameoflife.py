@@ -4,7 +4,7 @@ import tkinter as tk
 
 import numpy as np
 
-rows, cols = 200, 200
+rows, cols = 80, 120
 cell_size = 20
 
 patterns = {
