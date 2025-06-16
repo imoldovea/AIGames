@@ -5,7 +5,7 @@ import tkinter as tk
 import numpy as np
 
 rows, cols = 80, 120
-cell_size = 20
+cell_size = 12
 
 patterns = {
     "Glider": [(0, 1), (1, 2), (2, 0), (2, 1), (2, 2)],
