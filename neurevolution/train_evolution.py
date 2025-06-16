@@ -76,10 +76,33 @@ def main():
 
         pop[:] = offspring
 
+        # Select top 10 individuals
+        top10 = tools.selBest(pop, 10)
+
+        # Build list of (maze, solver) tuples
+        top_solvers = []
+        for genome in top10:
+            for maze in mazes[:1]:  # Just show on one maze to keep it fast
+                maze.reset()
+                solver = NeuroEvoSolver(maze, genome)
+                top_solvers.append((maze, solver))
+
+        from visualize import render_evolution_pygame
+        render_evolution_pygame(top_solvers, delay=50)
+
     # Save best model
     best_genome = hof[0]
     model = NeuroNet.from_genome(best_genome)
     torch.save(model.state_dict(), os.path.join(OUTPUT, "neuro_weights_best.pt"))
+
+    best_genome = hof[0]
+    final_solvers = []
+    for maze in mazes[:1]:
+        maze.reset()
+        solver = NeuroEvoSolver(maze, best_genome)
+        final_solvers.append((maze, solver))
+
+    render_evolution_pygame(final_solvers, delay=100)
 
     # Visualize best solver on all mazes
     for maze in mazes:

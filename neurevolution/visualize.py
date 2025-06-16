@@ -7,6 +7,69 @@ import matplotlib.pyplot as plt
 import pygame
 
 
+def render_evolution_pygame(top_solvers, delay=100):
+    import pygame
+    pygame.init()
+
+    if not top_solvers:
+        print("No solvers to render.")
+        return
+
+    cell_size = 20
+    border_thickness = 2  # thickness of the black border
+    maze = top_solvers[0][0]
+    grid_width = maze.cols * cell_size
+    grid_height = maze.rows * cell_size
+
+    width = grid_width + 2 * border_thickness
+    height = grid_height + 2 * border_thickness
+
+    screen = pygame.display.set_mode((width, height))
+    pygame.display.set_caption("Top N Solutions Evolution")
+
+    def draw_maze(maze, screen, cell_size, border_thickness):
+        # Fill screen with black (this becomes the border)
+        screen.fill((0, 0, 0))
+
+        # Draw the maze grid shifted by border_thickness
+        for y in range(maze.rows):
+            for x in range(maze.cols):
+                rect = pygame.Rect(
+                    border_thickness + x * cell_size,
+                    border_thickness + y * cell_size,
+                    cell_size,
+                    cell_size
+                )
+                if (y, x) == maze.start_position:
+                    color = (255, 255, 0)  # Yellow
+                elif (y, x) == maze.exit:
+                    color = (0, 255, 255)  # Cyan
+                elif maze.grid[y, x] == 1:
+                    color = (64, 64, 64)  # Dark grey wall
+                elif (y, x) in maze.get_path():
+                    color = (0, 255, 0)  # Green path
+                elif (y, x) in maze.visited_cells:
+                    color = (200, 200, 200)  # Light grey visited
+                else:
+                    color = (255, 255, 255)  # White corridor
+
+                pygame.draw.rect(screen, color, rect)
+
+    for maze, solver in top_solvers:
+        maze.reset()
+        solver.solve()
+        for pos in maze.get_path():
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+            draw_maze(maze, screen, cell_size, border_thickness)
+            pygame.display.flip()
+            pygame.time.delay(delay)
+
+    pygame.quit()
+
+
 def plot_fitness_curve(logbook, output_path="output/fitness_progress.png"):
     gens = logbook.select("gen")
     maxs = logbook.select("max")
