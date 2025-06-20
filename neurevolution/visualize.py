@@ -7,13 +7,16 @@ import matplotlib.pyplot as plt
 import pygame
 
 
-def render_evolution_pygame(top_solvers, delay=100):
+def render_evolution_pygame(top_solvers, delay=100, max_solutions=3):
     import pygame
     pygame.init()
 
     if not top_solvers:
         print("No solvers to render.")
         return
+
+    # only keep the first max_solutions
+    top_solvers = top_solvers[:max_solutions]
 
     cell_size = 20
     border_thickness = 2  # thickness of the black border

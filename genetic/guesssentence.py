@@ -89,51 +89,60 @@ def append_to_html(content):
 
 # 🎥 Main GA loop
 def run_ga():
-    pop = toolbox.population(n=POP_SIZE)  # Initial population
-    hof = tools.HallOfFame(1)  # Store best individual
-    stats = tools.Statistics(lambda ind: ind.fitness.values[0])  # Track fitness over time
+    # Step 1: Initialize a population of random individuals
+    pop = toolbox.population(n=POP_SIZE)
+    # Step 2: Create a Hall of Fame to keep the best individual ever seen
+    hof = tools.HallOfFame(1)
+    # Step 3: Set up statistics tracking (we'll record max and average fitness)
+    stats = tools.Statistics(lambda ind: ind.fitness.values[0])
     stats.register("max", max)
     stats.register("avg", lambda x: sum(x) / len(x))
 
+    # This list will store (generation, max_fitness, avg_fitness) tuples
     fitnesses = []
 
-    # During your generation loop, when printing the top two individuals:
-    for gen in tqdm(range(N_GEN)):
-        # Apply crossover and mutation
+    # Step 4: Main GA loop over generations
+    for gen in tqdm(range(N_GEN), desc="GA Generations"):
+        # 4a: Apply crossover and mutation to create new offspring
         offspring = algorithms.varAnd(pop, toolbox, cxpb=CX_PROB, mutpb=MUT_PROB)
-        # Evaluate new offspring
+
+        # 4b: Evaluate fitness of each new individual
         fits = list(map(toolbox.evaluate, offspring))
         for ind, fit in zip(offspring, fits):
             ind.fitness.values = fit
 
-        # Select the next generation
+        # 4c: Select the next generation from the offspring
         pop = toolbox.select(offspring, k=len(offspring))
-        hof.update(pop)  # Track best
+        # 4d: Update Hall of Fame with the best individuals in the new population
+        hof.update(pop)
 
-        # Get top 2 individuals
+        # 4e: Identify the top two individuals by fitness
         sorted_pop = sorted(pop, key=lambda ind: ind.fitness.values[0], reverse=True)
         top2 = sorted_pop[:2]
 
-        # Append the top 2 individuals to HTML with colored correct letters
+        # 4f: Append the top two to the HTML log with correct letters colored
         append_to_html(f"<h2>Generation {gen + 1}</h2>")
-        for i, individual in enumerate(top2):
+        for i, individual in enumerate(top2, start=1):
             decoded_str = decode(individual)
             colored_str = color_correct_char(decoded_str, TARGET)
-            append_to_html(f"<p>{i + 1}: {colored_str} (Fitness: {individual.fitness.values[0]})</p>")
+            append_to_html(
+                f"<p>{i}: {colored_str} (Fitness: {individual.fitness.values[0]})</p>"
+            )
 
-        # Record statistics for plotting
+        # 4g: Record statistics for plotting later
         record = stats.compile(pop)
         fitnesses.append((gen, record["max"], record["avg"]))
 
-        # Stop if we perfectly match the target
+        # 4h: Early exit if we've matched the target exactly
         if hof[0].fitness.values[0] == IND_SIZE:
             break
 
-    print(f"✅ Best sentence found:in {gen + 1} steps :, {decode(hof[0])}")
-    # Finally, close the HTML after processing:
-    # (add this at the end of run_ga after the loop)
+    # Step 5: Output the best result and close the HTML file
+    print(f"✅ Best sentence found in {gen + 1} generations: {decode(hof[0])}")
     with open(HTML_FILE_PATH, "a", encoding="utf-8") as f:
         f.write("</body></html>")
+
+    # Step 6: Return the history of fitness values for plotting
     return fitnesses
 
 

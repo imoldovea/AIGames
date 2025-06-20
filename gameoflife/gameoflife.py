@@ -1,11 +1,12 @@
 # gameoflife_gui.py
 
 import tkinter as tk
+import webbrowser
 
 import numpy as np
 
-rows, cols = 80, 120
-cell_size = 12
+rows, cols = 40, 60
+cell_size = 20
 
 patterns = {
     "Glider": [(0, 1), (1, 2), (2, 0), (2, 1), (2, 2)],
@@ -108,8 +109,15 @@ class GameOfLife:
         self.clear_btn = tk.Button(control_frame, text="Clear", command=self.clear_board)
         self.clear_btn.pack(side=tk.LEFT)
 
+        # Pattern label
+        self.pattern_label_var = tk.StringVar()
+        pattern_label = tk.Label(control_frame, textvariable=self.pattern_label_var, font=("Arial", 10, "underline"),
+                                 fg="blue", cursor="hand2")
+        pattern_label.pack(side=tk.LEFT, padx=10)
+        pattern_label.bind("<Button-1>", self.open_pattern_link)
+
         # Canvas
-        self.canvas = tk.Canvas(master, width=cols * cell_size, height=rows * cell_size)
+        self.canvas = tk.Canvas(master, width=cols * cell_size, height=rows * cell_size, bg="white")
         self.canvas.pack()
 
         # Create cell grid for drawing
@@ -119,7 +127,7 @@ class GameOfLife:
                 self.cells[r, c] = self.canvas.create_rectangle(
                     c * cell_size, r * cell_size,
                     (c + 1) * cell_size, (r + 1) * cell_size,
-                    fill="white", outline="gray"
+                    fill="white", outline="lightgrey"
                 )
 
         # Board data initialization
@@ -134,10 +142,23 @@ class GameOfLife:
         # Start update loop
         self.update()
 
+    def open_pattern_link(self, event):
+        """Opens a browser tab to the LifeWiki page for the current pattern."""
+        full_text = self.pattern_label_var.get()
+        if full_text.startswith("Pattern: "):
+            pattern_name = full_text[len("Pattern: "):]
+            if pattern_name in ["Custom", "Cleared"]:
+                return  # No link for these states
+
+            url_pattern_name = pattern_name.replace(' ', '_')
+            url = f"https://conwaylife.com/wiki/{url_pattern_name}"
+            webbrowser.open_new_tab(url)
+
     def set_pattern(self, pattern_name):
         """Clear the board and draw the selected pattern centred on the grid."""
         self.is_running = False
         self.update_controls()
+        self.pattern_label_var.set(f"Pattern: {pattern_name}")
 
         self.board.fill(0)
 
@@ -181,6 +202,7 @@ class GameOfLife:
             self.board[r, c] = 1 - self.board[r, c]
             color = "black" if self.board[r, c] else "white"
             self.canvas.itemconfig(self.cells[r, c], fill=color)
+            self.pattern_label_var.set("Pattern: Custom")
 
     def count_neighbors(self, r, c):
         total = 0
@@ -207,7 +229,7 @@ class GameOfLife:
     def update(self):
         if self.is_running:
             self.next_generation()
-            self.master.after(500, self.update)
+            self.master.after(100, self.update)
 
     def next_step(self):
         if not self.is_running:
@@ -216,17 +238,20 @@ class GameOfLife:
     def next_generation(self):
         new_board = np.copy(self.board)
         changed_cells = []
+
+        # Use a copy of the board to calculate the next state
+        board_copy = np.copy(self.board)
+
         for r in range(rows):
             for c in range(cols):
                 neighbors = self.count_neighbors(r, c)
-                if self.board[r, c] == 1:
+                if board_copy[r, c] == 1:
                     if neighbors < 2 or neighbors > 3:
                         new_board[r, c] = 0
                         changed_cells.append((r, c))
-                else:
-                    if neighbors == 3:
-                        new_board[r, c] = 1
-                        changed_cells.append((r, c))
+                elif neighbors == 3:
+                    new_board[r, c] = 1
+                    changed_cells.append((r, c))
 
         self.board = new_board
         for r, c in changed_cells:
@@ -238,6 +263,7 @@ class GameOfLife:
         self.update_controls()
         self.board.fill(0)
         self.draw_board()
+        self.pattern_label_var.set("Pattern: Cleared")
 
 
 if __name__ == "__main__":
