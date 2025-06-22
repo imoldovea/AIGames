@@ -156,13 +156,34 @@ def main():
                                                               save_filename="solved_mazes")
                 print("Visualization created successfully!")
 
-                # ADD THIS LINE TO DISPLAY THE PLOT:
-                plt.show()  # This will open a window showing the plot
+                # NEW: Create video using the visualizer instead of fallback
+                try:
+                    # Create animation data for video
+                    for i, maze_data in enumerate(maze_data_list[:3]):  # Use first 3 mazes for video
+                        animation_data = {
+                            'frames': [maze_data]  # Simple single-frame animation for now
+                        }
 
+                        video_filename = f"maze_{i}_{maze_data['algorithm']}"
+                        anim, saved_files = visualizer.animate_solution_progress(
+                            animation_data,
+                            filename=video_filename,
+                            format="mp4"
+                        )
+
+                        if saved_files:
+                            print(f"Created video: {saved_files[0]}")
+
+                except Exception as video_error:
+                    print(f"Video creation with visualizer failed: {video_error}")
+                    # Fallback to old method only if visualizer fails
+                    logging.info("Using fallback video method")
+                    save_movie(all_solved_mazes, output_mp4)
+        
         except Exception as viz_error:
             print(f"Visualization failed: {viz_error}")
-            # Fallback to old method
-            logging.info("Using fallback visualization method")
+            # Only use fallback if everything fails
+            logging.info("Using complete fallback method")
             save_movie(all_solved_mazes, output_mp4)
 
         # Create comparison dashboard if using plotly

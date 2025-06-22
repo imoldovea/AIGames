@@ -199,12 +199,85 @@ class MazeVisualizer:
             filename: Optional filename (will auto-generate if None)
             format: Animation format ('mp4', 'gif', 'html' for plotly)
         """
-        if not maze_data or 'steps' not in maze_data:
-            raise ValueError("Invalid animation data - missing 'steps' key")
+        if not maze_data or 'frames' not in maze_data:
+            # If no animation frames provided, create a simple static video
+            if 'solution' in maze_data:
+                return self._create_static_solution_video(maze_data, filename, format)
+            else:
+                raise ValueError("No solution data for animation")
 
-        # For now, just skip animation and return None
-        print("Animation not implemented yet - skipping")
-        return None, []
+        # Use renderer's animation method
+        if hasattr(self.renderer, 'create_solution_animation'):
+            save_path = None
+            if filename:
+                save_path = self.output_dir / f"{filename}.{format}"
+
+            # Pass the animation data properly
+            anim = self.renderer.create_solution_animation(maze_data, save_path)
+            saved_files = [str(save_path)] if save_path else []
+            return anim, saved_files
+        else:
+            print("Animation not supported by current renderer")
+            return None, []
+
+    def _create_static_solution_video(self, maze_data: Dict, filename: Optional[str], format: str):
+        """Create a simple video showing the final solution."""
+        if filename is None:
+            filename = f"solution_{maze_data.get('algorithm', 'unknown')}"
+
+        # Create frames for animation
+        frames_data = []
+        solution = maze_data.get('solution', [])
+
+        # Create frames showing progressive solution drawing
+        for i in range(len(solution) + 1):
+            frame = maze_data.copy()
+            frame['current_path'] = solution[:i]  # Show solution up to step i
+            if i > 0:
+                frame['current_position'] = solution[i - 1]
+            frame['step'] = i
+            frames_data.append(frame)
+
+        # If no solution steps, just show the maze
+        if not frames_data:
+            frames_data = [maze_data]
+
+        animation_data = {'frames': frames_data}
+
+        # Create the animation
+        save_path = self.output_dir / f"{filename}.{format}"
+
+        # Use matplotlib directly for simple animation
+        fig, ax = plt.subplots(figsize=self.figsize)
+
+        def animate(frame_idx):
+            ax.clear()
+            frame = frames_data[frame_idx % len(frames_data)]
+            self._plot_single_maze(ax, frame, get_style(self.theme), frame.get('algorithm', 'Unknown'))
+
+            # Draw current path
+            if 'current_path' in frame and frame['current_path']:
+                path = np.array(frame['current_path'])
+                ax.plot(path[:, 1], path[:, 0], 'r-', linewidth=3, alpha=0.8)
+
+            ax.set_title(f"Step {frame.get('step', 0)}: {frame.get('algorithm', 'Unknown')}")
+
+        from matplotlib.animation import FuncAnimation
+        anim = FuncAnimation(fig, animate, frames=len(frames_data), interval=500, repeat=True)
+
+        # Save animation
+        try:
+            if format == "mp4":
+                anim.save(str(save_path), writer='ffmpeg', fps=2)
+            elif format == "gif":
+                anim.save(str(save_path), writer='pillow', fps=2)
+
+            plt.close(fig)
+            return anim, [str(save_path)]
+        except Exception as e:
+            print(f"Failed to save animation: {e}")
+            plt.close(fig)
+            return anim, []
 
     def _prepare_maze_data(self, raw_data: Dict) -> Dict:
         """Convert raw maze data to renderer-agnostic format."""
