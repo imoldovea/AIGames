@@ -8,6 +8,8 @@ import pstats
 import shutil
 import tempfile
 import traceback
+# Keep old functions for backward compatibility (add deprecation warnings)
+import warnings
 from configparser import ConfigParser
 from datetime import datetime
 from functools import wraps
@@ -98,7 +100,7 @@ def clean_outupt_folder():
     # Delete all OUTPUT folder content
     if config.getboolean("DEFAULT", "retrain_model", fallback=True):
         for pattern in ["*.html", "*.pdf", "*.mp4", "*.prof", "*.csv", "*.json", "*.png", "*.properties",
-                        "*.txt", "*.png", "*.gif"]:
+                        "*.txt", "*.png", "*.gif", "*.npy", "*.pt"]:
             for filename in glob.glob(os.path.join(OUTPUT, pattern)):
                 os.remove(filename)
         # Remove /exit subfolder and its contents if exist
@@ -110,6 +112,13 @@ def clean_outupt_folder():
 
         # Remove /exit subfolder and its contents if exist
         exit_folder = os.path.join(OUTPUT, "activations")
+        if os.path.exists(exit_folder):
+            for filename in glob.glob(os.path.join(exit_folder, "*")):
+                os.remove(filename)
+            os.rmdir(exit_folder)
+
+        # Remove /genomes subfolder and its contents if exist
+        exit_folder = os.path.join(OUTPUT, "genomes")
         if os.path.exists(exit_folder):
             for filename in glob.glob(os.path.join(exit_folder, "*")):
                 os.remove(filename)
@@ -473,3 +482,45 @@ if __name__ == "__main__":
     # mazes, count = load_mazes("input/training_mazes.pkl")
     mazes = load_mazes("input/training_mazes.h5")
     print(f"Loaded {len(mazes)} training mazes.")
+
+
+# Add these new renderer-based functions while keeping old ones for compatibility
+
+def display_all_mazes_v2(solved_mazes: list, renderer_type: str = "matplotlib") -> None:
+    """New renderer-based version of display_all_mazes."""
+    from maze_visualizer import MazeVisualizer
+
+    visualizer = MazeVisualizer(renderer_type=renderer_type)
+    return visualizer.visualize_multiple_solutions(solved_mazes)
+
+
+def save_mazes_as_pdf_v2(solved_mazes: list, output_path: str) -> None:
+    """New renderer-based version of save_mazes_as_pdf."""
+    from maze_visualizer import MazeVisualizer
+
+    visualizer = MazeVisualizer(renderer_type="matplotlib")
+    fig = visualizer.visualize_multiple_solutions(solved_mazes)
+    fig.savefig(output_path, format='pdf', dpi=300, bbox_inches='tight')
+
+
+def save_movie_v2(solved_mazes: list, output_path: str) -> None:
+    """New renderer-based version of save_movie."""
+    from maze_visualizer import MazeVisualizer
+
+    visualizer = MazeVisualizer(renderer_type="matplotlib")
+    animation_data = visualizer._prepare_animation_data(solved_mazes)
+    anim = visualizer.animate_solution_progress(animation_data, save_filename=output_path)
+
+
+def display_all_mazes(solved_mazes: list) -> None:
+    """DEPRECATED: Use display_all_mazes_v2() instead."""
+    warnings.warn("display_all_mazes is deprecated. Use display_all_mazes_v2() instead.",
+                  DeprecationWarning, stacklevel=2)
+    # Original implementation stays here...
+
+
+def save_mazes_as_pdf(solved_mazes: list, output_path: str) -> None:
+    """DEPRECATED: Use save_mazes_as_pdf_v2() instead."""
+    warnings.warn("save_mazes_as_pdf is deprecated. Use save_mazes_as_pdf_v2() instead.",
+                  DeprecationWarning, stacklevel=2)
+    # Original implementation stays here...
