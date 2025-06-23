@@ -110,10 +110,11 @@ class MatplotlibRenderer:
                              interval=200, repeat=True, blit=False)
 
         if save_path:
-            if save_path.endswith('.mp4'):
-                anim.save(save_path, writer='ffmpeg', fps=5)
-            elif save_path.endswith('.gif'):
-                anim.save(save_path, writer='pillow', fps=5)
+            save_path_str = str(save_path)
+            if save_path_str.endswith('.mp4'):
+                anim.save(save_path_str, writer='ffmpeg', fps=5)
+            elif save_path_str.endswith('.gif'):
+                anim.save(save_path_str, writer='pillow', fps=5)
 
         return anim
 

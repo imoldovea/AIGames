@@ -112,10 +112,10 @@ def main():
         all_solved_mazes.extend(solved_mazes)
 
         # print statistics on solved mazes
-        total_mazes = len(mazes)
-        solved_percentage = (len(all_solved_mazes) / total_mazes) * 100
-        logging.info(
-            f"Successfully solved {solved_percentage:.2f}% of mazes ({len(all_solved_mazes)} out of {total_mazes})")
+        solved_count = len(solved_mazes)
+        total_count = len(mazes)
+        percentage = 100.0 * solved_count / total_count if total_count > 0 else 0.0
+        logger.info(f"Successfully solved {percentage:.2f}% of mazes ({solved_count} out of {total_count})")
 
         # Count algorithms, not individual solutions:
         algorithm_counts = {}
@@ -153,7 +153,7 @@ def main():
             if maze_data_list:
                 fig = visualizer.visualize_multiple_solutions(maze_data_list,
                                                               max_algorithms=5,
-                                                              save_filename="solved_mazes")
+                                                              save_filename="solved_maze_i")
                 print("Visualization created successfully!")
 
                 # NEW: Create video using the visualizer instead of fallback
