@@ -10,7 +10,7 @@ from classical_algorithms.bfs_maze_solver import BFSMazeSolver
 from classical_algorithms.grpah_maze_solver import AStarMazeSolver
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
-from maze_visualizer import MazeVisualizer
+from maze_visualizer import MazeVisualizer, AnimationMode
 from styles.default_style import Theme
 from utils import (
     save_movie,
@@ -125,74 +125,43 @@ def main():
                 algorithm_counts[alg_name] = set()
             algorithm_counts[alg_name].add(maze.index)
 
-        # Save results
-        # NEW WAY:
-        # First, prepare maze data in the format expected by the visualizer
-
-        # NEW WAY - Simplified and working:
+        # Create visualizations using enhanced MazeVisualizer
         try:
-            # Create visualizer
             visualizer = MazeVisualizer(renderer_type="matplotlib", theme=Theme.SCIENTIFIC)
 
-            # Convert maze objects to the expected format
-            maze_data_list = []
-            for maze in all_solved_mazes[:10]:  # Limit to first 10 for testing
-                maze_dict = {
-                    'grid': maze.grid.tolist() if hasattr(maze.grid, 'tolist') else maze.grid,
-                    'width': maze.cols,
-                    'height': maze.rows,
-                    'start_position': maze.start_position,
-                    'exit': getattr(maze, 'exit', None),
-                    'solution': maze.get_solution(),
-                    'algorithm': getattr(maze, 'algorithm', 'Unknown'),
-                    'has_solution': maze.valid_solution
-                }
-                maze_data_list.append(maze_dict)
+            # Create GIFs directly from maze objects - NO CONVERSION NEEDED!
+            selected_mazes = all_solved_mazes[:5]
 
-            # Create visualization
-            if maze_data_list:
-                fig = visualizer.visualize_multiple_solutions(maze_data_list,
-                                                              max_algorithms=5,
-                                                              save_filename="solved_maze_i")
-                print("Visualization created successfully!")
+            # Create different types of GIFs
+            structure_gifs = visualizer.create_batch_gifs(
+                selected_mazes,
+                animation_mode=AnimationMode.STRUCTURE_ONLY,
+                duration=1.0
+            )
+            logging.info(f"Created {len(structure_gifs)} structure GIFs")
 
-                # NEW: Create video using the visualizer instead of fallback
-                try:
-                    # Create animation data for video
-                    for i, maze_data in enumerate(maze_data_list[:3]):  # Use first 3 mazes for video
-                        animation_data = {
-                            'frames': [maze_data]  # Simple single-frame animation for now
-                        }
+            solution_gifs = visualizer.create_batch_gifs(
+                selected_mazes,
+                animation_mode=AnimationMode.FINAL_SOLUTION,
+                duration=1.5
+            )
+            logging.info(f"Created {len(solution_gifs)} solution GIFs")
 
-                        video_filename = f"maze_{i}_{maze_data['algorithm']}"
-                        anim, saved_files = visualizer.animate_solution_progress(
-                            animation_data,
-                            filename=video_filename,
-                            format="mp4"
-                        )
+            animation_gifs = visualizer.create_batch_gifs(
+                selected_mazes[:3],
+                animation_mode=AnimationMode.STEP_BY_STEP,
+                duration=0.5
+            )
+            logging.info(f"Created {len(animation_gifs)} step-by-step animation GIFs")
 
-                        if saved_files:
-                            print(f"Created video: {saved_files[0]}")
-
-                except Exception as video_error:
-                    print(f"Video creation with visualizer failed: {video_error}")
-                    # Fallback to old method only if visualizer fails
-                    logging.info("Using fallback video method")
-                    save_movie(all_solved_mazes, output_mp4)
-        
         except Exception as viz_error:
-            print(f"Visualization failed: {viz_error}")
-            # Only use fallback if everything fails
-            logging.info("Using complete fallback method")
+            logging.error(f"Visualization failed: {viz_error}")
             save_movie(all_solved_mazes, output_mp4)
 
         # Create comparison dashboard if using plotly
         if len(algorithm_counts) > 1:
             pass
 
-        # Create animation - Use fallback method for now
-        # save_movie(all_solved_mazes, output_mp4)
-        
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 

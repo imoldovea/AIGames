@@ -1,7 +1,10 @@
+import logging
 import warnings
+from enum import Enum
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 
+import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -21,17 +24,25 @@ except ImportError:
 from styles.default_style import Theme, get_style
 
 
+class AnimationMode(Enum):
+    """Animation modes for maze visualization."""
+    STRUCTURE_ONLY = "structure"  # Show only maze structure with start point
+    FINAL_SOLUTION = "solution"  # Show final solution if available
+    STEP_BY_STEP = "animation"  # Show full step-by-step animation
+
+
 class MazeVisualizer:
     """
     High-level maze visualizer that delegates rendering to specialized renderers.
     Supports both matplotlib (static/animation) and plotly (interactive) backends.
+    Enhanced to work directly with maze objects and create GIFs with headers.
     """
 
     def __init__(self, renderer_type: str = "matplotlib",
                  figsize=(16, 12), theme=Theme.CLASSIC, output_dir="output"):
         """
         Initialize visualizer with specified renderer.
-        
+
         Args:
             renderer_type: "matplotlib" or "plotly"
             figsize: Figure size (for matplotlib)
@@ -63,6 +74,279 @@ class MazeVisualizer:
 
         self.renderer_type = renderer_type.lower()
 
+    def _fig_to_numpy(self, fig):
+        """
+        Convert matplotlib figure to numpy array with compatibility for different matplotlib versions.
+        """
+        fig.canvas.draw()
+
+        # Try new method first (matplotlib >= 3.0)
+        if hasattr(fig.canvas, 'buffer_rgba'):
+            buf = fig.canvas.buffer_rgba()
+            frame = np.asarray(buf)
+            # Convert RGBA to RGB
+            frame = frame[:, :, :3]
+        # Fallback to deprecated method
+        elif hasattr(fig.canvas, 'tostring_rgb'):
+            frame = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        else:
+            # Last resort: try renderer buffer
+            try:
+                renderer = fig.canvas.get_renderer()
+                frame = np.frombuffer(renderer.tostring_rgb(), dtype=np.uint8)
+                frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            except:
+                raise RuntimeError("Unable to convert figure to numpy array - matplotlib version compatibility issue")
+
+        return frame
+
+    def create_maze_gif(self,
+                        mazes: Union[object, List[object]],
+                        filename: Optional[str] = None,
+                        animation_mode: AnimationMode = AnimationMode.FINAL_SOLUTION,
+                        duration: float = 0.5) -> str:
+        """
+        Create GIF from maze object(s) with header information.
+
+        Args:
+            mazes: Single maze object or list of maze objects
+            filename: Optional filename (auto-generated if None)
+            animation_mode: What to show in the animation
+            duration: Duration per frame in seconds
+
+        Returns:
+            Path to created GIF file
+        """
+        # Ensure mazes is a list
+        if not isinstance(mazes, list):
+            mazes = [mazes]
+
+        if not mazes:
+            raise ValueError("No mazes provided")
+
+        # Auto-generate filename if not provided
+        if filename is None:
+            first_maze = mazes[0]
+            maze_id = getattr(first_maze, 'index', 0)
+            algorithm = getattr(first_maze, 'algorithm', 'unknown')
+            filename = f"maze_{maze_id}_{algorithm}_{animation_mode.value}.gif"
+
+        # Ensure .gif extension
+        if not filename.endswith('.gif'):
+            filename += '.gif'
+
+        gif_path = self.output_dir / filename
+
+        # Create frames based on animation mode
+        frames = []
+
+        for maze in mazes:
+            if animation_mode == AnimationMode.STRUCTURE_ONLY:
+                frames.extend(self._create_structure_frames(maze))
+            elif animation_mode == AnimationMode.FINAL_SOLUTION:
+                frames.extend(self._create_solution_frames(maze))
+            elif animation_mode == AnimationMode.STEP_BY_STEP:
+                frames.extend(self._create_animation_frames(maze))
+
+        if not frames:
+            raise ValueError("No frames created")
+
+        # Save as GIF
+        imageio.mimsave(str(gif_path), frames, duration=duration, format='GIF')
+
+        logging.debug(f"Created GIF: {gif_path}")
+        return str(gif_path)
+
+    def _create_structure_frames(self, maze) -> List[np.ndarray]:
+        """Create frames showing only maze structure with start point."""
+        fig, ax = plt.subplots(figsize=self.figsize)
+
+        # Add header
+        self._add_header(fig, maze)
+
+        # Plot maze structure
+        self._plot_maze_base(ax, maze)
+
+        # Mark start position only
+        start = maze.start_position
+        if start:
+            ax.plot(start[1], start[0], 'o', color='green',
+                    markersize=15, markeredgecolor='black', markeredgewidth=2)
+
+        ax.set_title(f"Maze Structure - {getattr(maze, 'algorithm', 'Unknown')}")
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        # Convert to image using compatibility method
+        frame = self._fig_to_numpy(fig)
+
+        plt.close(fig)
+        return [frame]
+
+    def _create_solution_frames(self, maze) -> List[np.ndarray]:
+        """Create frames showing final solution if available."""
+        fig, ax = plt.subplots(figsize=self.figsize)
+
+        # Add header
+        self._add_header(fig, maze)
+
+        # Plot maze structure
+        self._plot_maze_base(ax, maze)
+
+        # Plot solution if available
+        solution = maze.get_solution() if hasattr(maze, 'get_solution') else []
+        has_solution = getattr(maze, 'valid_solution', bool(solution))
+
+        if has_solution and solution:
+            solution_array = np.array(solution)
+            ax.plot(solution_array[:, 1], solution_array[:, 0],
+                    color='red', linewidth=4, alpha=0.8, label='Solution Path')
+
+        # Mark start and exit
+        self._mark_start_exit(ax, maze)
+
+        title = f"{'Solution Found' if has_solution else 'No Solution'} - {getattr(maze, 'algorithm', 'Unknown')}"
+        ax.set_title(title)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        # Convert to image using compatibility method
+        frame = self._fig_to_numpy(fig)
+
+        plt.close(fig)
+        return [frame]
+
+    def _create_animation_frames(self, maze) -> List[np.ndarray]:
+        """Create step-by-step animation frames."""
+        solution = maze.get_solution() if hasattr(maze, 'get_solution') else []
+
+        if not solution:
+            # If no solution, return structure frame
+            return self._create_structure_frames(maze)
+
+        frames = []
+
+        # Create frames for each step
+        for step in range(len(solution) + 1):
+            fig, ax = plt.subplots(figsize=self.figsize)
+
+            # Add header
+            self._add_header(fig, maze)
+
+            # Plot maze structure
+            self._plot_maze_base(ax, maze)
+
+            # Plot path up to current step
+            if step > 0:
+                current_path = np.array(solution[:step])
+                ax.plot(current_path[:, 1], current_path[:, 0],
+                        color='red', linewidth=4, alpha=0.8)
+
+                # Highlight current position
+                if step <= len(solution):
+                    current_pos = solution[step - 1]
+                    ax.plot(current_pos[1], current_pos[0], 'o',
+                            color='yellow', markersize=12,
+                            markeredgecolor='black', markeredgewidth=2)
+
+            # Mark start and exit
+            self._mark_start_exit(ax, maze)
+
+            ax.set_title(f"Step {step}/{len(solution)} - {getattr(maze, 'algorithm', 'Unknown')}")
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+            # Convert to image using compatibility method
+            frame = self._fig_to_numpy(fig)
+
+            frames.append(frame)
+            plt.close(fig)
+
+        return frames
+
+    def _add_header(self, fig, maze):
+        """Add header with maze information."""
+        maze_id = getattr(maze, 'index', 'Unknown')
+        algorithm = getattr(maze, 'algorithm', 'Unknown')
+        has_solution = getattr(maze, 'valid_solution', False)
+
+        # Create header text
+        header_text = f"Maze ID: {maze_id} | Algorithm: {algorithm}"
+
+        # Add solution status with color
+        if has_solution:
+            solution_text = "Has Solution: True"
+            solution_color = 'green'
+        else:
+            solution_text = "Has Solution: False"
+            solution_color = 'red'
+
+        # Add header to figure
+        fig.suptitle(header_text, fontsize=14, fontweight='bold', y=0.95)
+
+        # Add solution status
+        fig.text(0.5, 0.92, solution_text, ha='center', fontsize=12,
+                 color=solution_color, fontweight='bold')
+
+    def _plot_maze_base(self, ax, maze):
+        """Plot the basic maze structure."""
+        grid = maze.grid
+        if hasattr(grid, 'tolist'):
+            grid = np.array(grid.tolist())
+        else:
+            grid = np.array(grid)
+
+        # Plot maze using binary colormap
+        ax.imshow(grid, cmap='binary', origin='upper')
+
+    def _mark_start_exit(self, ax, maze):
+        """Mark start and exit positions."""
+        style = get_style(self.theme)
+
+        # Mark start
+        start = maze.start_position
+        if start:
+            ax.plot(start[1], start[0], 'o', color=style.get('start_color', 'green'),
+                    markersize=12, markeredgecolor='black', markeredgewidth=2)
+
+        # Mark exit
+        exit_pos = getattr(maze, 'exit', None)
+        if exit_pos:
+            ax.plot(exit_pos[1], exit_pos[0], 's', color=style.get('exit_color', 'red'),
+                    markersize=12, markeredgecolor='black', markeredgewidth=2)
+
+    def create_batch_gifs(self,
+                          mazes: List[object],
+                          animation_mode: AnimationMode = AnimationMode.FINAL_SOLUTION,
+                          duration: float = 0.5) -> List[str]:
+        """
+        Create individual GIFs for each maze in the list.
+
+        Args:
+            mazes: List of maze objects
+            animation_mode: What to show in each animation
+            duration: Duration per frame in seconds
+
+        Returns:
+            List of paths to created GIF files
+        """
+        created_gifs = []
+
+        for i, maze in enumerate(mazes):
+            try:
+                gif_path = self.create_maze_gif(
+                    maze,
+                    animation_mode=animation_mode,
+                    duration=duration
+                )
+                created_gifs.append(gif_path)
+            except Exception as e:
+                logging.error(f"Failed to create GIF for maze {i}: {e}")
+
+        return created_gifs
+
+    # Keep existing methods for backward compatibility
     def visualize_multiple_solutions(self,
                                      maze_data: List[Dict],
                                      max_algorithms: int = 20,
@@ -70,7 +354,7 @@ class MazeVisualizer:
                                      save_filename: Optional[str] = None):
         """
         Visualize multiple algorithm solutions using the configured renderer.
-        
+
         Args:
             maze_data: List of solution data from maze.get_solution_summary()
             max_algorithms: Maximum number of algorithms to display
@@ -131,7 +415,7 @@ class MazeVisualizer:
         if save_filename:
             save_path = self.output_dir / f"{save_filename}.png"
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Saved visualization: {save_path}")
+            logging.info(f"Saved visualization: {save_path}")
 
         return fig
 
@@ -179,21 +463,21 @@ class MazeVisualizer:
     def switch_renderer(self, renderer_type: str, **kwargs):
         """
         Switch to a different renderer on the fly.
-        
+
         Args:
             renderer_type: "matplotlib" or "plotly"
             **kwargs: Additional arguments for renderer initialization
         """
         # For now, just update the renderer type
         self.renderer_type = renderer_type.lower()
-        print(f"Switched to {renderer_type} renderer")
+        logging.info(f"Switched to {renderer_type} renderer")
 
     def animate_solution_progress(self, maze_data: Dict,
                                   filename: Optional[str] = None,
                                   format: str = "mp4"):
         """
         Create animated visualization of solution progress.
-        
+
         Args:
             maze_data: Solution data with 'steps' key
             filename: Optional filename (will auto-generate if None)
@@ -217,7 +501,7 @@ class MazeVisualizer:
             saved_files = [str(save_path)] if save_path else []
             return anim, saved_files
         else:
-            print("Animation not supported by current renderer")
+            logging.warning("Animation not supported by current renderer")
             return None, []
 
     def _create_static_solution_video(self, maze_data: Dict, filename: Optional[str], format: str):
@@ -275,7 +559,7 @@ class MazeVisualizer:
             plt.close(fig)
             return anim, [str(save_path)]
         except Exception as e:
-            print(f"Failed to save animation: {e}")
+            logging.error(f"Failed to save animation: {e}")
             plt.close(fig)
             return anim, []
 
