@@ -1,4 +1,6 @@
 import logging
+import threading
+import time
 import warnings
 from enum import Enum
 from pathlib import Path
@@ -7,6 +9,7 @@ from typing import List, Dict, Optional, Union
 import imageio
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.animation import FuncAnimation
 
 # Try to import renderers, with fallbacks
 try:
@@ -29,6 +32,7 @@ class AnimationMode(Enum):
     STRUCTURE_ONLY = "structure"  # Show only maze structure with start point
     FINAL_SOLUTION = "solution"  # Show final solution if available
     STEP_BY_STEP = "animation"  # Show full step-by-step animation
+    LIVE = "live"  # Live real-time animation
 
 
 class MazeVisualizer:
@@ -54,6 +58,16 @@ class MazeVisualizer:
         self.figsize = figsize
         self.theme = theme
 
+        # Live animation state
+        self.live_maze = None
+        self.live_solver = None
+        self.current_path = []
+        self.visited_cells = set()
+        self.is_solving = False
+        self.solving_complete = False
+        self.current_position = None
+        self.step_count = 0
+
         # Initialize appropriate renderer
         if renderer_type.lower() == "matplotlib":
             if MatplotlibRenderer:
@@ -73,6 +87,168 @@ class MazeVisualizer:
             raise ValueError(f"Unknown renderer type: {renderer_type}")
 
         self.renderer_type = renderer_type.lower()
+
+    def create_live_animation(self, maze, solver, update_interval=200, step_delay=0.1):
+        """
+        Create a live animation that updates as the algorithm runs.
+
+        Args:
+            maze: Maze object
+            solver: Solver instance
+            update_interval: Update interval in milliseconds for animation
+            step_delay: Delay between solver steps in seconds
+
+        Returns:
+            FuncAnimation object
+        """
+        self.live_maze = maze
+        self.live_solver = solver
+        self.current_path = []
+        self.visited_cells = set()
+        self.is_solving = True
+        self.solving_complete = False
+        self.current_position = maze.start_position
+        self.step_count = 0
+
+        # Create figure
+        plt.ion()  # Turn on interactive mode
+        fig, ax = plt.subplots(figsize=self.figsize)
+
+        # Start solving in a separate thread
+        solving_thread = threading.Thread(
+            target=self._solve_with_tracking,
+            args=(step_delay,)
+        )
+        solving_thread.daemon = True
+        solving_thread.start()
+
+        # Create animation function
+        def animate(frame):
+            ax.clear()
+
+            # Add header
+            self._add_header(fig, maze)
+
+            # Plot maze structure
+            self._plot_maze_base(ax, maze)
+
+            # Plot visited cells
+            if self.visited_cells:
+                visited_array = np.array(list(self.visited_cells))
+                ax.scatter(visited_array[:, 1], visited_array[:, 0],
+                           c='lightblue', s=100, alpha=0.5, marker='s')
+
+            # Plot current path
+            if len(self.current_path) > 1:
+                path_array = np.array(self.current_path)
+                ax.plot(path_array[:, 1], path_array[:, 0],
+                        'red', linewidth=3, alpha=0.8)
+
+            # Highlight current position
+            if self.current_position:
+                ax.plot(self.current_position[1], self.current_position[0], 'o',
+                        color='yellow', markersize=15,
+                        markeredgecolor='black', markeredgewidth=2)
+
+            # Mark start and exit
+            self._mark_start_exit(ax, maze)
+
+            # Update title with status
+            status = "SOLVED!" if self.solving_complete else "Solving..."
+            ax.set_title(f"Live Animation - {status} - Step {self.step_count}")
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+            # Stop animation when solving is complete and show final result
+            if self.solving_complete:
+                time.sleep(2)  # Show final result for 2 seconds
+                plt.ioff()  # Turn off interactive mode
+                return False
+
+        # Create animation
+        anim = FuncAnimation(fig, animate, interval=update_interval, repeat=False, cache_frame_data=False)
+
+        # Show the plot
+        plt.show()
+
+        return anim
+
+    def _solve_with_tracking(self, step_delay=0.1):
+        """
+        Run the solver while tracking progress with real-time updates.
+
+        Args:
+            step_delay: Delay between steps in seconds
+        """
+        try:
+            # Check if solver supports live solving
+            if hasattr(self.live_solver, 'solve_with_callback'):
+                solution = self.live_solver.solve_with_callback(self._update_progress)
+            else:
+                # Fallback: modify solver on-the-fly for live updates
+                solution = self._solve_with_manual_tracking(step_delay)
+
+            # Set final solution
+            self.live_maze.set_solution(solution)
+            self.solving_complete = True
+
+            logging.info(f"Live solving complete! Found solution with {len(solution)} steps.")
+
+        except Exception as e:
+            logging.error(f"Error during live solving: {e}")
+            self.solving_complete = True
+
+    def _solve_with_manual_tracking(self, step_delay):
+        """
+        Fallback method that manually tracks progress for solvers without callback support.
+        This works by monkey-patching the solver's movement methods.
+        """
+        original_solve = self.live_solver.solve
+
+        def tracked_solve():
+            # Get the solution path
+            solution = original_solve()
+
+            # Simulate step-by-step progress
+            self.current_path = [self.live_maze.start_position]
+            self.current_position = self.live_maze.start_position
+            self.visited_cells.add(self.current_position)
+
+            for i, position in enumerate(solution[1:], 1):
+                time.sleep(step_delay)
+                self.current_path.append(position)
+                self.current_position = position
+                self.visited_cells.add(position)
+                self.step_count = i
+
+                # Log progress occasionally
+                if i % 10 == 0:
+                    logging.debug(f"Live animation: Step {i}, Position: {position}")
+
+            return solution
+
+        return tracked_solve()
+
+    def _update_progress(self, new_position, visited=None):
+        """
+        Callback function to update the current path and position.
+
+        Args:
+            new_position: New position tuple (row, col)
+            visited: Optional set of visited positions
+        """
+        self.current_path.append(new_position)
+        self.current_position = new_position
+        self.step_count += 1
+
+        if visited:
+            self.visited_cells.update(visited)
+        else:
+            self.visited_cells.add(new_position)
+
+        # Log progress occasionally
+        if self.step_count % 5 == 0:
+            logging.debug(f"Live progress: Step {self.step_count}, Position: {new_position}")
 
     def _fig_to_numpy(self, fig):
         """

@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import pstats
+import time
 import traceback
 
 from classical_algorithms.backtrack_maze_solver import BacktrackingMazeSolver
@@ -18,7 +19,119 @@ from utils import (
     load_mazes,
     setup_logging)
 
+# Configuration constants
+SHOW_LIVE_ANIMATION = True  # Set to False to skip live animations
+DEMO_MAZES_COUNT = 3  # How many mazes to show in live demo
+ANIMATION_SPEED = 0.15  # Delay between steps (seconds)
+ANIMATION_UPDATE_RATE = 150  # Update interval (milliseconds)
+
 OUTPUT_MOVIE_FILE = "output/maze_animation.mp4"
+
+
+def solve_maze_with_live_animation(maze, solver_class, update_interval=ANIMATION_UPDATE_RATE,
+                                   step_delay=ANIMATION_SPEED, **solver_kwargs):
+    """
+    Solve a single maze with live animation.
+
+    Args:
+        maze: Maze object to solve
+        solver_class: Solver class to use
+        update_interval: Animation update interval in milliseconds
+        step_delay: Delay between solver steps in seconds
+        **solver_kwargs: Additional arguments for solver
+
+    Returns:
+        Solved maze object
+    """
+    logging.info(f"Live animation: {solver_class.__name__} on maze {getattr(maze, 'index', 'unknown')}")
+
+    # Reset maze state
+    maze.reset_solution()
+
+    # Create visualizer
+    visualizer = MazeVisualizer(renderer_type="matplotlib", theme=Theme.SCIENTIFIC)
+
+    # Create solver
+    solver = solver_class(maze, **solver_kwargs)
+
+    # Start live animation - this will block until solving is complete
+    try:
+        anim = visualizer.create_live_animation(
+            maze,
+            solver,
+            update_interval=update_interval,
+            step_delay=step_delay
+        )
+
+        logging.info("Live animation completed successfully!")
+        return maze
+
+    except Exception as e:
+        logging.error(f"Error during live animation: {e}")
+        # Fallback to regular solving
+        solution = solver.solve()
+        maze.set_solution(solution)
+        return maze
+
+
+def run_live_animation_demo(mazes):
+    """
+    Run live animation demo for selected mazes and algorithms.
+
+    Args:
+        mazes: List of maze objects
+    """
+    demo_mazes = mazes[:DEMO_MAZES_COUNT]
+
+    algorithms = [
+        (BacktrackingMazeSolver, "Backtracking"),
+        (BFSMazeSolver, "Breadth-First Search"),
+        (AStarMazeSolver, "A* Algorithm"),
+        (OptimizedBacktrackingMazeSolver, "Optimized Backtracking"),
+        (PledgeMazeSolver, "Pledge Algorithm"),
+    ]
+
+    print(f"\n{'=' * 60}")
+    print("LIVE ANIMATION DEMO")
+    print(f"{'=' * 60}")
+    print(f"Showing {len(demo_mazes)} mazes with {len(algorithms)} algorithms")
+    print(f"Animation speed: {ANIMATION_SPEED}s per step")
+    print(f"{'=' * 60}")
+
+    for i, maze in enumerate(demo_mazes):
+        print(f"\n📍 MAZE {i + 1} (Index: {getattr(maze, 'index', i)}, Size: {maze.rows}x{maze.cols})")
+
+        for solver_class, algorithm_name in algorithms:
+            print(f"   🔧 Running {algorithm_name}...")
+
+            try:
+                solved_maze = solve_maze_with_live_animation(
+                    maze,
+                    solver_class,
+                    update_interval=ANIMATION_UPDATE_RATE,
+                    step_delay=ANIMATION_SPEED
+                )
+
+                solution = solved_maze.get_solution() if hasattr(solved_maze, 'get_solution') else []
+                if solution:
+                    print(f"   ✅ Solved! Path length: {len(solution)}")
+                else:
+                    print(f"   ❌ No solution found")
+
+            except Exception as e:
+                print(f"   ❌ Error: {e}")
+
+            # Brief pause between algorithms
+            time.sleep(1)
+
+        # Pause between mazes
+        if i < len(demo_mazes) - 1:
+            print(f"   Completed maze {i + 1}. Moving to next maze in 2 seconds...")
+            time.sleep(2)
+
+    print(f"\n{'=' * 60}")
+    print("LIVE ANIMATION DEMO COMPLETED")
+    print(f"{'=' * 60}")
 
 
 def solve_all_mazes(mazes, solver_class, **solver_kwargs):
@@ -65,12 +178,30 @@ def main():
         mazes = load_mazes(input_mazes)
         all_solved_mazes = []
 
+        print("\n" + "=" * 60)
+        print("MAZE SOLVING EXPERIMENT")
+        print("=" * 60)
+        print(f"Loaded {len(mazes)} mazes")
+        print(f"Live animation: {'ENABLED' if SHOW_LIVE_ANIMATION else 'DISABLED'}")
+        print("=" * 60)
+
+        # Run live animation demo if enabled
+        if SHOW_LIVE_ANIMATION:
+            run_live_animation_demo(mazes)
+        else:
+            print("Skipping live animation demo (SHOW_LIVE_ANIMATION = False)")
+
+        print("\n" + "=" * 60)
+        print("STARTING BATCH PROCESSING")
+        print("=" * 60)
+
         s = io.StringIO()
         pr = cProfile.Profile()
 
-        # Step 2: Solve
+        # Step 2: Solve all algorithms
 
-        # Clasical: Backtracking
+        # Classical: Backtracking
+        print("Running Backtracking algorithm...")
         pr.enable()
         solved_mazes = solve_all_mazes(mazes, BacktrackingMazeSolver)
         pr.disable()
@@ -79,7 +210,9 @@ def main():
         logging.info(f"Backtracking execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
-        # Clasical: Backtracking - optimized
+        # Classical: Backtracking - optimized
+        print("Running Optimized Backtracking algorithm...")
+        pr.enable()
         solved_mazes = solve_all_mazes(mazes, OptimizedBacktrackingMazeSolver)
         pr.disable()
         ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
@@ -87,7 +220,8 @@ def main():
         logging.info(f"Optimized Backtracking execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
-        # Clasical: BFS, fastest
+        # Classical: BFS, fastest
+        print("Running BFS algorithm...")
         pr.enable()
         solved_mazes = solve_all_mazes(mazes, BFSMazeSolver)
         pr.disable()
@@ -95,15 +229,17 @@ def main():
         logging.info(f"BFS execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
-        # Clasical: Backtracking, Graph
+        # Classical: A* Graph
+        print("Running A* algorithm...")
         pr.enable()
         solved_mazes = solve_all_mazes(mazes, AStarMazeSolver)
         pr.disable()
         ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        logging.info(f"Graph execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
+        logging.info(f"A* execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
-        # Clasical: Pledge, simplest`
+        # Classical: Pledge, simplest
+        print("Running Pledge algorithm...")
         pr.enable()
         solved_mazes = solve_all_mazes(mazes, PledgeMazeSolver)
         pr.disable()
@@ -111,11 +247,11 @@ def main():
         logging.info(f"Pledge execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
-        # print statistics on solved mazes
+        # Print statistics on solved mazes
         solved_count = len(solved_mazes)
         total_count = len(mazes)
         percentage = 100.0 * solved_count / total_count if total_count > 0 else 0.0
-        logger.info(f"Successfully solved {percentage:.2f}% of mazes ({solved_count} out of {total_count})")
+        logging.info(f"Successfully solved {percentage:.2f}% of mazes ({solved_count} out of {total_count})")
 
         # Count algorithms, not individual solutions:
         algorithm_counts = {}
@@ -125,7 +261,13 @@ def main():
                 algorithm_counts[alg_name] = set()
             algorithm_counts[alg_name].add(maze.index)
 
+        print(f"\nAlgorithm Performance Summary:")
+        for alg_name, maze_indices in algorithm_counts.items():
+            success_rate = len(maze_indices) / len(mazes) * 100
+            print(f"  {alg_name}: {len(maze_indices)}/{len(mazes)} mazes ({success_rate:.1f}%)")
+
         # Create visualizations using enhanced MazeVisualizer
+        print("\nCreating visualizations...")
         try:
             visualizer = MazeVisualizer(renderer_type="matplotlib", theme=Theme.SCIENTIFIC)
 
@@ -158,9 +300,14 @@ def main():
             logging.error(f"Visualization failed: {viz_error}")
             save_movie(all_solved_mazes, output_mp4)
 
-        # Create comparison dashboard if using plotly
-        if len(algorithm_counts) > 1:
-            pass
+        print(f"\n{'=' * 60}")
+        print("EXPERIMENT COMPLETED")
+        print(f"{'=' * 60}")
+        print(f"Total mazes processed: {len(mazes)}")
+        print(f"Total solutions found: {len(all_solved_mazes)}")
+        print(f"Unique algorithms tested: {len(algorithm_counts)}")
+        print(f"Output directory: {os.path.join(project_root, 'output')}")
+        print(f"{'=' * 60}")
 
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
