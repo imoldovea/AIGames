@@ -10,10 +10,11 @@ from classical_algorithms.bfs_maze_solver import BFSMazeSolver
 from classical_algorithms.grpah_maze_solver import AStarMazeSolver
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
+from maze_visualizer import MazeVisualizer
+from styles.default_style import Theme
 from utils import (
     save_movie,
-    display_all_mazes,
-    save_mazes_as_pdf,
+    clean_outupt_folder,
     load_mazes,
     setup_logging)
 
@@ -110,53 +111,95 @@ def main():
         logging.info(f"Pledge execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
         all_solved_mazes.extend(solved_mazes)
 
-        # #RNN
-        # pr.enable()
-        # models = get_models()
-        # for name, model in models:
-        #     solved_rnn = solve_all_mazes(mazes, RNN2MazeSolver, model=model)
-        #     all_solved_mazes.extend(solved_rnn)
-        # pr.disable()
-        # ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        # logging.info(f"RNN execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
-
-        # # LLM
-        # pr.enable()
-        # solved_mazes = solve_all_mazes(mazes, LLMMazeSolver)
-        # pr.disable()
-        # ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        # logging.info(f"LLM execution time: {ps.total_tt * 1_000:.2f} ms")  # Convert seconds to ms
-        # all_solved_mazes.extend(solved_mazes)
-
         # print statistics on solved mazes
         total_mazes = len(mazes)
         solved_percentage = (len(all_solved_mazes) / total_mazes) * 100
         logging.info(
             f"Successfully solved {solved_percentage:.2f}% of mazes ({len(all_solved_mazes)} out of {total_mazes})")
 
-        # Count solved mazes per algorithm
+        # Count algorithms, not individual solutions:
         algorithm_counts = {}
         for maze in all_solved_mazes:
-            if maze.algorithm not in algorithm_counts:
-                algorithm_counts[maze.algorithm] = 0
-            algorithm_counts[maze.algorithm] += 1
+            alg_name = maze.algorithm
+            if alg_name not in algorithm_counts:
+                algorithm_counts[alg_name] = set()
+            algorithm_counts[alg_name].add(maze.index)
 
-        # Print statistics per algorithm
-        logging.info("\nSolved mazes per algorithm:")
-        for algorithm, count in algorithm_counts.items():
-            logging.info(f"{algorithm}: {count} solved mazes")
+        # Save results
+        # NEW WAY:
+        # First, prepare maze data in the format expected by the visualizer
 
-        # Save resutls
-        display_all_mazes(solved_mazes)
-        save_mazes_as_pdf(all_solved_mazes, output_pdf)
-        save_movie(all_solved_mazes, output_mp4)
+        # NEW WAY - Simplified and working:
+        try:
+            # Create visualizer
+            visualizer = MazeVisualizer(renderer_type="matplotlib", theme=Theme.SCIENTIFIC)
 
+            # Convert maze objects to the expected format
+            maze_data_list = []
+            for maze in all_solved_mazes[:10]:  # Limit to first 10 for testing
+                maze_dict = {
+                    'grid': maze.grid.tolist() if hasattr(maze.grid, 'tolist') else maze.grid,
+                    'width': maze.cols,
+                    'height': maze.rows,
+                    'start_position': maze.start_position,
+                    'exit': getattr(maze, 'exit', None),
+                    'solution': maze.get_solution(),
+                    'algorithm': getattr(maze, 'algorithm', 'Unknown'),
+                    'has_solution': maze.valid_solution
+                }
+                maze_data_list.append(maze_dict)
+
+            # Create visualization
+            if maze_data_list:
+                fig = visualizer.visualize_multiple_solutions(maze_data_list,
+                                                              max_algorithms=5,
+                                                              save_filename="solved_mazes")
+                print("Visualization created successfully!")
+
+                # NEW: Create video using the visualizer instead of fallback
+                try:
+                    # Create animation data for video
+                    for i, maze_data in enumerate(maze_data_list[:3]):  # Use first 3 mazes for video
+                        animation_data = {
+                            'frames': [maze_data]  # Simple single-frame animation for now
+                        }
+
+                        video_filename = f"maze_{i}_{maze_data['algorithm']}"
+                        anim, saved_files = visualizer.animate_solution_progress(
+                            animation_data,
+                            filename=video_filename,
+                            format="mp4"
+                        )
+
+                        if saved_files:
+                            print(f"Created video: {saved_files[0]}")
+
+                except Exception as video_error:
+                    print(f"Video creation with visualizer failed: {video_error}")
+                    # Fallback to old method only if visualizer fails
+                    logging.info("Using fallback video method")
+                    save_movie(all_solved_mazes, output_mp4)
+        
+        except Exception as viz_error:
+            print(f"Visualization failed: {viz_error}")
+            # Only use fallback if everything fails
+            logging.info("Using complete fallback method")
+            save_movie(all_solved_mazes, output_mp4)
+
+        # Create comparison dashboard if using plotly
+        if len(algorithm_counts) > 1:
+            pass
+
+        # Create animation - Use fallback method for now
+        # save_movie(all_solved_mazes, output_mp4)
+        
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
 
 
 if __name__ == "__main__":
     setup_logging()
+    clean_outupt_folder()
     logger = logging.getLogger(__name__)
     logger.debug("Logging is configured.")
 

@@ -26,3 +26,7 @@ openai
 httpx
 httpcore
 imageio
+deap
+pygame
+scipy
+imageio

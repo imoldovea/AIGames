@@ -58,7 +58,6 @@ class GeneticMazeSolver(MazeSolver):
         self.directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N,S,W,E
         self.threshold = -min(5, 0.05 * max_steps)
         self.max_workers = config.getint("GENETIC", "max_workers", fallback=1)
-        self.path_diversity_bonus = config.getfloat("GENETIC", "path_diversity_bonus", fallback=10)
         self.diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
         self.diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
         self.diversity_infusion = config.getfloat("GENETIC", "diversity_infusion", fallback=0.01)
@@ -185,15 +184,16 @@ class GeneticMazeSolver(MazeSolver):
                     0,
                     self.chromosome_length * self.diversity_penalty_threshold - diffs[mask].sum(axis=1).mean()
                 )
-        path_diversity_bonus = 0
+
         # --- Path Diversity Reward ---
+        path_diversity_bonus = 0
         path_tuple = tuple(path)
         if unique_paths_seen is not None:
             if path_tuple not in unique_paths_seen:
-                path_diversity_bonus += self.path_diversity_bonus  # Reward for discovering a new path
+                path_diversity_bonus += 10.0  # Reward for discovering a new path
                 unique_paths_seen.add(path_tuple)
             else:
-                path_diversity_bonus -= self.path_diversity_bonus / 3  # Small penalty for duplicates
+                path_diversity_bonus -= 2.0  # Small penalty for duplicates
 
         # --- Distance Penalty ---
         # Heuristic penalty for distance to exit at the end
@@ -475,27 +475,22 @@ class GeneticMazeSolver(MazeSolver):
         if n < 2:
             return 0.0
 
-        # Hash genotypes for frequency counting [convert ALL elements to int]
+        # Hash genotypes for frequency counting
         # Assumes pop_arr elements are arrays convertible to tuple
-        genotype_hashes = [tuple(int(x) for x in ind) for ind in pop_arr]
+        genotype_hashes = [tuple(ind) for ind in pop_arr]
         unique, counts = np.unique(genotype_hashes, return_counts=True)
-        if len(unique) < 2:
-            return 0.0  # All individuals are identical, so diversity is zero
-
         genotype_to_count = dict(zip(unique, counts))
 
         # Assign weights: rarer genotypes get higher weights (inverse frequency)
         weights = np.array([
-            1.0 / genotype_to_count.get(tuple(int(x) for x in ind), 1.0)
+            1.0 / genotype_to_count.get(tuple(int(x) for x in ind), 1)
             for ind in pop_arr
         ])
         weights /= weights.sum()  # normalize
-
+    
         # Limit sample size for efficiency
-        sample_size = min(n, self.max_steps)
-        # If population has fewer unique genotypes than the sample_size, fall back to sampling with replacement
-        replace = n < sample_size
-        sampled_indices = np.random.choice(n, size=sample_size, replace=replace, p=weights)
+        sample_size = min(n, 100)
+        sampled_indices = np.random.choice(n, size=sample_size, replace=False, p=weights)
         sampled_population = pop_arr[sampled_indices]
 
         # Pairwise Hamming distances between sampled genotypes
@@ -554,8 +549,8 @@ def main():
 
     # mazes = [mazes[-50]]
 
-    long_solutions_index = []  #
-    failed_maze_index = [86]  #
+    long_solutions_index = []
+    failed_maze_index = [28, 86]  #
 
     indexs = failed_maze_index + long_solutions_index
     mazes = [maze for maze in mazes if maze.index in indexs]
@@ -609,6 +604,11 @@ def main():
             f"generations: {generations}, "
             f"fitness: {fitness:.1f}"
         )
+    # Print list of unsolved maze indices
+    unsolved = [maze.index for maze, _, _ in sorted_mazes if not maze.valid_solution]
+    if unsolved:
+        logging.info(
+            f"Unsolved mazes: e highest generations count: {[int(maze.index) for maze, _, _ in sorted_mazes[:5]]}")
 
     # **Calculate the *cumulative* rate so far, not always for all mazes**:
     success_rate = successful_solutions / total_mazes * 100
@@ -617,18 +617,11 @@ def main():
     save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
     save_mazes_as_pdf(mazes, OUTPUT_PDF)
     wandb.finish()
-
-    # Print list of unsolved maze indices
-    unsolved = [maze.index for maze, _, _ in sorted_mazes if not maze.valid_solution]
-    if unsolved:
-        logging.info(
-            f"Unsolved mazes: e highest generations count: {[int(maze.index) for maze, _, _ in sorted_mazes[:5]]}")
-
     # Print list of top 5 solved maze indices having the highest generations count. Print only for solved mazes
     logging.info(
         "Top 5 solved maze indexes with the highest generations count: %s",
         [m.index for m in sorted([mz for mz in mazes if getattr(mz, "valid_solution", False)],
-                                 key=lambda x: getattr(x, "generations", 0), reverse=True)[:5]]
+                                 key=lambda x: getattr(x, "generations", 0), reverse=False)[:5]]
     )
 if __name__ == "__main__":
     main()

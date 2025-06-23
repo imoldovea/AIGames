@@ -403,7 +403,7 @@ class Maze:
                 self.raw_movie.append(frame)
 
             return True
-        self.logger.warning("Invalid move attempted to position %s", position)
+        self.logger.debug("Invalid move attempted to position %s", position)
         return False
 
     def set_animate(self, value):
@@ -428,6 +428,134 @@ class Maze:
             list: The value of the 'raw_movie' attribute.
         """
         return self.raw_movie
+
+    def get_solution_summary(self):
+        """
+        Return a JSON representation of the maze with the current solution path.
+        Only one frame showing the complete solution state.
+
+        :return: JSON object containing the maze and solution information
+        """
+
+        # Store original state
+        original_position = self.current_position
+        original_path = self.path.copy()
+
+        # Set current position to the end of solution (or start if no solution)
+        if self._solution:
+            self.current_position = self._solution[-1]  # End position
+            self.path = self._solution  # Complete solution path
+        else:
+            self.current_position = self.start_position
+            self.path = [self.start_position]
+
+        solution_data = {
+            "maze_index": self.index,
+            "algorithm": self.algorithm,
+            "grid": self.grid.tolist(),
+            "solution": [list(pos) for pos in self._solution] if self._solution else [],
+            "path": [list(pos) for pos in self.path],
+            "current_position": list(self.current_position),
+            "start_position": list(self.start_position),
+            "exit": list(self.exit) if self.exit else None,
+            "has_solution": bool(self._solution),
+            "is_valid_solution": self.test_solution(),
+            "solution_length": len(self._solution) if self._solution else 0,
+            "maze_dimensions": {
+                "width": self.width,
+                "height": self.height
+            },
+            "complexity": self.complexity
+        }
+
+        # Restore original state
+        self.current_position = original_position
+        self.path = original_path
+
+        return solution_data
+
+    def get_solution_animation_data(self):
+        """
+        Calculate the step by step solution path through the maze
+        :return: an array of json objects containing the maze and the solution steps.
+        """
+
+        steps = []
+
+        # Store original state
+        original_position = self.current_position
+        original_path = self.path.copy()
+
+        # Reset to initial state
+        self.current_position = self.start_position
+        self.path = [self.start_position]
+
+        # If there's no solution, return only the initial frame
+        if not self._solution:
+            initial_step = {
+                "step": 0,
+                "position": list(self.current_position),
+                "grid": self.grid.tolist(),
+                "path": [list(pos) for pos in self.path],
+                "solution": [],
+                "start_position": list(self.start_position),
+                "exit": list(self.exit) if self.exit else None,
+                "is_complete": False,
+                "algorithm": self.algorithm,
+                "maze_index": self.index,
+                "has_solution": False
+            }
+            steps.append(initial_step)
+
+            # Restore original state
+            self.current_position = original_position
+            self.path = original_path
+
+            return steps
+
+        # Step 0: Initial maze state (just start position)
+        initial_step = {
+            "step": 0,
+            "position": list(self.current_position),
+            "grid": self.grid.tolist(),
+            "path": [list(pos) for pos in self.path],
+            "solution": [list(pos) for pos in self._solution],
+            "start_position": list(self.start_position),
+            "exit": list(self.exit) if self.exit else None,
+            "is_complete": False,
+            "algorithm": self.algorithm,
+            "maze_index": self.index,
+            "has_solution": True,
+            "total_steps": len(self._solution)
+        }
+        steps.append(initial_step)
+
+        # Generate steps for each position in the solution
+        for i, position in enumerate(self._solution):
+            self.current_position = position
+            self.path = self._solution[:i + 1]
+
+            step_data = {
+                "step": i + 1,
+                "position": list(self.current_position),
+                "grid": self.grid.tolist(),
+                "path": [list(pos) for pos in self.path],
+                "solution": [list(pos) for pos in self._solution],
+                "start_position": list(self.start_position),
+                "exit": list(self.exit) if self.exit else None,
+                "is_complete": self.current_position == self.exit,
+                "algorithm": self.algorithm,
+                "maze_index": self.index,
+                "has_solution": True,
+                "total_steps": len(self._solution)
+            }
+            steps.append(step_data)
+
+        # Restore original state
+        self.current_position = original_position
+        self.path = original_path
+
+        return steps
 
     def get_frames(self):
         """
@@ -857,6 +985,3 @@ class Maze:
                   color=text_color, pad=-60)
         plt.axis("off")
         plt.show()
-
-if __name__ == '__main__':
-    pass
