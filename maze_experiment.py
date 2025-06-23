@@ -20,7 +20,7 @@ from utils import (
     setup_logging)
 
 # Configuration constants
-SHOW_LIVE_ANIMATION = False  # Set to False to skip live animations
+SHOW_LIVE_ANIMATION = True  # Set to False to skip live animations
 DEMO_MAZES_COUNT = 3  # How many mazes to show in live demo
 ANIMATION_SPEED = 0.15  # Delay between steps (seconds)
 ANIMATION_UPDATE_RATE = 150  # Update interval (milliseconds)
