@@ -419,7 +419,10 @@ class MazeVisualizer:
         for spine in ax.spines.values():
             spine.set_visible(False)
 
-        # Title with status
+        # Get maze ID
+        maze_id = getattr(maze, 'index', 'Unknown')
+
+        # Title with status and maze ID
         status = ""
         if self.solving_complete:
             if self.solution_found:
@@ -429,7 +432,7 @@ class MazeVisualizer:
         elif self.step_count > 0:
             status = f" - Step {self.step_count}"
 
-        title = f"{algorithm_name}{status}"
+        title = f"Maze {maze_id} - {algorithm_name}{status}"
         ax.set_title(title, fontsize=16, fontweight='bold', pad=20,
                      color='darkblue' if not self.solving_complete else
                      ('green' if self.solution_found else 'red'))

@@ -12,9 +12,6 @@ import matplotlib.pyplot as plt
 
 from classical_algorithms.backtrack_maze_solver import BacktrackingMazeSolver
 from classical_algorithms.bfs_maze_solver import BFSMazeSolver
-from classical_algorithms.grpah_maze_solver import AStarMazeSolver
-from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
-from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze_visualizer import MazeVisualizer, AnimationMode
 from styles.default_style import Theme
 from utils import (
@@ -94,9 +91,9 @@ def run_live_animation_demo(mazes):
     algorithms = [
         (BacktrackingMazeSolver, "Backtracking"),
         (BFSMazeSolver, "Breadth-First Search"),
-        (AStarMazeSolver, "A* Algorithm"),
-        (OptimizedBacktrackingMazeSolver, "Optimized Backtracking"),
-        (PledgeMazeSolver, "Pledge Algorithm"),
+        # (AStarMazeSolver, "A* Algorithm"),
+        # (OptimizedBacktrackingMazeSolver, "Optimized Backtracking"),
+        # (PledgeMazeSolver, "Pledge Algorithm"),
     ]
 
     logging.info(f"\n{'=' * 60}")
