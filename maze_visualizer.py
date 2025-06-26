@@ -96,7 +96,7 @@ class MazeVisualizer:
         self.renderer_type = renderer_type.lower()
 
     def create_pygame_animation(self, maze, solver, algorithm_name="Algorithm",
-                                cell_size=25, fps=60, step_delay=0.1, colors=None):
+                                cell_size=25, fps=250, step_delay=0.2, colors=None):
         """
         Create real-time matplotlib animation (replaces pygame with better quality).
 
@@ -121,7 +121,7 @@ class MazeVisualizer:
             return False
 
     def create_live_matplotlib_animation(self, maze, solver, algorithm_name="Algorithm",
-                                         fps=10, step_delay=0.1):
+                                         fps=10, step_delay=0.2):
         """
         Create high-quality real-time matplotlib animation with professional styling.
 
@@ -476,6 +476,53 @@ class MazeVisualizer:
         fps = max(1, min(30, 1000 // update_interval))
         algorithm_name = getattr(solver, '__class__', type(solver)).__name__
         return self.create_live_matplotlib_animation(maze, solver, algorithm_name, fps, step_delay)
+
+    def create_batch_gifs(self, mazes: List[object],
+                          animation_mode: AnimationMode = AnimationMode.FINAL_SOLUTION,
+                          duration: float = 0.5,
+                          prefix: str = "batch") -> List[str]:
+        """
+        Create multiple GIFs from a list of maze objects.
+        
+        Args:
+            mazes: List of maze objects
+            animation_mode: Type of animation to create
+            duration: Frame duration for GIFs
+            prefix: Filename prefix for generated GIFs
+            
+        Returns:
+            List of created GIF file paths
+        """
+        if not mazes:
+            logging.warning("No mazes provided for batch GIF creation")
+            return []
+
+        created_gifs = []
+
+        for i, maze in enumerate(mazes):
+            try:
+                # Generate filename for this maze
+                maze_id = getattr(maze, 'index', i)
+                algorithm = getattr(maze, 'algorithm', 'unknown')
+                filename = f"{prefix}_maze_{maze_id}_{algorithm}_{animation_mode.value}.gif"
+
+                # Create individual GIF
+                gif_path = self.create_maze_gif(
+                    maze,
+                    filename=filename,
+                    animation_mode=animation_mode,
+                    duration=duration
+                )
+
+                created_gifs.append(gif_path)
+                logging.info(f"Created batch GIF: {filename}")
+
+            except Exception as e:
+                logging.error(f"Failed to create GIF for maze {getattr(maze, 'index', i)}: {e}")
+                continue
+
+        logging.info(f"Created {len(created_gifs)} batch GIFs")
+        return created_gifs
 
     # Keep existing GIF and static visualization methods unchanged
     def create_maze_gif(self, mazes: Union[object, List[object]],
