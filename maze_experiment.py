@@ -53,7 +53,8 @@ def solve_maze_with_live_animation(maze, solver_class, update_interval=ANIMATION
 
         maze.set_solution(solution)
         visualizer.create_live_matplotlib_animation(maze, solver, solver_class.__name__)
-
+        maze.animation_frames = visualizer.animation_frames.copy()  # <- add this
+        
         return maze
 
     except Exception as e:

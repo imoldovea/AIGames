@@ -749,7 +749,53 @@ class MazeVisualizer:
         if animated:
             # Show matplotlib animation
             success = self.create_live_matplotlib_animation(maze, solver, algorithm_name, **kwargs)
-            solution = maze.get_solution() if hasattr(maze, 'get_solution') else []
+            solution = maze.get_solution() if hasattr(maze,
+                                                      'get_solution') else []  # This only shows the solution not the full exploraiton path
+            frames_data = getattr(maze, 'animation_frames', None)
+            # plot the full algorith exploration
+
+            if not frames_data:
+                return self._create_structure_frames(maze)
+
+            frames = []
+            for frame_data in frames_data:
+                fig, ax = plt.subplots(figsize=self.figsize)
+                self._add_header(fig, maze)
+
+                # Draw maze base
+                self._plot_maze_base(ax, maze)
+
+                # Plot visited
+                if 'visited' in frame_data:
+                    visited = np.array(list(frame_data['visited']))
+                    ax.scatter(visited[:, 1], visited[:, 0],
+                               c='lightblue', s=100, alpha=0.4, marker='s')
+
+                # Plot current path
+                if 'path' in frame_data:
+                    path = np.array(frame_data['path'])
+                    if len(path) > 1:
+                        ax.plot(path[:, 1], path[:, 0], color='red', linewidth=3, alpha=0.8)
+
+                # Current position
+                if 'position' in frame_data:
+                    pos = frame_data['position']
+                    ax.plot(pos[1], pos[0], 'o', color='gold', markersize=10, markeredgecolor='black')
+
+                # Mark start/exit
+                self._mark_start_exit(ax, maze)
+
+                ax.set_title(f"Step {frame_data.get('step', '?')} - {getattr(maze, 'algorithm', '')}")
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+                frame = self._fig_to_numpy(fig)
+                frames.append(frame)
+                plt.close(fig)
+            if not hasattr(maze, 'animation_frames'):
+                logging.warning("No recorded animation frames; falling back to solution path")
+                return self._create_solution_frames(maze)
+
             return success, len(solution)
         else:
             # Silent solving
