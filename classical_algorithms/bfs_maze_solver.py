@@ -44,18 +44,7 @@ class BFSMazeSolver(MazeSolver):
             current = queue.popleft()
 
             if current == maze_exit:
-                # Exit found, reconstruct the path from start to exit.
-                path = []
-                while current is not None:
-                    path.append(current)
-                    prev = current
-                    current = parent[current]
-                    if current is not None:
-                        self.maze.move(current)
-                path.reverse()
-                # Optionally update the maze's path with the found solution.
-                self.maze.path = path
-                return path
+                return self.reconstruct_path(parent, current)
 
             # Explore the neighbors.
             for neighbor in self.maze.get_neighbors(current):
@@ -63,10 +52,41 @@ class BFSMazeSolver(MazeSolver):
                     visited.add(neighbor)
                     parent[neighbor] = current
                     queue.append(neighbor)
-                    self.maze.move(current)
+                    # self.maze.move(current)
 
         # No solution found
         return None
+
+    def solve_with_callback(self, callback=None):
+        queue = deque([self.maze.start_position])
+        visited = {self.maze.start_position}
+        parent = {self.maze.start_position: None}
+
+        while queue:
+            current = queue.popleft()
+
+            # invoke callback with current position, path so far, etc.
+            if callback:
+                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
+
+            if current == self.maze.exit:
+                return self.reconstruct_path(parent, current)
+
+            for neighbor in self.maze.get_neighbors(current):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    parent[neighbor] = current
+                    queue.append(neighbor)
+
+        return []
+
+    def reconstruct_path(self, parent, current):
+        path = []
+        while current:
+            path.append(current)
+            current = parent[current]
+        path.reverse()
+        return path
 
 
 # Example test function for the BFS solver
@@ -109,8 +129,9 @@ def bfs_solver():
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
         throw_error(e)
 
+
 if __name__ == '__main__':
-    #setup logging
+    # setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.debug("Logging is configured.")

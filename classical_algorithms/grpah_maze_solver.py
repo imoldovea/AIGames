@@ -79,7 +79,7 @@ class AStarMazeSolver(MazeSolver):
             # Get node with lowest f_score
             _, _, current = heapq.heappop(open_set)
             # Update current position in the visualization
-            self.maze.move(current)
+            # self.maze.move(current)
 
             # Check if we've reached the exit
             if current == exit_position:
@@ -201,6 +201,37 @@ class AStarMazeSolver(MazeSolver):
 
         logging.debug(f"Reconstructed path with {len(total_path)} steps")
         return total_path
+
+    def solve_with_callback(self, callback=None):
+        queue = deque([self.maze.start_position])
+        visited = {self.maze.start_position}
+        parent = {self.maze.start_position: None}
+
+        while queue:
+            current = queue.popleft()
+
+            # invoke callback with current position, path so far, etc.
+            if callback:
+                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
+
+            if current == self.maze.exit:
+                return self.reconstruct_path(parent, current)
+
+            for neighbor in self.maze.get_neighbors(current):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    parent[neighbor] = current
+                    queue.append(neighbor)
+
+        return []
+
+    def reconstruct_path(self, parent, current):
+        path = []
+        while current:
+            path.append(current)
+            current = parent[current]
+        path.reverse()
+        return path
 
 
 # Example test function

@@ -145,6 +145,37 @@ class PledgeMazeSolver(MazeSolver):
             logging.error("Maximum steps exceeded without reaching the exit.")
         return path
 
+    def solve_with_callback(self, callback=None):
+        queue = deque([self.maze.start_position])
+        visited = {self.maze.start_position}
+        parent = {self.maze.start_position: None}
+
+        while queue:
+            current = queue.popleft()
+
+            # invoke callback with current position, path so far, etc.
+            if callback:
+                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
+
+            if current == self.maze.exit:
+                return self.reconstruct_path(parent, current)
+
+            for neighbor in self.maze.get_neighbors(current):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    parent[neighbor] = current
+                    queue.append(neighbor)
+
+        return []
+
+    def reconstruct_path(self, parent, current):
+        path = []
+        while current:
+            path.append(current)
+            current = parent[current]
+        path.reverse()
+        return path
+
 
 # Example usage:
 if __name__ == "__main__":

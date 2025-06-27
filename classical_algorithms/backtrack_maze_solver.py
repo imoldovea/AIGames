@@ -87,7 +87,7 @@ class BacktrackingMazeSolver(MazeSolver):
                 parent_indices[position] = parent_idx
 
             # Animate only when necessary
-            self.maze.move(position)
+            # self.maze.move(position)
 
             # Check if we've reached the exit
             if position == self.maze.exit:
@@ -99,10 +99,6 @@ class BacktrackingMazeSolver(MazeSolver):
             for neighbor in reversed(self._get_cached_neighbors(position)):
                 if neighbor not in visited:
                     stack.append((neighbor, position))
-
-            # If this position has no valid next moves, animate backtracking
-            if all(neighbor in visited for neighbor in self._get_cached_neighbors(position)):
-                self.maze.move(position)
 
         return None
 
@@ -118,6 +114,37 @@ class BacktrackingMazeSolver(MazeSolver):
             path.append(current)
 
         return list(reversed(path))
+
+    def solve_with_callback(self, callback=None):
+        queue = deque([self.maze.start_position])
+        visited = {self.maze.start_position}
+        parent = {self.maze.start_position: None}
+
+        while queue:
+            current = queue.popleft()
+
+            # invoke callback with current position, path so far, etc.
+            if callback:
+                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
+
+            if current == self.maze.exit:
+                return self.reconstruct_path(parent, current)
+
+            for neighbor in self.maze.get_neighbors(current):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    parent[neighbor] = current
+                    queue.append(neighbor)
+
+        return []
+
+    def reconstruct_path(self, parent, current):
+        path = []
+        while current:
+            path.append(current)
+            current = parent[current]
+        path.reverse()
+        return path
 
 
 # Example test function
@@ -158,6 +185,6 @@ if __name__ == '__main__':
     # Setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
-    #logger.debug("Logging is configured.")
+    # logger.debug("Logging is configured.")
 
     backtracking_solver()

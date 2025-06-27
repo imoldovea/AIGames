@@ -35,47 +35,33 @@ def solve_maze_with_live_animation(maze, solver_class, update_interval=ANIMATION
     """
     logging.debug(f"Live animation: {solver_class.__name__} on maze {getattr(maze, 'index', 'unknown')}")
 
-    # Reset maze state
-    maze.reset_solution()
-
-    # Create visualizer with half size
-    visualizer = MazeVisualizer(
-        renderer_type="matplotlib",
-        theme=Theme.SCIENTIFIC,
-        figsize=(6, 4.5)
-    )
-
-    # Create solver
-    solver = solver_class(maze, **solver_kwargs)
-
-    # Start live animation - this will block until solving is complete
     try:
-        anim = visualizer.create_live_animation(
-            maze,
-            solver,
-            update_interval=update_interval,
-            step_delay=step_delay
+        # Reset maze state
+        maze.reset_solution()
+
+        # Create visualizer with half size
+        visualizer = MazeVisualizer(
+            renderer_type="matplotlib",
+            theme=Theme.SCIENTIFIC,
+            figsize=(6, 4.5)
         )
 
-        logging.debug("Live animation completed successfully!")
+        # Create solver
+        solver = solver_class(maze, **solver_kwargs)
 
-        # Properly cleanup animation and figures
-        if hasattr(anim, 'event_source'):
-            anim.event_source.stop()
-        plt.close('all')  # Close all matplotlib figures
+        solution = solver.solve_with_callback(callback=visualizer._animation_callback)
+
+        maze.set_solution(solution)
+        visualizer.create_live_matplotlib_animation(maze, solver, solver_class.__name__)
 
         return maze
 
     except Exception as e:
         logging.error(f"Error during live animation: {e}")
-        # Cleanup on error
-        plt.close('all')
-        # Fallback to regular solving
         solution = solver.solve()
         maze.set_solution(solution)
         return maze
     finally:
-        # Ensure cleanup happens regardless
         plt.close('all')
 
 

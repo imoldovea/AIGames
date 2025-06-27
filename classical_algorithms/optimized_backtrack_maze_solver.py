@@ -64,7 +64,7 @@ class OptimizedBacktrackingMazeSolver(MazeSolver):
 
         if success:
             self.maze.path = path
-            #logger.debug(f"Found solution path with {len(path)} steps")
+            # logger.debug(f"Found solution path with {len(path)} steps")
             return path
 
         logger.info("No path found")
@@ -97,7 +97,7 @@ class OptimizedBacktrackingMazeSolver(MazeSolver):
 
                 cache[(r, c)] = np.array(valid_neighbors)
 
-        #logger.debug(f"Precomputed neighbors for {len(cache)} positions")
+        # logger.debug(f"Precomputed neighbors for {len(cache)} positions")
         return cache
 
     def _get_cached_neighbors(self, position: Tuple[int, int]) -> np.ndarray:
@@ -132,15 +132,15 @@ class OptimizedBacktrackingMazeSolver(MazeSolver):
         r, c = current
         visited[r, c] = True
 
-        #logger.debug(f"Visiting {current}, path length: {len(path)}")
+        # logger.debug(f"Visiting {current}, path length: {len(path)}")
 
         # Check if we reached the target
         if current == target:
-            #logger.debug(f"Found target at {current}")
+            # logger.debug(f"Found target at {current}")
             return True
 
         # Update the maze's current position for visualization
-        self.maze.move(current)
+        # self.maze.move(current)
 
         # Get cached neighbors using vectorized arrays
         neighbors = self._get_cached_neighbors(current)
@@ -169,8 +169,39 @@ class OptimizedBacktrackingMazeSolver(MazeSolver):
 
         # Backtrack if no solution found via this path
         path.pop()
-        #logger.debug(f"Backtracking from {current}, path length: {len(path)}")
+        # logger.debug(f"Backtracking from {current}, path length: {len(path)}")
         return False
+
+    def solve_with_callback(self, callback=None):
+        queue = deque([self.maze.start_position])
+        visited = {self.maze.start_position}
+        parent = {self.maze.start_position: None}
+
+        while queue:
+            current = queue.popleft()
+
+            # invoke callback with current position, path so far, etc.
+            if callback:
+                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
+
+            if current == self.maze.exit:
+                return self.reconstruct_path(parent, current)
+
+            for neighbor in self.maze.get_neighbors(current):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    parent[neighbor] = current
+                    queue.append(neighbor)
+
+        return []
+
+    def reconstruct_path(self, parent, current):
+        path = []
+        while current:
+            path.append(current)
+            current = parent[current]
+        path.reverse()
+        return path
 
 
 # Example test function
@@ -189,7 +220,7 @@ def solver() -> None:
         # Iterate through each maze in the array
         for i, maze_matrix in enumerate(mazes):
             maze = Maze(maze_matrix)
-            #logging.debug(f"Solving maze {i + 1}...")
+            # logging.debug(f"Solving maze {i + 1}...")
 
             # Instantiate the backtracking maze solver
             solver = OptimizedBacktrackingMazeSolver(maze)
@@ -213,6 +244,6 @@ if __name__ == '__main__':
     # Setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
-    #logger.debug("Logging is configured.")
+    # logger.debug("Logging is configured.")
 
     solver()
