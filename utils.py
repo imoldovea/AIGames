@@ -524,3 +524,39 @@ def save_mazes_as_pdf(solved_mazes: list, output_path: str) -> None:
     warnings.warn("save_mazes_as_pdf is deprecated. Use save_mazes_as_pdf_v2() instead.",
                   DeprecationWarning, stacklevel=2)
     # Original implementation stays here...
+
+
+def save_animation_frames_hdf5(maze, output_dir="output/hdf5"):
+    """
+    Save the animation frames of a maze to an HDF5 file.
+    Args:
+        maze: Maze instance with animation_frames
+        output_dir: Directory to save the .h5 file
+    """
+    if not hasattr(maze, "animation_frames") or not maze.animation_frames:
+        print(f"No animation frames to save for maze {maze.index}")
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+    file_path = os.path.join(output_dir, f"maze_{maze.index}_frames.h5")
+
+    with h5py.File(file_path, "w") as f:
+        grp = f.create_group("frames")
+
+        for i, frame in enumerate(maze.animation_frames):
+            step_grp = grp.create_group(f"step_{i:04d}")
+
+            # Store scalars
+            step_grp.attrs["step"] = frame.get("step", i)
+
+            # Store arrays
+            if "position" in frame:
+                step_grp.create_dataset("position", data=np.array(frame["position"], dtype=np.int16))
+
+            if "path" in frame and frame["path"]:
+                step_grp.create_dataset("path", data=np.array(frame["path"], dtype=np.int16))
+
+            if "visited" in frame and frame["visited"]:
+                step_grp.create_dataset("visited", data=np.array(list(frame["visited"]), dtype=np.int16))
+
+    print(f"Saved {len(maze.animation_frames)} frames to {file_path}")
