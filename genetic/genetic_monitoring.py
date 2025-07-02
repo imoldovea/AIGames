@@ -5,6 +5,7 @@ from io import BytesIO
 import cv2
 import imageio.v3 as imageio
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd  # (Assuming pandas is used in data_to_csv)
 
 
@@ -80,7 +81,27 @@ def create_gif_from_memory(frames, output_gif="output/evolution.gif", duration=0
     """
     if not frames:
         raise ValueError("No frames provided!")
-    imageio.imwrite(output_gif, frames, duration=duration, format="GIF")
+
+    # Get the max shape
+    max_height = max(f.shape[0] for f in frames)
+    max_width = max(f.shape[1] for f in frames)
+
+    # Pad or resize frames to same size
+    padded_frames = []
+    for frame in frames:
+        h, w, _ = frame.shape
+        pad_h = max_height - h
+        pad_w = max_width - w
+        top_pad = pad_h // 2
+        bottom_pad = pad_h - top_pad
+        left_pad = pad_w // 2
+        right_pad = pad_w - left_pad
+
+        padded = np.pad(frame, ((top_pad, bottom_pad), (left_pad, right_pad), (0, 0)), mode='constant',
+                        constant_values=255)
+        padded_frames.append(padded)
+
+    imageio.imwrite(output_gif, padded_frames, duration=duration, format="GIF")
     logging.debug(f"GIF saved as {output_gif}")
 
 
@@ -107,7 +128,6 @@ def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
         "longest_path"
     ]
 
-
     df = pd.DataFrame(monitoring_data)
     df.sort_values(by=["maze_index", "generation"], inplace=True)
     df.to_csv(filename, mode='a', header=not os.path.exists(filename), index=False)
@@ -126,6 +146,7 @@ def visualize_evolution(monitoring_data, mode="video", index=0):
             generation=data["generation"],
             fitnesses=data.get("fitnesses")
         )
+        plt.figure(figsize=(5, 5), dpi=100)  # fixed size
         frames.append(frame)
 
     os.makedirs("output", exist_ok=True)
