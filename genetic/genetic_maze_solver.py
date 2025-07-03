@@ -9,6 +9,7 @@ import numpy as np
 import tqdm
 import wandb
 
+from classical_algorithms.bfs_maze_solver import BFSMazeSolver
 from genetic_monitoring import visualize_evolution, print_fitness
 from maze import Maze
 from maze_solver import MazeSolver
@@ -200,6 +201,22 @@ class GeneticMazeSolver(MazeSolver):
         dist_to_exit = abs(pos[0] - self.maze.exit[0]) + abs(pos[1] - self.maze.exit[1])
         distance_penalty = max_distance_penalty_weight * dist_to_exit
 
+        # Compute shortest distance from current position to exit using BFS
+        try:
+            grid_copy = np.copy(self.maze.grid)
+            grid_copy[self.maze.start_position] = 3  # restore START marker
+            temp_maze = Maze(grid_copy, index=self.maze.index)
+            temp_maze.current_position = pos  # simulate ending position of chromosome
+            bfs_solver = BFSMazeSolver(temp_maze)
+            bfs_path = bfs_solver.solve()
+            bfs_distance_to_exit = len(bfs_path) if bfs_path else self.max_steps
+        except Exception as e:
+            logging.warning(f"BFS failed to compute distance: {e}")
+            bfs_distance_to_exit = self.max_steps
+
+        bfs_distance_reward_weight = config.getfloat("GENETIC", "bfs_distance_reward_weight", fallback=5.0)
+        bfs_proximity_reward = bfs_distance_reward_weight * (1.0 / (1 + bfs_distance_to_exit))
+
         # --- Dead-End Recovery Bonus ---
         recover_bonus = (dead_end_recover_bonus_weight if dead_end_recovered else 0)
 
@@ -209,6 +226,7 @@ class GeneticMazeSolver(MazeSolver):
                 + exploration_bonus_weight * exploration_score  # + Exploration reward
                 + path_diversity_bonus  # + Reward for diversity in paths
                 + recover_bonus  # + Reward for recovering from dead ends
+                + bfs_proximity_reward  # ← this is new
                 - backtrack_penalty_weight * backtracks  # - Penalty for backtracking
                 - loop_penalty_weight * loops  # - Penalty for loops/revisits
                 - distance_penalty  # - Penalty for distance to exit
@@ -461,7 +479,7 @@ class GeneticMazeSolver(MazeSolver):
             visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
         print_fitness(maze=self.maze, fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
-                            diversity_history=diversity_history, show=True)
+                      diversity_history=diversity_history, show=True)
 
         return path, generations, best_score
 
@@ -487,7 +505,7 @@ class GeneticMazeSolver(MazeSolver):
             for ind in pop_arr
         ])
         weights /= weights.sum()  # normalize
-    
+
         # Limit sample size for efficiency
         sample_size = min(n, 100)
         sampled_indices = np.random.choice(n, size=sample_size, replace=False, p=weights)
@@ -547,13 +565,13 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    # mazes = [mazes[-50]]
+    mazes = [mazes[-1]]
 
-    long_solutions_index = []
-    failed_maze_index = [28, 86]  #
-
-    indexs = failed_maze_index + long_solutions_index
-    mazes = [maze for maze in mazes if maze.index in indexs]
+    # long_solutions_index = []
+    # failed_maze_index = [28, 86]  #
+    #
+    # indexs = failed_maze_index + long_solutions_index
+    # mazes = [maze for maze in mazes if maze.index in indexs]
 
     solved_mazes = []
     successful_solutions = 0  # Successful solution counter
@@ -623,5 +641,7 @@ def main():
         [m.index for m in sorted([mz for mz in mazes if getattr(mz, "valid_solution", False)],
                                  key=lambda x: getattr(x, "generations", 0), reverse=False)[:5]]
     )
+
+
 if __name__ == "__main__":
     main()
