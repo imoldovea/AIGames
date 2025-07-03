@@ -807,3 +807,39 @@ class MazeVisualizer:
             except Exception as e:
                 logging.error(f"Error solving maze: {e}")
                 return False, 0
+
+    @staticmethod
+    def visualize_top_individuals(top_individuals, generation: int, output_dir="output", renderer="matplotlib"):
+        """
+        Static method to visualize top individuals of a GA generation.
+        Each gene must have .to_maze() and .fitness
+        """
+        visualizer = MazeVisualizer(renderer_type=renderer, output_dir=output_dir)
+        for i, gene in enumerate(top_individuals):
+            maze = gene.to_maze()
+            maze.index = i
+            maze.algorithm = f"Gen {generation}, Fit {gene.fitness:.2f}"
+
+            if hasattr(gene, "animation_frames"):
+                maze.animation_frames = gene.animation_frames
+
+            visualizer.create_maze_gif(
+                maze,
+                filename=f"gen_{generation:03}_ind_{i:02}_fit_{gene.fitness:.2f}",
+                animation_mode=AnimationMode.STEP_BY_STEP,
+                duration=0.15
+            )
+
+    @staticmethod
+    def animate_genetic_progress(evolution_data, show_top_n=5, output_dir="output", renderer="matplotlib"):
+        """
+        Animate top-N individuals over all generations.
+        evolution_data: list of list of genes.
+        """
+        for generation, top_individuals in enumerate(evolution_data):
+            MazeVisualizer.visualize_top_individuals(
+                top_individuals[:show_top_n],
+                generation=generation,
+                output_dir=output_dir,
+                renderer=renderer
+            )
