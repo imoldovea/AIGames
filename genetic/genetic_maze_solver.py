@@ -9,7 +9,7 @@ import numpy as np
 import tqdm
 import wandb
 
-from classical_algorithms.bfs_maze_solver import BFSMazeSolver
+from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from genetic_monitoring import visualize_evolution, print_fitness
 from maze import Maze
 from maze_solver import MazeSolver
@@ -207,8 +207,10 @@ class GeneticMazeSolver(MazeSolver):
             grid_copy[self.maze.start_position] = 3  # restore START marker
             temp_maze = Maze(grid_copy, index=self.maze.index)
             temp_maze.current_position = pos  # simulate ending position of chromosome
-            bfs_solver = BFSMazeSolver(temp_maze)
-            bfs_path = bfs_solver.solve()
+            # bfs_solver = BFSMazeSolver(temp_maze)
+            # bfs_path = bfs_solver.solve()
+            backtrack_solver = OptimizedBacktrackingMazeSolver(temp_maze)
+            bfs_path = backtrack_solver.solve()
             bfs_distance_to_exit = len(bfs_path) if bfs_path else self.max_steps
         except Exception as e:
             logging.warning(f"BFS failed to compute distance: {e}")
