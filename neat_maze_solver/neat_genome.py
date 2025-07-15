@@ -64,42 +64,33 @@ class Genome:
         conn.enabled = not conn.enabled
 
     def mutate_add_connection(self, innovation_counter, max_attempts=10):
-        """
-        Try to add a new connection between unconnected nodes,
-        avoiding existing ones and impossible connections.
-        """
         potential = list(self.nodes.keys())
         for _ in range(max_attempts):
             src = random.choice(potential)
             tgt = random.choice(potential)
             if src == tgt or (src, tgt) in self.connections:
-                continue  # Prevent self-connection and duplicates
+                continue
             if self.nodes[src].type == NodeType.OUTPUT:
-                continue  # Output nodes shouldn't be sources
+                continue
             if self.nodes[tgt].type == NodeType.INPUT:
-                continue  # Input nodes shouldn't be targets
-            innovation = next(innovation_counter)
+                continue
+            innovation = innovation_counter(src, tgt)  # Corrected
             weight = random.uniform(-1, 1)
             self.add_connection(src, tgt, weight, innovation)
-            break  # Exit after a successful mutation
+            break
 
     def mutate_add_node(self, innovation_counter):
-        """
-        Insert a new node by splitting an existing connection and disabling it.
-        Two new connections are created.
-        """
         enabled_conns = [c for c in self.connections.values() if c.enabled]
         if not enabled_conns:
-            return  # No eligible connections to split
+            return
         conn = random.choice(enabled_conns)
-        conn.enabled = False  # Disable old connection
+        conn.enabled = False
 
-        new_node_id = max(self.nodes.keys()) + 1  # New unique id
+        new_node_id = max(self.nodes.keys()) + 1
         self.add_node(new_node_id, NodeType.HIDDEN)
 
-        # Add connection: src -> new node, and new node -> tgt
-        innov1 = next(innovation_counter)
-        innov2 = next(innovation_counter)
+        innov1 = innovation_counter(conn.src, new_node_id)  # Corrected
+        innov2 = innovation_counter(new_node_id, conn.tgt)  # Corrected
         self.add_connection(conn.src, new_node_id, 1.0, innov1)
         self.add_connection(new_node_id, conn.tgt, conn.weight, innov2)
 
