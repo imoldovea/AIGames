@@ -143,7 +143,6 @@ class GeneticMazeSolver(MazeSolver):
             if not self.maze.is_valid_move(new_pos):
                 penalty += 1
                 continue
-            penalty = min(penalty, 10)  # cap penalty to -10
 
             # Separate loops from backtracking
             is_backtrack = prev_positions and new_pos == prev_positions[-1]
@@ -218,7 +217,7 @@ class GeneticMazeSolver(MazeSolver):
             bfs_distance_to_exit = self.max_steps
 
         bfs_distance_reward_weight = config.getfloat("GENETIC", "bfs_distance_reward_weight", fallback=5.0)
-        bfs_proximity_reward = bfs_distance_reward_weight * (1.0 / (1 + bfs_distance_to_exit)) ** 2
+        bfs_proximity_reward = bfs_distance_reward_weight * (1.0 / (1 + bfs_distance_to_exit)) ** 3
 
         # --- Dead-End Recovery Bonus ---
         recover_bonus = (dead_end_recover_bonus_weight if dead_end_recovered else 0)
@@ -234,7 +233,7 @@ class GeneticMazeSolver(MazeSolver):
                 - loop_penalty_weight * loops  # - Penalty for loops/revisits
                 - distance_penalty  # - Penalty for distance to exit
                 - diversity_penalty_weight * diversity_penalty  # - Penalty for repeated chromosomes in population
-                - penalty  # - Penalty for invalid moves
+                - min(penalty, 3)
         )
 
         # Debugging log
