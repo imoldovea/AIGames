@@ -1,14 +1,15 @@
+import logging
 import pickle
 import random
 
-import matplotlib.pyplot as plt
 from deap import base, creator, tools
 
 from maze_visualizer import MazeVisualizer
 from neat_config import config, innovation_tracker
 from neat_genome import Genome
 from neat_solver import NEATSolver
-from utils import load_mazes
+from utils import load_mazes, clean_outupt_folder, setup_logging
+from visualize_neat import create_evolution_movie_from_gifs, create_generation_gif, plot_fitness_curve
 
 # --- 1. Setup DEAP types ---
 creator.create("FitnessMax", base.Fitness, weights=(1.0,))
@@ -97,26 +98,51 @@ toolbox.register("mutate", neat_mutate)
 toolbox.register("select", tools.selTournament, tournsize=3)
 
 
-def plot_fitness_progress(fitness_history, filename="output/neat_fitness.png"):
-    plt.figure(figsize=(10, 4))
-    plt.plot([f["max"] for f in fitness_history], label="Best")
-    plt.plot([f["avg"] for f in fitness_history], label="Average")
-    plt.xlabel("Generation")
-    plt.ylabel("Fitness")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(filename)
-    plt.close()
+def save_generation_solutions(maze_solutions, output_dir="output"):
+    """Save generation solutions using MazeVisualizer batch processing"""
+    try:
+        # Create batch data in the format expected by MazeVisualizer
+        maze_data = []
+        for gen, (maze, solver) in enumerate(maze_solutions):
+            # Create solution data
+            solution_data = {
+                'algorithm': f'NEAT Gen{gen}',
+                'maze': maze,
+                'solver': solver,
+                'generation': gen
+            }
+            maze_data.append(solution_data)
+
+        # Use MazeVisualizer to create batch GIFs
+        gif_paths = visualizer.create_batch_gifs(
+            maze_data,
+            output_dir=output_dir,
+            filename_prefix="neat_gen",
+            fps=5
+        )
+
+        return gif_paths
+
+    except Exception as e:
+        logging.error(f"Error creating generation solutions: {e}")
+        return []
 
 
 # --- 4. Evolutionary Loop ---
 def main():
+    clean_outupt_folder()
+    setup_logging()
+
     pop = toolbox.population(n=config["population_size"])
     ngen = 30
     cxpb = config["crossover_prob"]
     mutpb = 1.0  # Always mutate (NEAT does not use a per-individual mutation probability)
 
     fitness_history = []
+    generation_solutions = []  # Store solutions for movie creation
+
+    # Use the same maze for consistent movie visualization
+    demo_maze = random.choice(mazes)
 
     for gen in range(ngen):
         # Evaluate
@@ -132,7 +158,18 @@ def main():
         best = tools.selBest(pop, 1)[0]
         print(f"Gen {gen}: Best fitness {best.fitness.values[0]:.2f}")
 
-        # Visualize only the best agent on a random maze
+        # Create solution for movie (using consistent maze)
+        demo_maze.reset()
+        demo_solver = NEATSolver(demo_maze, best)
+        demo_solver.solve()
+
+        # Store solution for movie creation
+        generation_solutions.append((demo_maze.copy() if hasattr(demo_maze, 'copy') else demo_maze, demo_solver))
+
+        # Create GIF for this generation
+        create_generation_gif(demo_maze, demo_solver, gen, visualizer)
+
+        # Visualize every 5 generations (existing code)
         if gen % 5 == 0 or gen == ngen - 1:
             sample_maze = random.choice(mazes)
             sample_maze.reset()
@@ -165,7 +202,11 @@ def main():
 
         pop[:] = offspring
 
-    plot_fitness_progress(fitness_history, filename="output/neat_fitness.png")
+    # Create evolution movie from the generated GIFs
+    create_evolution_movie_from_gifs()
+
+    plot_fitness_curve(fitness_history, filename="output/neat_fitness.png")
+
     # Save and test best
     best = tools.selBest(pop, 1)[0]
     print("Best genome:", best)

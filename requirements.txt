@@ -30,3 +30,7 @@ deap
 pygame
 scipy
 imageio
+gymnasium
+minigrid
+stable_baselines3
+
