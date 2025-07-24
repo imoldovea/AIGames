@@ -44,4 +44,6 @@ class MazePoolEnv(gymnasium.Env):
         return self.state, reward, terminated, truncated, info
 
     def render(self, mode='human'):
-        print(self.state)
+        # print(self.state)
+        # print(self.current_maze)
+        pass

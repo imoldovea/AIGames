@@ -7,15 +7,12 @@ class MazeMiniGridEnv(MiniGridEnv):
     def __init__(self, maze_grid, start_pos, exit_pos):
         h, w = maze_grid.shape
         mission_str = "Find the border exit!"
-        # Create a mission_space that matches the mission string
         if Text is not None:
             mission_space = Text(max_length=64)
         else:
-            # Fallback for older gym: use Box with dtype str (not ideal)
             from gym.spaces import Box
             import numpy as np
             mission_space = Box(low=0, high=255, shape=(64,), dtype=np.uint8)
-            # The above is a workaround. Adjust depending on your gym version.
 
         super().__init__(
             grid_size=max(h, w),
@@ -24,8 +21,9 @@ class MazeMiniGridEnv(MiniGridEnv):
             mission_space=mission_space
         )
         self.maze_grid = maze_grid
-        self.start_pos = (start_pos[1], start_pos[0])
-        self.exit_pos = (exit_pos[1], exit_pos[0])
+        # Expect start_pos and exit_pos as (x, y) throughout
+        self.start_pos = start_pos
+        self.exit_pos = exit_pos
 
     def gen_grid(self, width, height):
         from minigrid.core.grid import Grid
@@ -34,7 +32,14 @@ class MazeMiniGridEnv(MiniGridEnv):
             for x in range(width):
                 if self.maze_grid[y, x] == 1:
                     self.grid.set(x, y, Wall())
-        self.agent_pos = self.start_pos
+
+        self.grid.set(ey, ex, Goal())
+
+        # Validate start pos within grid bounds
+        if sx < 0 or sx >= width or sy < 0 or sy >= height:
+            raise ValueError(f"Invalid start position {self.start_pos}: Out of grid boundaries.")
+
+        self.agent_pos = (sy, sx)
         self.agent_dir = 0
-        self.grid.set(self.exit_pos[0], self.exit_pos[1], Goal())
+        self.grid.set(ex, ey, Goal())
         self.mission = "Find the border exit!"

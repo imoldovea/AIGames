@@ -100,7 +100,7 @@ def clean_outupt_folder():
     # Delete all OUTPUT folder content
     if config.getboolean("DEFAULT", "retrain_model", fallback=True):
         for pattern in ["*.html", "*.pdf", "*.mp4", "*.prof", "*.csv", "*.json", "*.png", "*.properties",
-                        "*.txt", "*.png", "*.gif", "*.npy", "*.pt", "*.mp4"]:
+                        "*.txt", "*.png", "*.gif", "*.npy", "*.pt", "*.mp4", "events.out.tfevents.*", ]:
             for filename in glob.glob(os.path.join(OUTPUT, pattern)):
                 os.remove(filename)
         # Remove /exit subfolder and its contents if exist
@@ -116,6 +116,15 @@ def clean_outupt_folder():
             for filename in glob.glob(os.path.join(exit_folder, "*")):
                 os.remove(filename)
             os.rmdir(exit_folder)
+
+        # Remove tensorboard subfolder and its contents if exist
+        folder_pattern = os.path.join(OUTPUT, "PPO*")  # Use wildcard for matching
+        # Use glob to find all folders matching the pattern
+        for folder in glob.glob(folder_pattern):
+            if os.path.isdir(folder):  # Check if it's a directory
+                # Remove the entire folder and its contents
+                shutil.rmtree(folder)
+                print(f"Deleted folder: {folder}")
 
         # Remove /genomes subfolder and its contents if exist
         exit_folder = os.path.join(OUTPUT, "genomes")
