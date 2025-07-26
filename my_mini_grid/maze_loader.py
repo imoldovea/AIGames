@@ -1,8 +1,8 @@
-import logging
+import logging  # Import logging module for outputting information during execution
 
-import h5py
-import numpy as np
-from tqdm import tqdm
+import h5py  # Import h5py for reading HDF5 files
+import numpy as np  # Import numpy for numerical and array operations
+from tqdm import tqdm  # Import tqdm for progress bar during loops
 
 
 def pad_grids_to_uniform_shape_and_update_starts(grids, starts):
@@ -20,53 +20,33 @@ def pad_grids_to_uniform_shape_and_update_starts(grids, starts):
             - List of updated start positions relative to the new padded grid coordinates.
     """
     if not grids or not starts:
+        # If either grids or starts list is empty, return them as-is
+        logging.warning("No grids or starts found. Returning as-is.")
         return grids, starts
 
-    # Determine the maximum grid height and width
+    # Determine the maximum grid height and width across all grids
     max_h = max(grid.shape[0] for grid in grids)
     max_w = max(grid.shape[1] for grid in grids)
 
-    padded_grids = []
-    updated_starts = []
+    padded_grids = []  # Will hold the padded grids
+    updated_starts = []  # Will hold updated start coordinates
 
+    # Iterate over each grid and its corresponding start position
     for grid, start in zip(grids, starts):
-        h, w = grid.shape
-        # Create a padded grid filled with 1s (walls)
+        h, w = grid.shape  # Current grid height and width
+        # Create a new grid of shape (max_h, max_w) filled with 1s representing walls
         padded = np.ones((max_h, max_w), dtype=grid.dtype)
 
-        # Place the original grid in the top-left corner of the padded grid
+        # Copy the original grid into the top-left corner of the padded grid
         padded[:h, :w] = grid
         padded_grids.append(padded)
 
-        # Update the start position (no change because grid starts from top-left)
+        # Start positions remain the same because no shifting occurs (top-left padded)
         start_row, start_col = start
         updated_start = (start_row, start_col)
         updated_starts.append(updated_start)
 
     return padded_grids, updated_starts
-
-
-def pad_grids_to_uniform_shape(grids):
-    """
-    Pads all 2D numpy arrays in `grids` to the same shape (max height and width).
-    
-    Args:
-        grids (List[np.ndarray]): List of 2D arrays, can have different shapes.
-        
-    Returns:
-        List[np.ndarray]: Same list but with each grid zero-padded to (max_h, max_w).
-    """
-    if not grids:
-        return grids
-    max_h = max(grid.shape[0] for grid in grids)
-    max_w = max(grid.shape[1] for grid in grids)
-    padded_grids = []
-    for grid in grids:
-        h, w = grid.shape
-        padded = np.zeros((max_h, max_w), dtype=grid.dtype)
-        padded[:h, :w] = grid
-        padded_grids.append(padded)
-    return padded_grids
 
 
 def load_mazes_h5(file_path="input/mazes.h5", samples=10):
@@ -83,25 +63,30 @@ def load_mazes_h5(file_path="input/mazes.h5", samples=10):
         - `starts`: (N, 2) numpy array adjusted to the new padded grid coordinates
         - `exits`: (N, 2) numpy array (row, col)
     """
-    maze_grids = []
-    starts = []
-    exits = []
+    maze_grids = []  # To store grids loaded from file
+    starts = []  # To store start coordinates
+    exits = []  # To store exit coordinates
 
     with h5py.File(file_path, 'r') as f:
-        maze_keys = list(f.keys())
-        total_mazes = len(maze_keys)
+        maze_keys = list(f.keys())  # List all maze groups in the file
+        total_mazes = len(maze_keys)  # Total number of available mazes
+        # Determine how many mazes to load: all or limited by samples
         num_mazes = min(samples, total_mazes) if samples > 0 else total_mazes
         logging.info(f"Loading up to {num_mazes} mazes from {file_path}...")
 
+        # Iterate over selected maze groups with a progress bar
         for maze_name in tqdm(maze_keys[:num_mazes], desc="Loading mazes"):
-            maze_group = f[maze_name]
-            grid = maze_group['grid'][:]
+            maze_group = f[maze_name]  # Access maze group in HDF5 file
+            grid = maze_group['grid'][:]  # Read the maze grid as numpy array
+
+            # Read maze start attributes
             start_row = maze_group.attrs['start_row']
             start_col = maze_group.attrs['start_col']
             start = (start_row, start_col)
 
-            # Find exit: first border cell that is a corridor (0)
+            # Find an exit cell on the borders of the grid which is a corridor cell (0)
             exit_found = False
+            # Check top and bottom rows for a corridor cell
             for r in [0, grid.shape[0] - 1]:
                 for c in range(grid.shape[1]):
                     if grid[r, c] == 0:
@@ -110,6 +95,7 @@ def load_mazes_h5(file_path="input/mazes.h5", samples=10):
                         break
                 if exit_found:
                     break
+            # If not found, check left and right columns for corridor cell
             if not exit_found:
                 for c in [0, grid.shape[1] - 1]:
                     for r in range(grid.shape[0]):
@@ -119,17 +105,19 @@ def load_mazes_h5(file_path="input/mazes.h5", samples=10):
                             break
                     if exit_found:
                         break
+            # If no exit found on borders, skip this maze with warning
             if not exit_found:
                 logging.warning(f"No exit found for maze {maze_name}. Skipping.")
                 continue
 
+            # Append loaded data to respective lists
             maze_grids.append(grid)
             starts.append(start)
             exits.append(exit_pos)
 
-    # Pad all grids to the same shape and update start positions
+    # Normalize all loaded grids to uniform size and update starting positions accordingly
     maze_grids, starts = pad_grids_to_uniform_shape_and_update_starts(maze_grids, starts)
-    exits = np.array(exits)
+    exits = np.array(exits)  # Convert exits list to numpy array
 
     logging.info(f"Loaded {len(maze_grids)} valid mazes (all padded uniformly).")
-    return maze_grids, np.array(starts), exits
+    return maze_grids, np.array(starts), exits  # Return all data
