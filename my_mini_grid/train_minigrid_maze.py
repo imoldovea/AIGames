@@ -40,23 +40,34 @@ def main():
     start_pos = starts[last_idx]
     exit_pos = exits[last_idx]
 
-    # Convert start and exit positions to integer tuples (x, y)
-    start_pos = tuple(int(x) for x in start_pos)
-    exit_pos = tuple(int(x) for x in exit_pos)
+    # In your HDF5, positions are (row, col)
+    start_row, start_col = map(int, start_pos)
+    exit_row, exit_col = map(int, exit_pos)
 
-    # Get height and width of the maze grid
     h, w = maze_grid.shape
 
-    # Validate that the start and exit positions are within maze bounds
-    assert 0 <= start_pos[1] < h and 0 <= start_pos[0] < w, "start_pos out of bounds"
-    assert 0 <= exit_pos[1] < h and 0 <= exit_pos[0] < w, "exit_pos out of bounds"
+    # Sanity check: Are these within bounds?
+    assert 0 <= start_row < h and 0 <= start_col < w, "start_pos out of bounds"
+    assert 0 <= exit_row < h and 0 <= exit_col < w, "exit_pos out of bounds"
 
-    # Make sure start and exit positions are in corridors (value 0 in the grid)
-    assert maze_grid[start_pos[0], start_pos[1]] == 0, f"start_pos {start_pos} is not in a corridor!"
-    assert maze_grid[exit_pos[0], exit_pos[1]] == 0, f"exit_pos {exit_pos} is not in a corridor!"
+    # Make sure start/exit are on a corridor (0)
+    assert maze_grid[start_row, start_col] == 0, f"start_pos ({start_row},{start_col}) is not in a corridor!"
+    assert maze_grid[exit_row, exit_col] == 0, f"exit_pos ({exit_row},{exit_col}) is not in a corridor!"
 
-    # Create a single maze environment instance with the chosen maze and positions
-    minigrid_env = MazeMiniGridEnv(maze_grid, start_pos, exit_pos)
+    # MiniGrid expects (x, y) = (col, row)!
+    mg_start_pos = (start_col, start_row)
+    mg_exit_pos = (exit_col, exit_row)
+
+    # Extra checks before creating the environment
+    h, w = maze_grid.shape
+    assert 0 <= mg_start_pos[0] < w and 0 <= mg_start_pos[1] < h, f"MiniGrid start pos {mg_start_pos} out of bounds"
+    assert 0 <= mg_exit_pos[0] < w and 0 <= mg_exit_pos[1] < h, f"MiniGrid exit pos {mg_exit_pos} out of bounds"
+    assert maze_grid[mg_start_pos[1], mg_start_pos[0]] == 0, f"MiniGrid agent_pos {mg_start_pos} not on corridor"
+    assert maze_grid[mg_exit_pos[1], mg_exit_pos[0]] == 0, f"MiniGrid exit_pos {mg_exit_pos} not on corridor"
+
+    # Now safe to create the environment
+    minigrid_env = MazeMiniGridEnv(maze_grid, mg_start_pos, mg_exit_pos)
+
     obs, info = minigrid_env.reset()  # Reset environment to get initial observation
 
     # Initialize path list to store agent's positions during the run
@@ -65,7 +76,7 @@ def main():
 
     # Run inference loop until completion of episode
     while not done:
-        minigrid_env.render(mode='human')  # Render the environment visually in human mode
+        minigrid_env.render()  # Render the environment visually in human mode
 
         # Get current agent position as (x, y)
         agent_x, agent_y = minigrid_env.agent_pos

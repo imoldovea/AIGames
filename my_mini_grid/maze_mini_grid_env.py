@@ -36,8 +36,12 @@ class MazeMiniGridEnv(MiniGridEnv):
         # Store start and exit positions, expect tuple format (x, y)
         self.start_pos = start_pos
         self.exit_pos = exit_pos
+        self.agent_pos = None
 
-    def gen_grid(self, width, height):
+        self.width = w
+        self.height = h
+
+    def _gen_grid(self, width, height):
         from minigrid.core.grid import Grid
 
         # Create an empty grid with specified width and height
@@ -64,6 +68,8 @@ class MazeMiniGridEnv(MiniGridEnv):
 
         # Set the agent's initial position and direction (0 means facing right)
         self.agent_pos = (sx, sy)
+        assert 0 <= sx < width and 0 <= sy < height, f"Agent pos {(sx, sy)} out of bounds for {width}x{height}"
+
         self.agent_dir = 0
 
         # Set mission description for the agent
