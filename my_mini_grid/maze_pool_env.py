@@ -56,6 +56,9 @@ class MazePoolEnv(gymnasium.Env):
     def step(self, action):
         self.current_step += 1
 
+        # Convert action to regular Python int if it's a numpy array
+        action = int(action)
+
         # Define action mappings: 0=up, 1=right, 2=down, 3=left
         action_map = {
             0: (-1, 0),  # up
@@ -73,7 +76,7 @@ class MazePoolEnv(gymnasium.Env):
         if (0 <= new_row < self.height and
                 0 <= new_col < self.width and
                 self.maze_grid[new_row, new_col] == 0):  # 0 = corridor, 1 = wall
-            self.agent_pos = [new_row, new_col]
+            self.agent_pos = [int(new_row), int(new_col)]  # Ensure it's a Python list with int values
             reward = -0.01  # Small negative reward for each step
         else:
             reward = -0.1  # Penalty for hitting wall or going out of bounds
