@@ -4,51 +4,125 @@ import numpy as np
 
 class MazePoolEnv(gymnasium.Env):
     def __init__(self, maze_grids, starts, exits):
-        super().__init__()  # Initialize the base gym environment class
-        self.maze_grids = maze_grids  # List of maze grid arrays representing the environment layouts
-        self.starts = starts  # List of start positions in each maze
-        self.exits = exits  # List of exit positions in each maze
-        self.num_mazes = len(maze_grids)  # Total number of mazes available
-        self.current_maze = 0  # Index to track which maze is currently active
+        super().__init__()
+        self.maze_grids = maze_grids
+        self.starts = starts
+        self.exits = exits
+        self.num_mazes = len(maze_grids)
+        self.current_maze = 0
 
-        # Determine parameters from the first maze grid to define observation space
+        # Determine parameters from the first maze grid
         grid_shape = maze_grids[0].shape
-        # Define observation space as a Box of 0s and 1s matching the maze grid shape
+        self.height, self.width = grid_shape
+
+        # Define observation space as flattened maze grid + agent position + target position
+        obs_size = grid_shape[0] * grid_shape[1] + 4  # maze + agent_pos + target_pos
         self.observation_space = gymnasium.spaces.Box(
-            low=0, high=1, shape=grid_shape, dtype=np.int8
+            low=0, high=1, shape=(obs_size,), dtype=np.float32
         )
-        # Define action space as discrete with 4 possible actions (e.g., up, down, left, right)
+
+        # Define action space: 0=up, 1=right, 2=down, 3=left
         self.action_space = gymnasium.spaces.Discrete(4)
 
-        self.state = None  # To hold the current state of the environment (current maze layout)
+        # Current state variables
+        self.agent_pos = None
+        self.target_pos = None
+        self.maze_grid = None
+        self.max_steps = 4 * self.height * self.width
+        self.current_step = 0
 
     def reset(self, *, seed=None, options=None):
-        super().reset(seed=seed)  # Reset the base environment with optional seed for reproducibility
+        super().reset(seed=seed)
         if seed is not None:
-            np.random.seed(seed)  # Seed numpy RNG if provided
-        # Randomly select an index of maze to start for this new episode
+            np.random.seed(seed)
+
+        # Randomly select a maze
         self.current_maze = np.random.randint(self.num_mazes)
-        # Set current state as a copy of the selected maze grid to avoid modifying original
-        self.state = self.maze_grids[self.current_maze].copy()
+        self.maze_grid = self.maze_grids[self.current_maze].copy()
 
-        info = {}  # Placeholder for any additional environment info returned on reset
+        # Set agent and target positions (convert from (row, col) to (row, col))
+        start_pos = self.starts[self.current_maze]
+        exit_pos = self.exits[self.current_maze]
 
-        # Return the initial observation (full maze grid) and info dictionary
-        return self.state, info
+        self.agent_pos = [int(start_pos[0]), int(start_pos[1])]  # [row, col]
+        self.target_pos = [int(exit_pos[0]), int(exit_pos[1])]  # [row, col]
+        self.current_step = 0
+
+        obs = self._get_observation()
+        info = {'maze_index': self.current_maze}
+
+        return obs, info
 
     def step(self, action):
-        # This method should update the environment state based on the action
-        # Currently placeholder values for reward, termination, and truncation
-        reward = 0  # No reward logic implemented yet
-        terminated = False  # Flag for episode termination (e.g., agent reached exit)
-        truncated = False  # Flag for external episode termination (e.g., time limit)
-        info = {}  # Dictionary for any additional info about this step
-        # Here you would add logic to update self.state based on action, check for goal reached, etc.
+        self.current_step += 1
 
-        # Return updated state, reward, termination flags, and info after taking action
-        return self.state, reward, terminated, truncated, info
+        # Define action mappings: 0=up, 1=right, 2=down, 3=left
+        action_map = {
+            0: (-1, 0),  # up
+            1: (0, 1),  # right
+            2: (1, 0),  # down
+            3: (0, -1)  # left
+        }
+
+        # Calculate new position
+        dr, dc = action_map[action]
+        new_row = self.agent_pos[0] + dr
+        new_col = self.agent_pos[1] + dc
+
+        # Check if move is valid (within bounds and not a wall)
+        if (0 <= new_row < self.height and
+                0 <= new_col < self.width and
+                self.maze_grid[new_row, new_col] == 0):  # 0 = corridor, 1 = wall
+            self.agent_pos = [new_row, new_col]
+            reward = -0.01  # Small negative reward for each step
+        else:
+            reward = -0.1  # Penalty for hitting wall or going out of bounds
+
+        # Check if reached target
+        terminated = (self.agent_pos[0] == self.target_pos[0] and
+                      self.agent_pos[1] == self.target_pos[1])
+        if terminated:
+            reward = 1.0  # Large reward for reaching target
+
+        # Check if episode should be truncated (max steps reached)
+        truncated = self.current_step >= self.max_steps
+
+        obs = self._get_observation()
+        info = {'maze_index': self.current_maze}
+
+        return obs, reward, terminated, truncated, info
+
+    def _get_observation(self):
+        # Flatten maze grid and concatenate with agent and target positions
+        maze_flat = self.maze_grid.flatten().astype(np.float32)
+
+        # Normalize positions to [0, 1]
+        agent_pos_norm = np.array([
+            self.agent_pos[0] / self.height,
+            self.agent_pos[1] / self.width
+        ], dtype=np.float32)
+
+        target_pos_norm = np.array([
+            self.target_pos[0] / self.height,
+            self.target_pos[1] / self.width
+        ], dtype=np.float32)
+
+        # Concatenate all parts
+        obs = np.concatenate([maze_flat, agent_pos_norm, target_pos_norm])
+        return obs
 
     def render(self, mode='human'):
-        # Optional method to render the environment, e.g., print maze or draw GUI
-        # Currently does nothing, can be implemented later if desired
-        pass
+        if mode == 'human':
+            # Create a visual representation
+            display_grid = self.maze_grid.copy().astype(str)
+            display_grid[display_grid == '0'] = '.'  # corridors
+            display_grid[display_grid == '1'] = '#'  # walls
+
+            # Mark agent and target
+            display_grid[self.agent_pos[0], self.agent_pos[1]] = 'A'
+            display_grid[self.target_pos[0], self.target_pos[1]] = 'T'
+
+            print(f"\nMaze {self.current_maze}, Step {self.current_step}")
+            for row in display_grid:
+                print(''.join(row))
+            print()

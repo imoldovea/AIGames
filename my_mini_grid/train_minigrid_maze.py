@@ -5,9 +5,23 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
 
 from maze_loader import load_mazes_h5
-from maze_mini_grid_env import MazeMiniGridEnv
 from maze_pool_env import MazePoolEnv
 from utils import setup_logging, clean_outupt_folder
+
+
+class Config:
+    TRAINING_TIMESTEPS = 10_000
+    TRAINING_SAMPLES = 10
+    TEST_SAMPLES = 5
+    MAX_TEST_STEPS = 200
+
+
+def validate_environments(train_env, test_env):
+    """Ensure training and testing environments are compatible"""
+    if train_env.observation_space.shape != test_env.observation_space.shape:
+        raise ValueError("Training and test environments have different observation spaces")
+    if train_env.action_space.n != test_env.action_space.n:
+        raise ValueError("Training and test environments have different action spaces")
 
 
 def main():
@@ -19,106 +33,123 @@ def main():
     gym_logger.info("Starting training...")
 
     # Load a batch of mazes, sampling 10 for training
-    maze_grids, starts, exits = load_mazes_h5("input/training_mazes.h5", samples=10)
+    maze_grids, starts, exits = load_mazes_h5("input/training_mazes.h5", samples=Config.TRAINING_SAMPLES)
 
     # Create a pool environment with randomized maze selection for training
     env = MazePoolEnv(maze_grids, starts, exits)
 
-    # Initialize PPO model with Multilayer Perceptron policy
+    # Use MlpPolicy for simple Box observation space
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_dir)
-    model.set_logger(gym_logger)  # Attach the custom logger to model
+    model.set_logger(gym_logger)
 
-    # Train the model for a total of 1000 timesteps with progress bar
-    model.learn(total_timesteps=1_000, progress_bar=True)
+    # Train the model for a total timesteps with progress bar
+    model.learn(total_timesteps=Config.TRAINING_TIMESTEPS, progress_bar=True)  # Increased timesteps
 
     # Save the trained model to disk
     model.save("output/ppo_minigrid_maze")
 
-    # Select the last maze from the batch for demonstration/testing
-    last_idx = -1
-    maze_grid = maze_grids[last_idx]
-    start_pos = starts[last_idx]
-    exit_pos = exits[last_idx]
+    # TESTING PHASE - Load different maze set from output/mazes.h5
+    print("\n" + "=" * 50)
+    print("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
+    print("=" * 50)
 
-    # In your HDF5, positions are (row, col)
-    start_row, start_col = map(int, start_pos)
-    exit_row, exit_col = map(int, exit_pos)
+    try:
+        # Load test mazes from output directory using utils.load_mazes
+        print("Loading test mazes from output/mazes.h5...")
+        test_maze_grids, test_starts, test_exits = load_mazes_h5("input/mazes.h5", samples=Config.TEST_SAMPLES)
 
-    h, w = maze_grid.shape
+        # Create new environment with test mazes
+        test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits)
+        # Validate compatibility
+        validate_environments(test_env, test_env)
 
-    # Sanity check: Are these within bounds?
-    assert 0 <= start_row < h and 0 <= start_col < w, "start_pos out of bounds"
-    assert 0 <= exit_row < h and 0 <= exit_col < w, "exit_pos out of bounds"
+        print(f"Successfully loaded {len(test_maze_grids)} test mazes")
 
-    # Make sure start/exit are on a corridor (0)
-    assert maze_grid[start_row, start_col] == 0, f"start_pos ({start_row},{start_col}) is not in a corridor!"
-    assert maze_grid[exit_row, exit_col] == 0, f"exit_pos ({exit_row},{exit_col}) is not in a corridor!"
+        # Test the model on multiple mazes
+        total_success = 0
+        total_tests = min(5, len(test_maze_grids))  # Test up to 5 mazes
 
-    # MiniGrid expects (x, y) = (col, row)!
-    mg_start_pos = (start_col, start_row)
-    mg_exit_pos = (exit_col, exit_row)
+        for test_idx in range(total_tests):
+            print(f"\n--- Testing on Maze {test_idx + 1}/{total_tests} ---")
 
-    # Extra checks before creating the environment
-    h, w = maze_grid.shape
-    assert 0 <= mg_start_pos[0] < w and 0 <= mg_start_pos[1] < h, f"MiniGrid start pos {mg_start_pos} out of bounds"
-    assert 0 <= mg_exit_pos[0] < w and 0 <= mg_exit_pos[1] < h, f"MiniGrid exit pos {mg_exit_pos} out of bounds"
-    assert maze_grid[mg_start_pos[1], mg_start_pos[0]] == 0, f"MiniGrid agent_pos {mg_start_pos} not on corridor"
-    assert maze_grid[mg_exit_pos[1], mg_exit_pos[0]] == 0, f"MiniGrid exit_pos {mg_exit_pos} not on corridor"
+            # Reset environment for testing
+            obs, info = test_env.reset()
+            maze_index = info['maze_index']
 
-    # Now safe to create the environment
-    minigrid_env = MazeMiniGridEnv(maze_grid, mg_start_pos, mg_exit_pos)
+            print(f"Testing on maze index {maze_index}")
+            # Remove or comment out the complexity line since it's not available in this context
+            # print(f"Maze complexity: {test_mazes[maze_index].complexity}")
 
-    obs, info = minigrid_env.reset()  # Reset environment to get initial observation
+            # Initialize tracking variables
+            solution = []
+            done = False
+            step_count = 0
+            max_test_steps = Config.MAX_TEST_STEPS
 
-    # Initialize path list to store agent's positions during the run
-    solution = []
-    done = False
+            # Run inference loop
+            while not done and step_count < max_test_steps:
+                # Store current agent position
+                agent_pos = test_env.agent_pos.copy()
+                solution.append(tuple(agent_pos))
 
-    # Run inference loop until completion of episode
-    while not done:
-        minigrid_env.render()  # Render the environment visually in human mode
+                # Predict next action (deterministic for testing)
+                action, _ = model.predict(obs, deterministic=True)
 
-        # Get current agent position as (x, y)
-        agent_x, agent_y = minigrid_env.agent_pos
+                # Take step in environment
+                obs, reward, terminated, truncated, info = test_env.step(action)
+                done = terminated or truncated
+                step_count += 1
 
-        # Append agent position as (row, col) to solution path
-        solution.append((agent_y, agent_x))
+                # Optional: print progress every 20 steps
+                if step_count % 20 == 0:
+                    print(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
 
-        # Predict next action based on current observation
-        action, _ = model.predict(obs)
+            # Evaluate results
+            if terminated:
+                print(f"  ✅ SUCCESS! Reached target in {step_count} steps")
+                total_success += 1
 
-        # Take action in the environment and observe results
-        obs, reward, terminated, truncated, info = minigrid_env.step(action)
+                # Remove maze visualization since test_mazes is not defined
+                # test_mazes[maze_index].set_solution(solution)
+                # test_mazes[maze_index].plot_maze(show_solution=True, show_path=False)
 
-        # Determine if episode finished via termination or truncation
-        done = terminated or truncated
+            elif truncated:
+                print(f"  ⏰ TIMEOUT after {step_count} steps")
+            else:
+                print(f"  ❌ FAILED after {step_count} steps")
 
-    # Optionally, render and animate the full solution path (commented out)
-    # import time
-    # for row, col in solution:
-    #     minigrid_env.agent_pos = (col, row)
-    #     minigrid_env.render()
-    #     time.sleep(0.1)
+            print(f"  Final position: {test_env.agent_pos}")
+            print(f"  Target position: {test_env.target_pos}")
+            print(f"  Path length: {len(solution)}")
 
-    # Show the final state where the agent ended up
-    minigrid_env.agent_pos = (solution[-1][1], solution[-1][0])
-    minigrid_env.render(mode='human')
+        # Print overall results
+        success_rate = (total_success / total_tests) * 100
+        print(f"\n{'=' * 50}")
+        print(f"OVERALL TEST RESULTS:")
+        print(f"Successful: {total_success}/{total_tests} ({success_rate:.1f}%)")
+        print(f"{'=' * 50}")
+
+    except FileNotFoundError as e:
+        print(f"❌ Error loading test mazes: {e}")
+        print("Make sure output/mazes.h5 exists and contains valid maze data")
+    except Exception as e:
+        print(f"❌ Error during testing: {e}")
+        logging.error(f"Testing error: {e}")
 
 
 def start_tensorboard(logdir):
     """Start TensorBoard server for training visualization"""
     tensorboard = subprocess.Popen(
-        ['tensorboard', '--logdir', logdir, '--port', '6006'],  # Run tensorboard process with log directory and port
-        stdout=subprocess.PIPE,  # Pipe stdout
-        stderr=subprocess.PIPE  # Pipe stderr
+        ['tensorboard', '--logdir', logdir, '--port', '6006'],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
     )
-    print("TensorBoard started. Open http://localhost:6006 in your browser")  # Notify user
-
-    return tensorboard  # Return handle for possible later termination
+    print("TensorBoard started. Open http://localhost:6006 in your browser")
+    return tensorboard
 
 
 if __name__ == "__main__":
     clean_outupt_folder()  # Clean output directory before starting
     setup_logging()  # Setup basic logging configuration
-    tensoresboard = start_tensorboard("output/")  # Start tensorboard on output logs
+    tensorboard_process = start_tensorboard("output/")  # Start tensorboard on output logs
     main()  # Run the main training and evaluation function
