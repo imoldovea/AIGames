@@ -1,6 +1,7 @@
 import logging
 import subprocess
 
+from gymnasium.wrappers import RecordVideo
 from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
 
@@ -36,7 +37,15 @@ def main():
     maze_grids, starts, exits = load_mazes_h5("input/training_mazes.h5", samples=Config.TRAINING_SAMPLES)
 
     # Create a pool environment with randomized maze selection for training
-    env = MazePoolEnv(maze_grids, starts, exits)
+    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="rgb_array")
+
+    # Wrap with RecordVideo to record training episodes
+    env = RecordVideo(
+        base_env,
+        video_folder="output/videos",
+        episode_trigger=lambda episode_id: episode_id % 50 == 0,  # Record every 50th episode
+        name_prefix="training"
+    )
 
     # Use MlpPolicy for simple Box observation space
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_dir)
@@ -58,9 +67,18 @@ def main():
     test_maze_grids, test_starts, test_exits = load_mazes_h5("input/mazes.h5", samples=Config.TEST_SAMPLES)
 
     # Create new environment with test mazes
-    test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits)
-    # Validate compatibility
-    validate_environments(env, test_env)
+    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="rgb_array")
+
+    # Wrap test environment with RecordVideo to record all test episodes
+    test_env = RecordVideo(
+        base_test_env,
+        video_folder="output/videos",
+        episode_trigger=lambda episode_id: True,  # Record all test episodes
+        name_prefix="testing"
+    )
+
+    # Validate compatibility (check base environments)
+    validate_environments(base_env, base_test_env)
 
     print(f"Successfully loaded {len(test_maze_grids)} test mazes")
 
@@ -88,7 +106,7 @@ def main():
         # Run inference loop
         while not done and step_count < max_test_steps:
             # Store current agent position - ensure it's a regular Python list
-            agent_pos = list(test_env.agent_pos)
+            agent_pos = list(test_env.unwrapped.agent_pos)  # Use unwrapped to access original env
             solution.append(tuple(agent_pos))
 
             # Predict next action (deterministic for testing)
@@ -117,16 +135,22 @@ def main():
         else:
             print(f"  ❌ FAILED after {step_count} steps")
 
-        print(f"  Final position: {test_env.agent_pos}")
-        print(f"  Target position: {test_env.target_pos}")
+        print(f"  Final position: {test_env.unwrapped.agent_pos}")
+        print(f"  Target position: {test_env.unwrapped.target_pos}")
         print(f"  Path length: {len(solution)}")
 
-        # Print overall results
-        success_rate = (total_success / total_tests) * 100
-        print(f"\n{'=' * 50}")
-        print(f"OVERALL TEST RESULTS:")
-        print(f"Successful: {total_success}/{total_tests} ({success_rate:.1f}%)")
-        print(f"{'=' * 50}")
+    # Print overall results
+    success_rate = (total_success / total_tests) * 100
+    print(f"\n{'=' * 50}")
+    print(f"OVERALL TEST RESULTS:")
+    print(f"Successful: {total_success}/{total_tests} ({success_rate:.1f}%)")
+    print(f"{'=' * 50}")
+
+    # Close environments to ensure videos are saved
+    env.close()
+    test_env.close()
+
+    print(f"\nVideos saved to: output/videos/")
 
 
 def start_tensorboard(logdir):

@@ -33,4 +33,6 @@ imageio
 gymnasium
 minigrid
 stable_baselines3
+moviepy
+
 
