@@ -37,7 +37,7 @@ def validate_environments(train_env, test_env):
 def main():
     log_dir = "output/"
 
-    # Configure gym logger to save multiple formats (log, csv, json, tensorboard)
+    # Configure gym logger
     gym_logger = configure(folder=log_dir, format_strings=["log", "csv", "json", "tensorboard"])
     gym_logger.set_level(logging.INFO)
     gym_logger.info("Starting training...")
@@ -50,17 +50,11 @@ def main():
         test_samples=Config.TEST_SAMPLES
     )
 
-    # Load test mazes from output directory using utils.load_mazes
-    print("Loading test mazes from output/mazes.h5...")
-    test_maze_grids, test_starts, test_exits = load_mazes_h5("input/mazes.h5", samples=Config.TEST_SAMPLES)
-    # Create new environment with test mazes
-    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="rgb_array")
-
     # Wrap with RecordVideo to record training episodes
     env = RecordVideo(
         base_env,
         video_folder="output/videos",
-        episode_trigger=lambda episode_id: episode_id % 50 == 0,  # Record every 50th episode
+        episode_trigger=lambda episode_id: episode_id % 50 == 0,
         name_prefix="training"
     )
 
@@ -68,11 +62,22 @@ def main():
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_dir)
     model.set_logger(gym_logger)
 
-    # Train the model for a total timesteps with progress bar
-    model.learn(total_timesteps=Config.TRAINING_TIMESTEPS, progress_bar=True)  # Increased timesteps
-
-    # Save the trained model to disk
+    # Train the model
+    model.learn(total_timesteps=Config.TRAINING_TIMESTEPS, progress_bar=True)
     model.save("output/ppo_minigrid_maze")
+
+    # TESTING PHASE
+    print("\n" + "=" * 50)
+    print("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
+    print("=" * 50)
+
+    # Wrap test environment with RecordVideo
+    test_env = RecordVideo(
+        base_test_env,
+        video_folder="output/videos",
+        episode_trigger=lambda episode_id: True,
+        name_prefix="testing"
+    )
 
     # TESTING PHASE - Load different maze set from output/mazes.h5
     print("\n" + "=" * 50)
