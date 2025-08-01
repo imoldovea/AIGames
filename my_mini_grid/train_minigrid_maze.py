@@ -20,9 +20,17 @@ class Config:
 def validate_environments(train_env, test_env):
     """Ensure training and testing environments are compatible"""
     if train_env.observation_space.shape != test_env.observation_space.shape:
-        raise ValueError("Training and test environments have different observation spaces")
+        raise ValueError(
+            f"Training and test environments have different observation spaces: "
+            f"Training shape: {train_env.observation_space.shape}, "
+            f"Test shape: {test_env.observation_space.shape}"
+        )
     if train_env.action_space.n != test_env.action_space.n:
-        raise ValueError("Training and test environments have different action spaces")
+        raise ValueError(
+            f"Training and test environments have different action spaces: "
+            f"Training actions: {train_env.action_space.n}, "
+            f"Test actions: {test_env.action_space.n}"
+        )
 
 
 def main():
