@@ -1,6 +1,7 @@
 import logging
 import subprocess
 
+import numpy as np  # Import numpy
 from gymnasium.wrappers import RecordVideo
 from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
@@ -41,11 +42,19 @@ def main():
     gym_logger.set_level(logging.INFO)
     gym_logger.info("Starting training...")
 
-    # Load a batch of mazes, sampling 10 for training
-    maze_grids, starts, exits = load_mazes_h5("input/training_mazes.h5", samples=Config.TRAINING_SAMPLES)
+    # Load and create environments with uniform padding
+    base_env, base_test_env = load_and_create_environments(
+        training_file="input/training_mazes.h5",
+        test_file="input/mazes.h5",
+        training_samples=Config.TRAINING_SAMPLES,
+        test_samples=Config.TEST_SAMPLES
+    )
 
-    # Create a pool environment with randomized maze selection for training
-    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="rgb_array")
+    # Load test mazes from output directory using utils.load_mazes
+    print("Loading test mazes from output/mazes.h5...")
+    test_maze_grids, test_starts, test_exits = load_mazes_h5("input/mazes.h5", samples=Config.TEST_SAMPLES)
+    # Create new environment with test mazes
+    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="rgb_array")
 
     # Wrap with RecordVideo to record training episodes
     env = RecordVideo(
@@ -70,12 +79,6 @@ def main():
     print("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
     print("=" * 50)
 
-    # Load test mazes from output directory using utils.load_mazes
-    print("Loading test mazes from output/mazes.h5...")
-    test_maze_grids, test_starts, test_exits = load_mazes_h5("input/mazes.h5", samples=Config.TEST_SAMPLES)
-
-    # Create new environment with test mazes
-    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="rgb_array")
 
     # Wrap test environment with RecordVideo to record all test episodes
     test_env = RecordVideo(
@@ -88,11 +91,11 @@ def main():
     # Validate compatibility (check base environments)
     validate_environments(base_env, base_test_env)
 
-    print(f"Successfully loaded {len(test_maze_grids)} test mazes")
+    print(f"Successfully loaded {len(base_test_env.maze_grids)} test mazes")
 
     # Test the model on multiple mazes
     total_success = 0
-    total_tests = min(5, len(test_maze_grids))  # Test up to 5 mazes
+    total_tests = min(5, len(base_test_env.maze_grids))  # Test up to 5 mazes
 
     for test_idx in range(total_tests):
         print(f"\n--- Testing on Maze {test_idx + 1}/{total_tests} ---")
@@ -171,6 +174,52 @@ def start_tensorboard(logdir):
     print("TensorBoard started. Open http://localhost:6006 in your browser")
     return tensorboard
 
+
+def load_and_create_environments(training_file, test_file, training_samples, test_samples):
+    """
+    Load training and test mazes, pad them to uniform size, and create environments.
+    
+    Args:
+        training_file (str): Path to training mazes HDF5 file
+        test_file (str): Path to test mazes HDF5 file
+        training_samples (int): Number of training mazes to load
+        test_samples (int): Number of test mazes to load
+        
+    Returns:
+        tuple: (base_env, base_test_env) - Training and test environments with uniformly padded mazes
+    """
+    # Load training and test mazes
+    maze_grids, starts, exits = load_mazes_h5(training_file, samples=training_samples)
+    test_maze_grids, test_starts, test_exits = load_mazes_h5(test_file, samples=test_samples)
+
+    # Find maximum dimensions across both sets
+    max_h = max(max(grid.shape[0] for grid in maze_grids),
+                max(grid.shape[0] for grid in test_maze_grids))
+    max_w = max(max(grid.shape[1] for grid in maze_grids),
+                max(grid.shape[1] for grid in test_maze_grids))
+
+    # Pad both sets to uniform size
+    def pad_to_size(grids, starts, target_h, target_w):
+        padded_grids = []
+        updated_starts = []
+        for grid, start in zip(grids, starts):
+            h, w = grid.shape
+            padded = np.ones((target_h, target_w), dtype=grid.dtype)
+            padded[:h, :w] = grid
+            padded_grids.append(padded)
+            start_row, start_col = start
+            updated_starts.append((start_row, start_col))
+        return padded_grids, updated_starts
+
+    # Pad both sets to the same dimensions
+    maze_grids, starts = pad_to_size(maze_grids, starts, max_h, max_w)
+    test_maze_grids, test_starts = pad_to_size(test_maze_grids, test_starts, max_h, max_w)
+
+    # Create environments with padded mazes
+    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="rgb_array")
+    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="rgb_array")
+
+    return base_env, base_test_env
 
 if __name__ == "__main__":
     clean_outupt_folder()  # Clean output directory before starting
