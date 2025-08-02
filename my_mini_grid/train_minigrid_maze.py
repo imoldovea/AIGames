@@ -209,7 +209,7 @@ def load_and_create_environments(training_file, test_file, training_samples, tes
         updated_starts = []
         for grid, start in zip(grids, starts):
             h, w = grid.shape
-            padded = np.ones((target_h, target_w), dtype=grid.dtype)
+            padded = np.full((target_h, target_w), 2, dtype=grid.dtype)  # Use 2 for padding
             padded[:h, :w] = grid
             padded_grids.append(padded)
             start_row, start_col = start
