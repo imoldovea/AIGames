@@ -10,6 +10,8 @@ from stable_baselines3.common.logger import configure
 from maze_loader import load_mazes_h5
 from maze_pool_env import MazePoolEnv
 from utils import setup_logging, clean_outupt_folder
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 
 class Config:
@@ -111,43 +113,82 @@ def run_test_episode(env, model, max_steps):
     done = False
     solution = []
 
-    # Create a separate env for human visualization
-    human_env = MazePoolEnv(
-        env.unwrapped.maze_grids,
-        env.unwrapped.starts,
-        env.unwrapped.exits,
-        render_mode="human"
-    )
-    
-    # Properly initialize the human environment by setting the current maze state
-    human_env.current_maze = env.unwrapped.current_maze
-    human_env.maze_grid = env.unwrapped.maze_grid.copy()  # This is the key fix!
-    human_env.agent_pos = env.unwrapped.agent_pos.copy()
-    human_env.target_pos = env.unwrapped.target_pos.copy()
-    human_env.current_step = env.unwrapped.current_step
+    # Set up matplotlib for interactive display
+    plt.ion()  # Turn on interactive mode
+    fig, ax = plt.subplots(figsize=(8, 8))
+    plt.show()
 
     while not done and step_count < max_steps:
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, terminated, truncated, info = env.step(action)
 
-        # Update and render human visualization
-        human_env.current_maze = env.unwrapped.current_maze
-        human_env.maze_grid = env.unwrapped.maze_grid.copy()  # Update maze grid too
-        human_env.agent_pos = env.unwrapped.agent_pos.copy()
-        human_env.target_pos = env.unwrapped.target_pos.copy()
-        human_env.current_step = env.unwrapped.current_step
-        human_env.render()  # This will show the human visualization
-        time.sleep(0.1)  # Add delay for better visualization
+        # Clear the previous plot
+        ax.clear()
+        
+        # Get current state from environment
+        maze_grid = env.unwrapped.maze_grid
+        agent_pos = env.unwrapped.agent_pos
+        target_pos = env.unwrapped.target_pos
+        current_maze = env.unwrapped.current_maze
+        
+        # Set up the plot
+        ax.set_xlim(-0.5, maze_grid.shape[1] - 0.5)
+        ax.set_ylim(maze_grid.shape[0] - 0.5, -0.5)
+        ax.set_aspect('equal')
+        
+        # Draw maze walls and corridors
+        for row in range(maze_grid.shape[0]):
+            for col in range(maze_grid.shape[1]):
+                if maze_grid[row, col] == 1:  # Wall
+                    rect = patches.Rectangle((col - 0.5, row - 0.5), 1, 1,
+                                           facecolor='black', edgecolor='gray')
+                    ax.add_patch(rect)
+                elif maze_grid[row, col] == 0:  # Corridor
+                    rect = patches.Rectangle((col - 0.5, row - 0.5), 1, 1,
+                                           facecolor='white', edgecolor='lightgray')
+                    ax.add_patch(rect)
+                else:  # Padding
+                    rect = patches.Rectangle((col - 0.5, row - 0.5), 1, 1,
+                                           facecolor='gray', edgecolor='darkgray')
+                    ax.add_patch(rect)
 
-        agent_pos = list(env.unwrapped.agent_pos)
-        solution.append(tuple(agent_pos))
+        # Draw agent (blue circle)
+        agent_circle = patches.Circle((agent_pos[1], agent_pos[0]), 0.3, 
+                                    facecolor='blue', edgecolor='darkblue', linewidth=2)
+        ax.add_patch(agent_circle)
+
+        # Draw target (red star)
+        target_circle = patches.Circle((target_pos[1], target_pos[0]), 0.3, 
+                                     facecolor='red', edgecolor='darkred', linewidth=2)
+        ax.add_patch(target_circle)
+
+        # Draw solution path so far
+        if len(solution) > 0:
+            path_array = np.array(solution)
+            ax.plot(path_array[:, 1], path_array[:, 0], 
+                   color='green', linewidth=2, alpha=0.7, linestyle='--')
+
+        # Set title and remove axes
+        ax.set_title(f"Maze {current_maze} - Step {step_count}\nAction: {action}, Reward: {reward:.3f}")
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        # Update the display
+        plt.draw()
+        plt.pause(0.1)  # Pause for animation effect
+
+        agent_pos_tuple = tuple(agent_pos)
+        solution.append(agent_pos_tuple)
         done = terminated or truncated
         step_count += 1
 
         if step_count % 20 == 0:
             logging.info(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
 
-    human_env.close()
+    # Close the plot window
+    plt.ioff()  # Turn off interactive mode
+    plt.close(fig)
+    
     return terminated, step_count, solution
 
 def main():
