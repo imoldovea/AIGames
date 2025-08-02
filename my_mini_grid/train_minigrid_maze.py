@@ -118,9 +118,13 @@ def run_test_episode(env, model, max_steps):
         env.unwrapped.exits,
         render_mode="human"
     )
+    
+    # Properly initialize the human environment by setting the current maze state
     human_env.current_maze = env.unwrapped.current_maze
+    human_env.maze_grid = env.unwrapped.maze_grid.copy()  # This is the key fix!
     human_env.agent_pos = env.unwrapped.agent_pos.copy()
     human_env.target_pos = env.unwrapped.target_pos.copy()
+    human_env.current_step = env.unwrapped.current_step
 
     while not done and step_count < max_steps:
         action, _ = model.predict(obs, deterministic=True)
@@ -128,6 +132,7 @@ def run_test_episode(env, model, max_steps):
 
         # Update and render human visualization
         human_env.current_maze = env.unwrapped.current_maze
+        human_env.maze_grid = env.unwrapped.maze_grid.copy()  # Update maze grid too
         human_env.agent_pos = env.unwrapped.agent_pos.copy()
         human_env.target_pos = env.unwrapped.target_pos.copy()
         human_env.current_step = env.unwrapped.current_step

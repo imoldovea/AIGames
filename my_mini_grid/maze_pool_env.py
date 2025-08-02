@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
-
 class Config:
     """Configuration class containing reward constants for the maze environment."""
 
@@ -137,6 +136,9 @@ class MazePoolEnv(gymnasium.Env):
         if mode is None:
             mode = self.render_mode
 
+        if self.maze_grid is None:
+            raise ValueError("Cannot render: maze_grid is not initialized.")
+
         if mode == 'human':
             # Create a visual representation
             display_grid = self.maze_grid.copy().astype(str)
@@ -202,3 +204,47 @@ class MazePoolEnv(gymnasium.Env):
         else:
             # For other modes, just do nothing or return None
             pass
+
+def run_test_episode(env, model, max_steps):
+    obs, info = env.reset()
+    step_count = 0
+    done = False
+    solution = []
+
+    # Create a separate env for human visualization with proper initialization
+    human_env = MazePoolEnv(
+        env.unwrapped.maze_grids,
+        env.unwrapped.starts,
+        env.unwrapped.exits,
+        render_mode="human"
+    )
+    # Properly initialize the human environment
+    human_env.reset()  # Add this line to initialize the environment
+    
+    # Now copy the current state
+    human_env.current_maze = env.unwrapped.current_maze
+    human_env.agent_pos = env.unwrapped.agent_pos.copy()
+    human_env.target_pos = env.unwrapped.target_pos.copy()
+
+    while not done and step_count < max_steps:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        # Update and render human visualization
+        human_env.current_maze = env.unwrapped.current_maze
+        human_env.agent_pos = env.unwrapped.agent_pos.copy()
+        human_env.target_pos = env.unwrapped.target_pos.copy()
+        human_env.current_step = env.unwrapped.current_step
+        human_env.render()  # This will show the human visualization
+        time.sleep(0.1)  # Add delay for better visualization
+
+        agent_pos = list(env.unwrapped.agent_pos)
+        solution.append(tuple(agent_pos))
+        done = terminated or truncated
+        step_count += 1
+
+        if step_count % 20 == 0:
+            logging.info(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
+
+    human_env.close()
+    return terminated, step_count, solution
