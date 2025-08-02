@@ -104,6 +104,47 @@ def test_model(model, base_test_env):
     test_env.close()
     return success_rate
 
+
+def run_test_episode(env, model, max_steps):
+    obs, info = env.reset()
+    step_count = 0
+    done = False
+    solution = []
+
+    # Create a separate env for human visualization
+    human_env = MazePoolEnv(
+        env.unwrapped.maze_grids,
+        env.unwrapped.starts,
+        env.unwrapped.exits,
+        render_mode="human"
+    )
+    human_env.current_maze = env.unwrapped.current_maze
+    human_env.agent_pos = env.unwrapped.agent_pos.copy()
+    human_env.target_pos = env.unwrapped.target_pos.copy()
+
+    while not done and step_count < max_steps:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        # Update and render human visualization
+        human_env.current_maze = env.unwrapped.current_maze
+        human_env.agent_pos = env.unwrapped.agent_pos.copy()
+        human_env.target_pos = env.unwrapped.target_pos.copy()
+        human_env.current_step = env.unwrapped.current_step
+        human_env.render()  # This will show the human visualization
+        time.sleep(0.1)  # Add delay for better visualization
+
+        agent_pos = list(env.unwrapped.agent_pos)
+        solution.append(tuple(agent_pos))
+        done = terminated or truncated
+        step_count += 1
+
+        if step_count % 20 == 0:
+            logging.info(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
+
+    human_env.close()
+    return terminated, step_count, solution
+
 def main():
     log_dir = "output/"
 
@@ -122,47 +163,6 @@ def main():
         episode_trigger=lambda episode_id: episode_id % 50 == 0,
         name_prefix="training"
     )
-
-    # Add small delay in the testing loop for better visualization
-    def run_test_episode(env, model, max_steps):
-        obs, info = env.reset()
-        step_count = 0
-        done = False
-        solution = []
-        
-        # Create a separate env for human visualization
-        human_env = MazePoolEnv(
-            env.unwrapped.maze_grids,
-            env.unwrapped.starts,
-            env.unwrapped.exits,
-            render_mode="human"
-        )
-        human_env.current_maze = env.unwrapped.current_maze
-        human_env.agent_pos = env.unwrapped.agent_pos.copy()
-        human_env.target_pos = env.unwrapped.target_pos.copy()
-        
-        while not done and step_count < max_steps:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = env.step(action)
-            
-            # Update and render human visualization
-            human_env.current_maze = env.unwrapped.current_maze
-            human_env.agent_pos = env.unwrapped.agent_pos.copy()
-            human_env.target_pos = env.unwrapped.target_pos.copy()
-            human_env.current_step = env.unwrapped.current_step
-            human_env.render()  # This will show the human visualization
-            time.sleep(0.1)  # Add delay for better visualization
-            
-            agent_pos = list(env.unwrapped.agent_pos)
-            solution.append(tuple(agent_pos))
-            done = terminated or truncated
-            step_count += 1
-            
-            if step_count % 20 == 0:
-                logging.info(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
-        
-        human_env.close()
-        return terminated, step_count, solution
 
     # Validate compatibility (check base environments)
     validate_environments(base_env, base_test_env)
