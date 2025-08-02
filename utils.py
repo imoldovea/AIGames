@@ -86,6 +86,9 @@ def setup_logging():
     console_handler.addFilter(CustomLogFilter(forbidden_logs))
     logger.addHandler(console_handler)
 
+    # Create output directory if it doesn't exist
+    os.makedirs(OUTPUT, exist_ok=True)
+
     # File handler for DEBUG level and above
     file_handler = logging.FileHandler(f"{OUTPUT}debug.log")
     file_handler.setLevel(logging.DEBUG)
