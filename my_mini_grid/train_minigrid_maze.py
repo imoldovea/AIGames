@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import time
 
 import numpy as np  # Import numpy
 from gymnasium.wrappers import RecordVideo
@@ -34,29 +35,12 @@ def validate_environments(train_env, test_env):
         )
 
 
-def main():
-    log_dir = "output/"
-
+def train_model(env, log_dir):
+    """Train the PPO model on the maze environment"""
     # Configure gym logger
     gym_logger = configure(folder=log_dir, format_strings=["log", "csv", "json", "tensorboard"])
     gym_logger.set_level(logging.INFO)
     gym_logger.info("Starting training...")
-
-    # Load and create environments with uniform padding
-    base_env, base_test_env = load_and_create_environments(
-        training_file="input/training_mazes.h5",
-        test_file="input/mazes.h5",
-        training_samples=Config.TRAINING_SAMPLES,
-        test_samples=Config.TEST_SAMPLES
-    )
-
-    # Wrap with RecordVideo to record training episodes
-    env = RecordVideo(
-        base_env,
-        video_folder="output/videos",
-        episode_trigger=lambda episode_id: episode_id % 50 == 0,
-        name_prefix="training"
-    )
 
     # Use MlpPolicy for simple Box observation space
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_dir)
@@ -65,24 +49,14 @@ def main():
     # Train the model
     model.learn(total_timesteps=Config.TRAINING_TIMESTEPS, progress_bar=True)
     model.save("output/ppo_minigrid_maze")
+    
+    return model
 
-    # TESTING PHASE
-    logging.info("\n" + "=" * 50)
-    logging.info("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
-    logging.info
-    # Wrap test environment with RecordVideo
-    test_env = RecordVideo(
-        base_test_env,
-        video_folder="output/videos",
-        episode_trigger=lambda episode_id: True,
-        name_prefix="testing"
-    )
-
-    # TESTING PHASE - Load different maze set from output/mazes.h5
+def test_model(model, base_test_env):
+    """Test the trained model on different maze set"""
     logging.info("\n" + "=" * 50)
     logging.info("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
     logging.info("=" * 50)
-
 
     # Wrap test environment with RecordVideo to record all test episodes
     test_env = RecordVideo(
@@ -92,60 +66,26 @@ def main():
         name_prefix="testing"
     )
 
-    # Validate compatibility (check base environments)
-    validate_environments(base_env, base_test_env)
-
     logging.info(f"Successfully loaded {len(base_test_env.maze_grids)} test mazes")
 
     # Test the model on multiple mazes
     total_success = 0
     total_tests = min(5, len(base_test_env.maze_grids))  # Test up to 5 mazes
 
+    # In the testing section, use the run_test_episode function
     for test_idx in range(total_tests):
         logging.info(f"\n--- Testing on Maze {test_idx + 1}/{total_tests} ---")
+        terminated, step_count, solution = run_test_episode(test_env, model, Config.MAX_TEST_STEPS)
 
-        # Reset environment for testing
-        obs, info = test_env.reset()
-        maze_index = info['maze_index']
+        maze_index = test_env.unwrapped.current_maze_index
 
         logging.info(f"Testing on maze index {maze_index}")
-        # Remove or comment out the complexity line since it's not available in this context
-        # logging.info(f"Maze complexity: {test_mazes[maze_index].complexity}")
-
-        # Initialize tracking variables
-        solution = []
-        done = False
-        step_count = 0
-        max_test_steps = Config.MAX_TEST_STEPS
-
-        # Run inference loop
-        while not done and step_count < max_test_steps:
-            # Store current agent position - ensure it's a regular Python list
-            agent_pos = list(test_env.unwrapped.agent_pos)  # Use unwrapped to access original env
-            solution.append(tuple(agent_pos))
-
-            # Predict next action (deterministic for testing)
-            action, _ = model.predict(obs, deterministic=True)
-
-            # Take step in environment
-            obs, reward, terminated, truncated, info = test_env.step(action)
-            done = terminated or truncated
-            step_count += 1
-
-            # Optional: print progress every 20 steps
-            if step_count % 20 == 0:
-                logging.info(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
 
         # Evaluate results
         if terminated:
             logging.info(f"  ✅ SUCCESS! Reached target in {step_count} steps")
             total_success += 1
-
-            # Remove maze visualization since test_mazes is not defined
-            # test_mazes[maze_index].set_solution(solution)
-            # test_mazes[maze_index].plot_maze(show_solution=True, show_path=False)
-
-        elif truncated:
+        elif step_count >= Config.MAX_TEST_STEPS:
             logging.info(f"  ⏰ TIMEOUT after {step_count} steps")
         else:
             logging.info(f"  ❌ FAILED after {step_count} steps")
@@ -161,10 +101,81 @@ def main():
     logging.info(f"Successful: {total_success}/{total_tests} ({success_rate:.1f}%)")
     logging.info(f"{'=' * 50}")
 
+    test_env.close()
+    return success_rate
+
+def main():
+    log_dir = "output/"
+
+    # Load and create environments with uniform padding
+    base_env, base_test_env = load_and_create_environments(
+        training_file="input/training_mazes.h5",
+        test_file="input/mazes.h5",
+        training_samples=Config.TRAINING_SAMPLES,
+        test_samples=Config.TEST_SAMPLES
+    )
+
+    # First wrap with RecordVideo
+    env = RecordVideo(
+        base_env,
+        video_folder="output/videos",
+        episode_trigger=lambda episode_id: episode_id % 50 == 0,
+        name_prefix="training"
+    )
+
+    # Add small delay in the testing loop for better visualization
+    def run_test_episode(env, model, max_steps):
+        obs, info = env.reset()
+        step_count = 0
+        done = False
+        solution = []
+        
+        # Create a separate env for human visualization
+        human_env = MazePoolEnv(
+            env.unwrapped.maze_grids,
+            env.unwrapped.starts,
+            env.unwrapped.exits,
+            render_mode="human"
+        )
+        human_env.current_maze = env.unwrapped.current_maze
+        human_env.agent_pos = env.unwrapped.agent_pos.copy()
+        human_env.target_pos = env.unwrapped.target_pos.copy()
+        
+        while not done and step_count < max_steps:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = env.step(action)
+            
+            # Update and render human visualization
+            human_env.current_maze = env.unwrapped.current_maze
+            human_env.agent_pos = env.unwrapped.agent_pos.copy()
+            human_env.target_pos = env.unwrapped.target_pos.copy()
+            human_env.current_step = env.unwrapped.current_step
+            human_env.render()  # This will show the human visualization
+            time.sleep(0.1)  # Add delay for better visualization
+            
+            agent_pos = list(env.unwrapped.agent_pos)
+            solution.append(tuple(agent_pos))
+            done = terminated or truncated
+            step_count += 1
+            
+            if step_count % 20 == 0:
+                logging.info(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
+        
+        human_env.close()
+        return terminated, step_count, solution
+
+    # Validate compatibility (check base environments)
+    validate_environments(base_env, base_test_env)
+
+    # Train the model
+    model = train_model(env, log_dir)
+    
+    # Test the model
+    test_model(model, base_test_env)
+
     # Close environments to ensure videos are saved
     env.close()
-    test_env.close()
-
+    
     logging.info(f"\nVideos saved to: output/videos/")
 
 
@@ -219,9 +230,9 @@ def load_and_create_environments(training_file, test_file, training_samples, tes
     maze_grids, starts = pad_to_size(maze_grids, starts, max_h, max_w)
     test_maze_grids, test_starts = pad_to_size(test_maze_grids, test_starts, max_h, max_w)
 
-    # Create environments with padded mazes and both render modes
-    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="human")  # Changed to "human"
-    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="human")  # Changed to "human"
+    # Create environments with padded mazes and support both render modes
+    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="rgb_array")  # Changed back to rgb_array
+    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="rgb_array")  # Changed back to rgb_array
 
     return base_env, base_test_env
 
