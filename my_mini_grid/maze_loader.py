@@ -19,16 +19,7 @@ class ColorPalette:
     text: str
     grid_lines: str
     padding: str = "#808080"  # Gray color for padding cells
-    wall_padding: str = "#000000"
-    corridor_padding: str = "#FFFFFF"
-    start_padding: str = "#666666"
-    exit_padding: str = "#333333"
-    solution_padding: str = "#888888"
-    visited_padding: str = "#DDDDDD"
-    current_padding: str = "#555555"
-    background_padding: str = "#FFFFFF"
-    text_padding: str = "#000000"
-    grid_lines_padding: str = "#CCCCCC"
+
 
 def pad_grids_to_uniform_shape_and_update_starts(grids, starts):
     """
@@ -60,7 +51,7 @@ def pad_grids_to_uniform_shape_and_update_starts(grids, starts):
     for grid, start in zip(grids, starts):
         h, w = grid.shape  # Current grid height and width
         # Create a new grid of shape (max_h, max_w) filled with 2s representing padding
-        padded = np.full((max_h, max_w), 2, dtype=grid.dtype)
+        padded = np.full((max_h, max_w), 3, dtype=grid.dtype)
 
         # Copy the original grid into the top-left corner of the padded grid
         padded[:h, :w] = grid

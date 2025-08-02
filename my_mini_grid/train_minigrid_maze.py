@@ -67,10 +67,9 @@ def main():
     model.save("output/ppo_minigrid_maze")
 
     # TESTING PHASE
-    print("\n" + "=" * 50)
-    print("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
-    print("=" * 50)
-
+    logging.info("\n" + "=" * 50)
+    logging.info("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
+    logging.info
     # Wrap test environment with RecordVideo
     test_env = RecordVideo(
         base_test_env,
@@ -80,9 +79,9 @@ def main():
     )
 
     # TESTING PHASE - Load different maze set from output/mazes.h5
-    print("\n" + "=" * 50)
-    print("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
-    print("=" * 50)
+    logging.info("\n" + "=" * 50)
+    logging.info("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
+    logging.info("=" * 50)
 
 
     # Wrap test environment with RecordVideo to record all test episodes
@@ -96,22 +95,22 @@ def main():
     # Validate compatibility (check base environments)
     validate_environments(base_env, base_test_env)
 
-    print(f"Successfully loaded {len(base_test_env.maze_grids)} test mazes")
+    logging.info(f"Successfully loaded {len(base_test_env.maze_grids)} test mazes")
 
     # Test the model on multiple mazes
     total_success = 0
     total_tests = min(5, len(base_test_env.maze_grids))  # Test up to 5 mazes
 
     for test_idx in range(total_tests):
-        print(f"\n--- Testing on Maze {test_idx + 1}/{total_tests} ---")
+        logging.info(f"\n--- Testing on Maze {test_idx + 1}/{total_tests} ---")
 
         # Reset environment for testing
         obs, info = test_env.reset()
         maze_index = info['maze_index']
 
-        print(f"Testing on maze index {maze_index}")
+        logging.info(f"Testing on maze index {maze_index}")
         # Remove or comment out the complexity line since it's not available in this context
-        # print(f"Maze complexity: {test_mazes[maze_index].complexity}")
+        # logging.info(f"Maze complexity: {test_mazes[maze_index].complexity}")
 
         # Initialize tracking variables
         solution = []
@@ -135,11 +134,11 @@ def main():
 
             # Optional: print progress every 20 steps
             if step_count % 20 == 0:
-                print(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
+                logging.info(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
 
         # Evaluate results
         if terminated:
-            print(f"  ✅ SUCCESS! Reached target in {step_count} steps")
+            logging.info(f"  ✅ SUCCESS! Reached target in {step_count} steps")
             total_success += 1
 
             # Remove maze visualization since test_mazes is not defined
@@ -147,26 +146,26 @@ def main():
             # test_mazes[maze_index].plot_maze(show_solution=True, show_path=False)
 
         elif truncated:
-            print(f"  ⏰ TIMEOUT after {step_count} steps")
+            logging.info(f"  ⏰ TIMEOUT after {step_count} steps")
         else:
-            print(f"  ❌ FAILED after {step_count} steps")
+            logging.info(f"  ❌ FAILED after {step_count} steps")
 
-        print(f"  Final position: {test_env.unwrapped.agent_pos}")
-        print(f"  Target position: {test_env.unwrapped.target_pos}")
-        print(f"  Path length: {len(solution)}")
+        logging.info(f"  Final position: {test_env.unwrapped.agent_pos}")
+        logging.info(f"  Target position: {test_env.unwrapped.target_pos}")
+        logging.info(f"  Path length: {len(solution)}")
 
     # Print overall results
     success_rate = (total_success / total_tests) * 100
-    print(f"\n{'=' * 50}")
-    print(f"OVERALL TEST RESULTS:")
-    print(f"Successful: {total_success}/{total_tests} ({success_rate:.1f}%)")
-    print(f"{'=' * 50}")
+    logging.info(f"\n{'=' * 50}")
+    logging.info(f"OVERALL TEST RESULTS:")
+    logging.info(f"Successful: {total_success}/{total_tests} ({success_rate:.1f}%)")
+    logging.info(f"{'=' * 50}")
 
     # Close environments to ensure videos are saved
     env.close()
     test_env.close()
 
-    print(f"\nVideos saved to: output/videos/")
+    logging.info(f"\nVideos saved to: output/videos/")
 
 
 def start_tensorboard(logdir):
@@ -176,7 +175,7 @@ def start_tensorboard(logdir):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
-    print("TensorBoard started. Open http://localhost:6006 in your browser")
+    logging.info("TensorBoard started. Open http://localhost:6006 in your browser")
     return tensorboard
 
 
@@ -220,9 +219,9 @@ def load_and_create_environments(training_file, test_file, training_samples, tes
     maze_grids, starts = pad_to_size(maze_grids, starts, max_h, max_w)
     test_maze_grids, test_starts = pad_to_size(test_maze_grids, test_starts, max_h, max_w)
 
-    # Create environments with padded mazes
-    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="rgb_array")
-    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="rgb_array")
+    # Create environments with padded mazes and both render modes
+    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="human")  # Changed to "human"
+    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="human")  # Changed to "human"
 
     return base_env, base_test_env
 
