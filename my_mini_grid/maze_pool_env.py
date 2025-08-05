@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
+
 class Config:
     """Configuration class containing reward constants for the maze environment."""
 
@@ -205,6 +206,7 @@ class MazePoolEnv(gymnasium.Env):
             # For other modes, just do nothing or return None
             pass
 
+
 def run_test_episode(env, model, max_steps):
     obs, info = env.reset()
     step_count = 0
@@ -220,7 +222,7 @@ def run_test_episode(env, model, max_steps):
     )
     # Properly initialize the human environment
     human_env.reset()  # Add this line to initialize the environment
-    
+
     # Now copy the current state
     human_env.current_maze = env.unwrapped.current_maze
     human_env.agent_pos = env.unwrapped.agent_pos.copy()
