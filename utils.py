@@ -126,6 +126,7 @@ def clean_outupt_folder():
         for folder in glob.glob(folder_pattern):
             if os.path.isdir(folder):  # Check if it's a directory
                 # Remove the entire folder and its contents
+
                 shutil.rmtree(folder)
                 print(f"Deleted folder: {folder}")
 
