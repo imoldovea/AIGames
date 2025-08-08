@@ -1,7 +1,6 @@
 import logging
 import os
 import subprocess
-import time
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -31,61 +30,30 @@ class Config:
 
 
 class ProgressLoggingCallback(BaseCallback):
-    """Logs periodic training progress to the standard logger.
-    Provides a progress surrogate when progress bars are not visible.
-    """
-
+    """Shows a progress bar for training progress using tqdm."""
     def __init__(self, total_timesteps: int, min_log_interval_sec: float = 5.0, min_step_delta: int = 1000):
         super().__init__()
         self.total_timesteps = int(total_timesteps)
-        self.min_log_interval_sec = float(min_log_interval_sec)
-        self.min_step_delta = int(min_step_delta)
-        self._start_time = None
-        self._last_log_time = 0.0
-        self._last_logged_steps = 0
+        self.pbar = None
 
     def _on_training_start(self) -> None:
-        now = time.time()
-        self._start_time = now
-        self._last_log_time = now
-        self._last_logged_steps = 0
-        logging.info(f"Training started: target timesteps={self.total_timesteps:,}")
+        """Initialize progress bar at start of training"""
+        self.pbar = tqdm(total=self.total_timesteps, desc="Training Progress",
+                         unit="steps", ncols=100,
+                         bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
 
     def _on_step(self) -> bool:
-        """Required implementation of abstract method from BaseCallback"""
+        """Update progress bar on each step"""
+        if self.pbar is not None:
+            current_steps = int(self.model.num_timesteps)
+            self.pbar.n = current_steps
+            self.pbar.refresh()
         return True
 
-    def _maybe_log(self):
-        current_steps = int(self.model.num_timesteps)
-        now = time.time()
-        if (current_steps - self._last_logged_steps) < self.min_step_delta and (
-                now - self._last_log_time) < self.min_log_interval_sec:
-            return
-        elapsed = max(1e-6, now - (self._start_time or now))
-        rate = current_steps / elapsed  # steps/sec
-        pct = (current_steps / max(1, self.total_timesteps)) * 100.0
-        remaining = max(0, self.total_timesteps - current_steps)
-        eta_sec = remaining / rate if rate > 0 else float('inf')
-        eta_min = eta_sec / 60.0 if eta_sec != float('inf') else float('inf')
-        logging.info(
-            f"Training progress: {current_steps:,}/{self.total_timesteps:,} ({pct:5.1f}%) | "
-            f"rate: {rate:,.0f} steps/s | elapsed: {elapsed / 60.0:,.1f} min | ETA: {eta_min:,.1f} min"
-        )
-        self._last_logged_steps = current_steps
-        self._last_log_time = now
-
-    def _on_rollout_end(self) -> None:
-        # Called at the end of each rollout; good cadence to log
-        self._maybe_log()
-
     def _on_training_end(self) -> None:
-        # Final summary line
-        current_steps = int(self.model.num_timesteps)
-        total = max(current_steps, self.total_timesteps)
-        elapsed = max(1e-6, time.time() - (self._start_time or time.time()))
-        logging.info(
-            f"Training complete: {current_steps:,}/{total:,} (100.0%) | total elapsed: {elapsed / 60.0:,.1f} min"
-        )
+        """Close progress bar at end of training"""
+        if self.pbar is not None:
+            self.pbar.close()
 
 
 def validate_environments(train_env, test_env):
@@ -278,6 +246,12 @@ def cleanup_visual_display(visual_handler):
 
 
 def test_model(model, base_test_env, enable_visual=True):
+    if Config.ENABLE_TEST_VIDEO:
+        logging.info("Test video recording is enabled")
+        video_dir = "output/videos"
+        if not os.path.exists(video_dir):
+            logging.info(f"Creating video directory: {video_dir}")
+            os.makedirs(video_dir, exist_ok=True)
     """Test the trained model on different maze set with optional visual display"""
     logging.info("\n" + "=" * 50)
     logging.info("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")

@@ -1,3 +1,5 @@
+import logging
+import time
 from io import BytesIO
 
 import gymnasium
@@ -49,6 +51,10 @@ class MazePoolEnv(gymnasium.Env):
         self.max_steps = Config.MAX_STEPS_MULTIPLIER * self.height * self.width
         self.current_step = 0
 
+        # Path tracing
+        self.path = []  # list of (row, col) visited positions
+        self.show_trace = True  # toggle to render the path
+
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         if seed is not None:
@@ -65,6 +71,9 @@ class MazePoolEnv(gymnasium.Env):
         self.agent_pos = [int(start_pos[0]), int(start_pos[1])]  # [row, col]
         self.target_pos = [int(exit_pos[0]), int(exit_pos[1])]  # [row, col]
         self.current_step = 0
+
+        # Initialize path with starting position
+        self.path = [(self.agent_pos[0], self.agent_pos[1])]
 
         obs = self._get_observation()
         info = {'maze_index': self.current_maze}
@@ -96,6 +105,9 @@ class MazePoolEnv(gymnasium.Env):
                 self.maze_grid[new_row, new_col] == 0):  # 0 = corridor, 1 = wall
             self.agent_pos = [int(new_row), int(new_col)]  # Ensure it's a Python list with int values
             reward = Config.STEP_REWARD  # Small negative reward for each step
+            # Append to path on successful move
+            if not self.path or self.path[-1] != (self.agent_pos[0], self.agent_pos[1]):
+                self.path.append((self.agent_pos[0], self.agent_pos[1]))
         else:
             reward = Config.WALL_PENALTY  # Penalty for hitting wall or going out of bounds
 
@@ -146,7 +158,14 @@ class MazePoolEnv(gymnasium.Env):
             display_grid[display_grid == '0'] = '.'  # corridors
             display_grid[display_grid == '1'] = '#'  # walls
 
-            # Mark agent and target
+            # Draw path trace if available
+            if self.show_trace and getattr(self, 'path', None):
+                for r, c in self.path:
+                    # Don't overwrite walls
+                    if 0 <= r < self.height and 0 <= c < self.width and self.maze_grid[r, c] == 0:
+                        display_grid[r, c] = 'o'
+
+            # Mark agent and target (override path symbol at those cells)
             display_grid[self.agent_pos[0], self.agent_pos[1]] = 'A'
             display_grid[self.target_pos[0], self.target_pos[1]] = 'T'
 
@@ -174,6 +193,12 @@ class MazePoolEnv(gymnasium.Env):
                         rect = patches.Rectangle((col, row), 1, 1,
                                                  linewidth=0, facecolor='white')
                         ax.add_patch(rect)
+
+            # Draw path trace as a line connecting centers of visited cells
+            if self.show_trace and getattr(self, 'path', None) and len(self.path) > 1:
+                xs = [c + 0.5 for (_, c) in self.path]
+                ys = [r + 0.5 for (r, _) in self.path]
+                ax.plot(xs, ys, color='orange', linewidth=2, alpha=0.8)
 
             # Draw agent (blue circle)
             agent_circle = patches.Circle((self.agent_pos[1] + 0.5, self.agent_pos[0] + 0.5),
