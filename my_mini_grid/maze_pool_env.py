@@ -3,6 +3,9 @@ import time
 from io import BytesIO
 
 import gymnasium
+import matplotlib
+
+matplotlib.use('Agg')  # Use non-interactive backend for video generation
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,16 +15,22 @@ from PIL import Image
 class Config:
     """Configuration class containing reward constants for the maze environment."""
 
-    # Reward constants
-    STEP_REWARD = -0.01  # Small negative reward for each step
-    WALL_PENALTY = -0.1  # Penalty for hitting wall or going out of bounds
-    SUCCESS_REWARD = 1.0  # Large reward for reaching target
+    # Reward constants (tuned for better learning)
+    STEP_REWARD = -0.001  # Smaller per-step penalty
+    WALL_PENALTY = -0.01  # Reduced penalty for invalid moves
+    SUCCESS_REWARD = 10.0  # Strong positive reward for reaching target
 
     # Episode limits
-    MAX_STEPS_MULTIPLIER = 4  # Multiplier for calculating max steps based on maze size
+    MAX_STEPS_MULTIPLIER = 2  # Shorter episodes to curb prolonged negative returns
 
 
 class MazePoolEnv(gymnasium.Env):
+    # Gymnasium metadata to support recording/rendering
+    metadata = {
+        "render_modes": ["human", "rgb_array"],
+        "render_fps": 30,
+    }
+
     def __init__(self, maze_grids, starts, exits, render_mode=None):
         super().__init__()
         self.maze_grids = maze_grids
@@ -221,7 +230,9 @@ class MazePoolEnv(gymnasium.Env):
             fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
             buf.seek(0)
             img = Image.open(buf)
-            rgb_array = np.array(img)
+            # Ensure 3-channel RGB array for video recording compatibility
+            img = img.convert("RGB")
+            rgb_array = np.array(img, dtype=np.uint8)
             buf.close()
             plt.close(fig)
 
