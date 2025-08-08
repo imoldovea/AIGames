@@ -1,5 +1,4 @@
 import cProfile
-import glob
 import io
 import json
 import logging
@@ -76,7 +75,7 @@ def setup_logging():
     forbidden_logs = [
         "findfont", "werkzeug", "werkzeug:_internal.py", "dash-update-component",
         "internal.py", "pydevd", "TF_ENABLE_ONEDNN_OPTS",
-        "Training batch", "tqdm", "client.py", "HTTP Request", "wandb"
+        "Training batch", "client.py", "HTTP Request", "wandb"
     ]
 
     # Console handler for INFO level and above
@@ -100,65 +99,15 @@ def setup_logging():
 
 
 def clean_outupt_folder():
-    # Delete all OUTPUT folder content
+    """Remove absolutely everything in the output folder."""
     if config.getboolean("DEFAULT", "retrain_model", fallback=True):
-        for pattern in ["*.html", "*.pdf", "*.mp4", "*.prof", "*.csv", "*.json", "*.png", "*.properties",
-                        "*.txt", "*.png", "*.gif", "*.npy", "*.pt", "*.mp4", "events.out.tfevents.*", ]:
-            for filename in glob.glob(os.path.join(OUTPUT, pattern)):
-                os.remove(filename)
-        # Remove /exit subfolder and its contents if exist
-        exit_folder = os.path.join(OUTPUT, "exit")
-        if os.path.exists(exit_folder):
-            for filename in glob.glob(os.path.join(exit_folder, "*")):
-                os.remove(filename)
-            os.rmdir(exit_folder)
+        if os.path.exists(OUTPUT):
+            # Remove the entire output directory and its contents
+            shutil.rmtree(OUTPUT)
 
-        # Remove /exit subfolder and its contents if exist
-        exit_folder = os.path.join(OUTPUT, "activations")
-        if os.path.exists(exit_folder):
-            for filename in glob.glob(os.path.join(exit_folder, "*")):
-                os.remove(filename)
-            os.rmdir(exit_folder)
-
-        # Remove tensorboard subfolder and its contents if exist
-        folder_pattern = os.path.join(OUTPUT, "PPO*")  # Use wildcard for matching
-        # Use glob to find all folders matching the pattern
-        for folder in glob.glob(folder_pattern):
-            if os.path.isdir(folder):  # Check if it's a directory
-                # Remove the entire folder and its contents
-
-                shutil.rmtree(folder)
-                print(f"Deleted folder: {folder}")
-
-        # Remove /genomes subfolder and its contents if exist
-        exit_folder = os.path.join(OUTPUT, "genomes")
-        if os.path.exists(exit_folder):
-            for filename in glob.glob(os.path.join(exit_folder, "*")):
-                os.remove(filename)
-            os.rmdir(exit_folder)
-
-        # Remove /tensorboard subfolder and its contents if exist (including subdirectories)
-        tensorboard_folder = os.path.join(OUTPUT, "tensorboard_data")
-        if os.path.exists(tensorboard_folder):
-            shutil.rmtree(tensorboard_folder)
-
-        # Remove /frames subfolder and its contents if exist (including subdirectories)
-        tensorboard_folder = os.path.join(OUTPUT, "frames")
-        if os.path.exists(tensorboard_folder):
-            shutil.rmtree(tensorboard_folder)
-
-        # Remove .wandb subfolder and its contents if exist
-        exit_folder = os.path.join(OUTPUT, "wandb")
-        if os.path.exists(exit_folder):
-            for filename in glob.glob(os.path.join(exit_folder, "*")):
-                os.remove(filename)
-            os.rmdir(exit_folder)
-
-        os.makedirs(OUTPUT, exist_ok=True)
-        logging.info(f"{OUTPUT}cleared...")
-    # delete the content of output/debug.log
-    with open(f"{OUTPUT}debug.log", "w") as f:
-        f.write("")
+        # Recreate the empty output directory
+        os.makedirs(OUTPUT)
+        logging.info(f"{OUTPUT} cleared completely...")
 
 
 # Define a custom PDF class (optional, for adding a header)

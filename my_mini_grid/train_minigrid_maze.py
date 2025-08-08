@@ -1,12 +1,18 @@
 import logging
+import os
 import subprocess
+import time
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np  # Import numpy
+import torch
 from gymnasium.wrappers import RecordVideo
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import EvalCallback, BaseCallback, CallbackList
+from stable_baselines3.common.logger import configure as sb3_configure
+from stable_baselines3.common.monitor import Monitor
+from tqdm import tqdm
 
 from maze_loader import load_mazes_h5
 from maze_pool_env import MazePoolEnv
@@ -19,6 +25,67 @@ class Config:
     TEST_SAMPLES = 5
     VALIDATION_SAMPLES = 5
     MAX_TEST_STEPS = 50  # 200
+    ENABLE_TRAINING_VIDEO = False  # If False, disable video generation during training
+    ENABLE_VALIDATION_VIDEO = False  # If True, record validation episodes during EvalCallback
+    ENABLE_TEST_VIDEO = True  # If True, record videos during testing ("flagf")
+
+
+class ProgressLoggingCallback(BaseCallback):
+    """Logs periodic training progress to the standard logger.
+    Provides a progress surrogate when progress bars are not visible.
+    """
+
+    def __init__(self, total_timesteps: int, min_log_interval_sec: float = 5.0, min_step_delta: int = 1000):
+        super().__init__()
+        self.total_timesteps = int(total_timesteps)
+        self.min_log_interval_sec = float(min_log_interval_sec)
+        self.min_step_delta = int(min_step_delta)
+        self._start_time = None
+        self._last_log_time = 0.0
+        self._last_logged_steps = 0
+
+    def _on_training_start(self) -> None:
+        now = time.time()
+        self._start_time = now
+        self._last_log_time = now
+        self._last_logged_steps = 0
+        logging.info(f"Training started: target timesteps={self.total_timesteps:,}")
+
+    def _on_step(self) -> bool:
+        """Required implementation of abstract method from BaseCallback"""
+        return True
+
+    def _maybe_log(self):
+        current_steps = int(self.model.num_timesteps)
+        now = time.time()
+        if (current_steps - self._last_logged_steps) < self.min_step_delta and (
+                now - self._last_log_time) < self.min_log_interval_sec:
+            return
+        elapsed = max(1e-6, now - (self._start_time or now))
+        rate = current_steps / elapsed  # steps/sec
+        pct = (current_steps / max(1, self.total_timesteps)) * 100.0
+        remaining = max(0, self.total_timesteps - current_steps)
+        eta_sec = remaining / rate if rate > 0 else float('inf')
+        eta_min = eta_sec / 60.0 if eta_sec != float('inf') else float('inf')
+        logging.info(
+            f"Training progress: {current_steps:,}/{self.total_timesteps:,} ({pct:5.1f}%) | "
+            f"rate: {rate:,.0f} steps/s | elapsed: {elapsed / 60.0:,.1f} min | ETA: {eta_min:,.1f} min"
+        )
+        self._last_logged_steps = current_steps
+        self._last_log_time = now
+
+    def _on_rollout_end(self) -> None:
+        # Called at the end of each rollout; good cadence to log
+        self._maybe_log()
+
+    def _on_training_end(self) -> None:
+        # Final summary line
+        current_steps = int(self.model.num_timesteps)
+        total = max(current_steps, self.total_timesteps)
+        elapsed = max(1e-6, time.time() - (self._start_time or time.time()))
+        logging.info(
+            f"Training complete: {current_steps:,}/{total:,} (100.0%) | total elapsed: {elapsed / 60.0:,.1f} min"
+        )
 
 
 def validate_environments(train_env, test_env):
@@ -39,7 +106,10 @@ def validate_environments(train_env, test_env):
 
 def train_model(env, log_dir, eval_env=None):
     """Train the PPO model on the maze environment"""
-    import os
+
+    # Check if CUDA is available and set device accordingly
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logging.info(f"Using device: {device}")
 
     os.makedirs(log_dir, exist_ok=True)
     logging.info("Starting training...")
@@ -47,8 +117,8 @@ def train_model(env, log_dir, eval_env=None):
     model = PPO(
         "MlpPolicy",
         env,
-        verbose=1,
-        tensorboard_log=log_dir,  # PPO will create subdirectories here
+        verbose=0,
+        tensorboard_log=log_dir,
         learning_rate=3e-4,
         n_steps=2048,
         batch_size=64,
@@ -58,24 +128,37 @@ def train_model(env, log_dir, eval_env=None):
         clip_range=0.2,
         ent_coef=0.0,
         vf_coef=0.5,
-        max_grad_norm=0.5
+        max_grad_norm=0.5,
+        device=device  # Add device parameter
     )
 
+    # Configure evaluation callback
     eval_callback = EvalCallback(
         eval_env,
         best_model_save_path='output/best_model',
         log_path='output/validation_logs',
-        eval_freq=100,  # Evaluate every 1000 steps
+        eval_freq=100,  # Evaluate every 100 steps
         deterministic=True,
-        render=False
+        render=False,
+        verbose=0
     )
+
+    # Configure SB3 logger to avoid stdout and only log to files/tensorboard
+    sb3_logger = sb3_configure(log_dir, ["csv", "tensorboard"])  # no "stdout" output format
+    model.set_logger(sb3_logger)
+
+    # Progress logging callback to emulate progress bar via logs
+    progress_cb = ProgressLoggingCallback(total_timesteps=Config.TRAINING_TIMESTEPS,
+                                          min_log_interval_sec=5.0,
+                                          min_step_delta=5_000)
+    callbacks = CallbackList([eval_callback, progress_cb])
 
     model.learn(
         total_timesteps=Config.TRAINING_TIMESTEPS,
         progress_bar=True,
         tb_log_name="PPO_MazePool",
         log_interval=1,
-        callback=eval_callback
+        callback=callbacks,
     )
 
     os.makedirs("output", exist_ok=True)
@@ -200,13 +283,19 @@ def test_model(model, base_test_env, enable_visual=True):
     logging.info("TESTING TRAINED MODEL ON DIFFERENT MAZE SET")
     logging.info("=" * 50)
 
-    # Wrap test environment with RecordVideo to record all test episodes
-    test_env = RecordVideo(
-        base_test_env,
-        video_folder="output/videos",
-        episode_trigger=lambda episode_id: True,  # Record all test episodes
-        name_prefix="testing"
-    )
+    # Optionally wrap test environment with RecordVideo
+    if Config.ENABLE_TEST_VIDEO:
+        logging.info("Testing video recording is ENABLED (Config.ENABLE_TEST_VIDEO=True)")
+        test_env = RecordVideo(
+            base_test_env,
+            video_folder="output/videos",
+            episode_trigger=lambda episode_id: True,  # Record all test episodes
+            name_prefix="testing"
+        )
+        logging.info("Testing videos will be saved to: output/videos/")
+    else:
+        logging.info("Testing video recording is DISABLED (Config.ENABLE_TEST_VIDEO=False)")
+        test_env = base_test_env
 
     logging.info(f"Successfully loaded {len(base_test_env.maze_grids)} test mazes")
 
@@ -215,7 +304,7 @@ def test_model(model, base_test_env, enable_visual=True):
     total_tests = min(5, len(base_test_env.maze_grids))  # Test up to 5 mazes
 
     # Test each maze with optional visual display
-    for test_idx in range(total_tests):
+    for test_idx in tqdm(range(total_tests), desc="Testing mazes", unit="maze"):
         logging.info(f"\n--- Testing on Maze {test_idx + 1}/{total_tests} ---")
         terminated, step_count, solution = run_test_episode(
             test_env, model, Config.MAX_TEST_STEPS, enable_visual=enable_visual
@@ -265,16 +354,27 @@ def main():
         validation_samples=Config.VALIDATION_SAMPLES
     )
 
-    # First wrap with RecordVideo for the training environment
-    env = RecordVideo(
-        base_env,
-        video_folder="output/videos",
-        episode_trigger=lambda episode_id: episode_id % 50 == 0,
-        name_prefix="training"
-    )
+    # Conditionally wrap with RecordVideo for the training environment
+    if Config.ENABLE_TRAINING_VIDEO:
+        env = RecordVideo(
+            base_env,
+            video_folder="output/videos",
+            episode_trigger=lambda episode_id: episode_id % 50 == 0,
+            name_prefix="training"
+        )
+    else:
+        env = base_env
 
-    # For evaluation environment (do not wrap with RecordVideo)
-    eval_env = validation_env
+    # For evaluation environment, optionally wrap with RecordVideo based on config
+    if Config.ENABLE_VALIDATION_VIDEO:
+        eval_env = RecordVideo(
+            validation_env,
+            video_folder="output/validation_videos",
+            episode_trigger=lambda episode_id: True,  # Record all validation episodes
+            name_prefix="validation"
+        )
+    else:
+        eval_env = validation_env
 
     # Validate compatibility (check base environments)
     validate_environments(base_env, validation_env)
@@ -286,7 +386,16 @@ def main():
     # Close environments to ensure videos are saved
     env.close()
 
-    logging.info(f"\nVideos saved to: output/videos/")
+    if Config.ENABLE_TRAINING_VIDEO:
+        logging.info(f"\nTraining videos saved to: output/videos/")
+    else:
+        logging.info("\nTraining video recording is disabled (Config.ENABLE_TRAINING_VIDEO=False)")
+
+    if Config.ENABLE_VALIDATION_VIDEO:
+        logging.info(f"Validation videos saved to: output/validation_videos/")
+    else:
+        logging.info("Validation video recording is disabled (Config.ENABLE_VALIDATION_VIDEO=False)")
+
     logging.info(f"TensorBoard logs saved to: {log_dir}tensorboard/")
     logging.info("To view TensorBoard, run: tensorboard --logdir output/tensorboard --port 6006")
 
@@ -365,10 +474,14 @@ def load_and_create_environments(training_file, test_file, validation_file, trai
     val_maze_grids, val_starts = pad_to_size(val_maze_grids, val_starts, max_h, max_w)
 
     # Create environments with padded mazes and support both render modes
-    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="rgb_array")  # Changed back to rgb_array
-    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits,
-                                render_mode="rgb_array")  # Changed back to rgb_array
+    base_env = MazePoolEnv(maze_grids, starts, exits, render_mode="rgb_array")
+    base_test_env = MazePoolEnv(test_maze_grids, test_starts, test_exits, render_mode="rgb_array")
     validation_env = MazePoolEnv(val_maze_grids, val_starts, val_exits, render_mode="rgb_array")
+
+    # Wrap environments with Monitor to ensure correct episode stats (innermost wrapper)
+    base_env = Monitor(base_env)
+    base_test_env = Monitor(base_test_env)
+    validation_env = Monitor(validation_env)
 
     return base_env, base_test_env, validation_env
 
@@ -376,5 +489,17 @@ def load_and_create_environments(training_file, test_file, validation_file, trai
 if __name__ == "__main__":
     clean_outupt_folder()  # Clean output directory before starting
     setup_logging()  # Setup basic logging configuration
+
+    # Optional environment flag to enable testing video generation ("flagf")
+    try:
+        import os as _os
+
+        _flagf = _os.environ.get("FLAGF", "") or _os.environ.get("ENABLE_TEST_VIDEO", "")
+        if str(_flagf).lower() in ("1", "true", "yes", "y", "on"):  # simple truthy check
+            Config.ENABLE_TEST_VIDEO = True
+            logging.info("FLAGF detected via environment: ENABLE_TEST_VIDEO set to True")
+    except Exception as _e:
+        logging.warning(f"Could not parse FLAGF environment variable: {_e}")
+
     tensorboard_process = start_tensorboard("output/")  # Start tensorboard on output logs
     main()  # Run the main training and evaluation function
