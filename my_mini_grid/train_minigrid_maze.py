@@ -20,7 +20,7 @@ from utils import setup_logging, clean_outupt_folder
 
 
 class Config:
-    TRAINING_TIMESTEPS = 10_1000  # 10_000
+    TRAINING_TIMESTEPS = 10_000  # 10_000
     TRAINING_SAMPLES = 10  # 10000
     TEST_SAMPLES = 5
     VALIDATION_SAMPLES = 5
