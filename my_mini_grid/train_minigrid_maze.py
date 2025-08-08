@@ -1,7 +1,10 @@
-import logging
+import subprocess
+import torch
+import matplotlib
 import subprocess
 
 import matplotlib
+import torch
 
 matplotlib.use('Agg')  # Use non-interactive backend for video generation
 import matplotlib.patches as patches
@@ -18,19 +21,20 @@ from maze_loader import load_mazes_h5
 from maze_pool_env import MazePoolEnv
 import sys
 import os
+import logging
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import setup_logging, clean_outupt_folder
 
 
 class Config:
-    TRAINING_TIMESTEPS = 100  # 10_000
+    TRAINING_TIMESTEPS = 10_000  # 10_000
     TRAINING_SAMPLES = 1000  # 10000
-    TEST_SAMPLES = 5
+    TEST_SAMPLES = 2
     VALIDATION_SAMPLES = 5
     MAX_TEST_STEPS = TRAINING_SAMPLES / 10  # 200
     ENABLE_TRAINING_VIDEO = False  # If False, disable video generation during training
-    ENABLE_VALIDATION_VIDEO = True  # If True, record validation episodes during EvalCallback
+    ENABLE_VALIDATION_VIDEO = False  # If True, record validation episodes during EvalCallback
     ENABLE_TEST_VIDEO = True  # If True, record videos during testing ("flagf")
 
 
@@ -44,7 +48,7 @@ class ProgressLoggingCallback(BaseCallback):
     def _on_training_start(self) -> None:
         """Initialize progress bar at start of training"""
         # Disable the default progress bar from stable-baselines3
-        self.model.progress_bar = False
+        self.model.progress_bar = True
         self.pbar = tqdm(total=self.total_timesteps, desc="Training Progress",
                          unit="steps", ncols=100,
                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
@@ -81,7 +85,7 @@ def validate_environments(train_env, test_env):
 
 def train_model(env, log_dir, eval_env=None):
     """Train the PPO model on the maze environment"""
-    device = "cpu"  # Force CPU usage for MlpPolicy
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     logging.info(f"Using device: {device}")
 
     os.makedirs(log_dir, exist_ok=True)
@@ -103,10 +107,10 @@ def train_model(env, log_dir, eval_env=None):
         "MlpPolicy",
         env,
         verbose=0,
-        tensorboard_log=log_dir,
-        learning_rate=lr_schedule,  # Pass the schedule function
+        tensorboard_log=os.path.join(log_dir, "tensorboard"),
+        learning_rate=3e-4,  # Pass the schedule function
         n_steps=2048,
-        batch_size=256,
+        batch_size=64,
         n_epochs=10,
         gamma=0.99,
         gae_lambda=0.95,
@@ -129,7 +133,8 @@ def train_model(env, log_dir, eval_env=None):
     )
 
     # Configure SB3 logger to avoid stdout and only log to files/tensorboard
-    sb3_logger = sb3_configure(log_dir, ["csv", "tensorboard"])  # no "stdout" output format
+    tensorboard_dir = os.path.join(log_dir, "tensorboard")
+    sb3_logger = sb3_configure(tensorboard_dir, ["csv", "tensorboard"])  # no "stdout" output format
     model.set_logger(sb3_logger)
 
     # Progress logging callback to emulate progress bar via logs
@@ -344,10 +349,18 @@ def test_model(model, base_test_env, enable_visual=True):
 
 def main():
     log_dir = "output/"
-
+    tensorboard_log = os.path.join(log_dir, "tensorboard")
+    
     # Ensure output directory exists
-    import os
+    os.makedirs(tensorboard_log, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
+
+    # Start tensorboard process
+    tensorboard_process = start_tensorboard(tensorboard_log)
+
+    if tensorboard_process is None:
+        logging.error("Failed to start TensorBoard. Please check if tensorboard is installed.")
+        logging.info("You can install it with: pip install tensorboard")
 
     # Load and create environments with uniform padding
     base_env, base_test_env, validation_env = load_and_create_environments(
@@ -387,38 +400,49 @@ def main():
     validate_environments(base_env, validation_env)
     validate_environments(base_env, base_test_env)
 
-    # Train the model and pass in eval_env (now validation)
-    model = train_model(env, log_dir, eval_env=eval_env)
-
-    # Close environments to ensure videos are saved
-    env.close()
-
-    if Config.ENABLE_TRAINING_VIDEO:
-        logging.info(f"\nTraining videos saved to: output/videos/")
-    else:
-        logging.info("\nTraining video recording is disabled (Config.ENABLE_TRAINING_VIDEO=False)")
-
-    if Config.ENABLE_VALIDATION_VIDEO:
-        logging.info(f"Validation videos saved to: output/validation_videos/")
-    else:
-        logging.info("Validation video recording is disabled (Config.ENABLE_VALIDATION_VIDEO=False)")
-
-    logging.info(f"TensorBoard logs saved to: {log_dir}tensorboard/")
-    logging.info("To view TensorBoard, run: tensorboard --logdir output/tensorboard --port 6006")
-
-    # Run tests to generate videos if enabled
     try:
-        test_success = test_model(model, base_test_env, enable_visual=False)
-        if Config.ENABLE_TEST_VIDEO:
-            logging.info(f"Test videos (if any) saved to: output/videos/")
-    except Exception as e:
-        logging.error(f"Error during testing/video generation: {e}")
+        # Train the model and pass in eval_env (now validation)
+        model = train_model(env, log_dir, eval_env=eval_env)
+        logging.info(f"Training complete. TensorBoard logs saved in {tensorboard_log}")
+        logging.info("To view training progress, open http://localhost:6006 in your browser")
+
+        # Close environments to ensure videos are saved
+        env.close()
+
+        if Config.ENABLE_TRAINING_VIDEO:
+            logging.info(f"\nTraining videos saved to: output/videos/")
+        else:
+            logging.info("\nTraining video recording is disabled (Config.ENABLE_TRAINING_VIDEO=False)")
+
+        if Config.ENABLE_VALIDATION_VIDEO:
+            logging.info(f"Validation videos saved to: output/validation_videos/")
+        else:
+            logging.info("Validation video recording is disabled (Config.ENABLE_VALIDATION_VIDEO=False)")
+
+        logging.info(f"TensorBoard logs saved to: {log_dir}tensorboard/")
+        logging.info("To view TensorBoard, run: tensorboard --logdir output/tensorboard --port 6006")
+
+        # Run tests to generate videos if enabled
+        try:
+            test_success = test_model(model, base_test_env, enable_visual=False)
+            if Config.ENABLE_TEST_VIDEO:
+                logging.info(f"Test videos (if any) saved to: output/videos/")
+        except Exception as e:
+            logging.error(f"Error during testing/video generation: {e}")
+    finally:
+        if tensorboard_process:
+            tensorboard_process.terminate()
 
 
 def start_tensorboard(logdir):
     """Start TensorBoard server for PPO's training logs"""
     import os
 
+    # Remove any duplicate 'tensorboard' in the path
+    if logdir.endswith('tensorboard'):
+        logdir = os.path.dirname(logdir)
+
+    # Create the tensorboard directory if it doesn't exist
     os.makedirs(logdir, exist_ok=True)
 
     try:
