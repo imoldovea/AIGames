@@ -1,7 +1,4 @@
 import subprocess
-import torch
-import matplotlib
-import subprocess
 
 import matplotlib
 import torch
@@ -33,7 +30,7 @@ class Config:
     TEST_SAMPLES = 2
     VALIDATION_SAMPLES = 5
     MAX_TEST_STEPS = TRAINING_SAMPLES / 10  # 200
-    ENABLE_TRAINING_VIDEO = False  # If False, disable video generation during training
+    ENABLE_TRAINING_VIDEO = True  # If False, disable video generation during training
     ENABLE_VALIDATION_VIDEO = False  # If True, record validation episodes during EvalCallback
     ENABLE_TEST_VIDEO = True  # If True, record videos during testing ("flagf")
 
@@ -110,7 +107,7 @@ def train_model(env, log_dir, eval_env=None):
         tensorboard_log=os.path.join(log_dir, "tensorboard"),
         learning_rate=3e-4,  # Pass the schedule function
         n_steps=2048,
-        batch_size=64,
+        batch_size=128,
         n_epochs=10,
         gamma=0.99,
         gae_lambda=0.95,
@@ -258,7 +255,7 @@ def update_visual_display(env, visual_handler, step_count, action, reward, solut
 
     # Update the display
     plt.draw()
-    plt.pause(0.1)  # Pause for animation effect
+    plt.pause(0.3)  # Pause for animation effect
 
 
 def cleanup_visual_display(visual_handler):
@@ -377,7 +374,7 @@ def main():
         env = RecordVideo(
             base_env,
             video_folder="output/videos",
-            episode_trigger=lambda episode_id: episode_id % 50 == 0,
+            episode_trigger=lambda episode_id: episode_id % 10 == 0,
             name_prefix="training",
             video_length=0  # Record entire episode
         )

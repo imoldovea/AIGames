@@ -274,7 +274,7 @@ def run_test_episode(env, model, max_steps):
         human_env.target_pos = env.unwrapped.target_pos.copy()
         human_env.current_step = env.unwrapped.current_step
         human_env.render()  # This will show the human visualization
-        time.sleep(0.1)  # Add delay for better visualization
+        time.sleep(0.3)  # Add delay for better visualization
 
         agent_pos = list(env.unwrapped.agent_pos)
         solution.append(tuple(agent_pos))
