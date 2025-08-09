@@ -12,27 +12,30 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback, CallbackList
 from stable_baselines3.common.logger import configure as sb3_configure
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecVideoRecorder 
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from maze_loader import load_mazes_h5
 from maze_pool_env import MazePoolEnv
 import sys
 import os
 import logging
+from utils import setup_logging, clean_outupt_folder, profile_method
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils import setup_logging, clean_outupt_folder
-
 
 class Config:
-    TRAINING_TIMESTEPS = 10_000  # 10_000
-    TRAINING_SAMPLES = 1000  # 10000
+    TRAINING_TIMESTEPS = 10000  # 10_000
+    TRAINING_SAMPLES = 10000 # 10000
     TEST_SAMPLES = 2
-    VALIDATION_SAMPLES = 5
-    MAX_TEST_STEPS = TRAINING_SAMPLES / 10  # 200
-    ENABLE_TRAINING_VIDEO = True  # If False, disable video generation during training
-    ENABLE_VALIDATION_VIDEO = False  # If True, record validation episodes during EvalCallback
+    VALIDATION_SAMPLES = round(TRAINING_SAMPLES / 10)
+    MAX_TEST_STEPS = 150 # 200
+    # Performance/config toggles
+    ENABLE_TRAINING_VIDEO = True  # Disable during training to avoid CPU/render bottleneck
+    ENABLE_VALIDATION_VIDEO = True  # If True, record validation episodes during EvalCallback
     ENABLE_TEST_VIDEO = True  # If True, record videos during testing ("flagf")
+    N_ENVS = int(os.environ.get("N_ENVS", "8"))  # Parallel envs to keep GPU busier
 
 
 class ProgressLoggingCallback(BaseCallback):
@@ -83,6 +86,18 @@ def validate_environments(train_env, test_env):
 def train_model(env, log_dir, eval_env=None):
     """Train the PPO model on the maze environment"""
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    #device = "cpu"
+    if device == "cuda":
+        try:
+            torch.backends.cudnn.benchmark = True
+            gpu_name = torch.cuda.get_device_name(0)
+            cc_major, cc_minor = torch.cuda.get_device_capability(0)
+            logging.info(f"Using CUDA device: {gpu_name} (CC {cc_major}.{cc_minor})")
+        except Exception as e:
+            logging.warning(f"Could not query CUDA details: {e}")
+    else:
+        logging.info("CUDA not available. Falling back to CPU.")
+
     logging.info(f"Using device: {device}")
 
     os.makedirs(log_dir, exist_ok=True)
@@ -107,7 +122,7 @@ def train_model(env, log_dir, eval_env=None):
         tensorboard_log=os.path.join(log_dir, "tensorboard"),
         learning_rate=3e-4,  # Pass the schedule function
         n_steps=2048,
-        batch_size=128,
+        batch_size=64,
         n_epochs=10,
         gamma=0.99,
         gae_lambda=0.95,
@@ -153,10 +168,16 @@ def train_model(env, log_dir, eval_env=None):
 
     return model
 
-
 def run_test_episode(env, model, max_steps, enable_visual=False):
-    """Run a test episode with optional visual display"""
+    """Run a test episode with optional matplotlib visual display"""
     obs, info = env.reset()
+
+    # Ensure the first frame is captured by the video recorder (if any)
+    try:
+        env.render()
+    except Exception:
+        pass
+
     step_count = 0
     done = False
     solution = []
@@ -166,22 +187,43 @@ def run_test_episode(env, model, max_steps, enable_visual=False):
     if enable_visual:
         visual_handler = initialize_visual_display()
 
-    while not done and step_count < max_steps:
-        action, _ = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, info = env.step(action)
+    # Redirect logging through tqdm and unify streams to avoid duplicate lines
+    with logging_redirect_tqdm():
+        pbar = tqdm(
+            total=max_steps,
+            desc="Test episode",
+            unit="step",
+            ncols=100,
+            leave=False,
+            position=0,          # ensure single line
+            dynamic_ncols=True,
+            mininterval=0.25,    # reduce redraw frequency
+            smoothing=0.0,
+            file=sys.stdout       # write to stdout to match your logger (or swap: logger->file, tqdm->stderr)
+        )
 
-        # Update visual display if enabled
-        if enable_visual and visual_handler:
-            update_visual_display(env, visual_handler, step_count, action, reward, solution)
+        while not done and step_count < max_steps:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = env.step(action)
 
-        agent_pos = env.unwrapped.agent_pos
-        agent_pos_tuple = tuple(agent_pos)
-        solution.append(agent_pos_tuple)
-        done = terminated or truncated
-        step_count += 1
+            # Only render if needed; avoid console prints here
+            try:
+                env.render()
+            except Exception:
+                pass
 
-        if step_count % 20 == 0:
-            logging.info(f"  Step {step_count}: Action={action}, Reward={reward:.3f}")
+            if enable_visual and visual_handler:
+                update_visual_display(env, visual_handler, step_count, action, reward, solution)
+
+            solution.append(tuple(env.unwrapped.agent_pos))
+            done = terminated or truncated
+            step_count += 1
+
+            # Single place to update the bar and its postfix
+            pbar.update(1)
+            pbar.set_postfix({"action": int(action), "reward": float(reward)})
+
+        pbar.close()
 
     # Cleanup visual display if it was used
     if enable_visual and visual_handler:
@@ -343,7 +385,7 @@ def test_model(model, base_test_env, enable_visual=True):
     logging.info("Test environment closed - videos should be saved.")
     return success_rate
 
-
+@profile_method(output_file=f"maze_pool.py")
 def main():
     log_dir = "output/"
     tensorboard_log = os.path.join(log_dir, "tensorboard")
@@ -369,29 +411,56 @@ def main():
         validation_samples=Config.VALIDATION_SAMPLES
     )
 
-    # Conditionally wrap with RecordVideo for the training environment
-    if Config.ENABLE_TRAINING_VIDEO:
-        env = RecordVideo(
-            base_env,
-            video_folder="output/videos",
-            episode_trigger=lambda episode_id: episode_id % 10 == 0,
-            name_prefix="training",
-            video_length=0  # Record entire episode
-        )
-    else:
-        env = base_env
+    # Create vectorized training environment to increase GPU utilization
+    def make_env_from_data(maze_grids, starts, exits, render_mode="rgb_array"):
+        def _init():
+            env_i = MazePoolEnv(maze_grids, starts, exits, render_mode=render_mode)
+            return Monitor(env_i)
+        return _init
 
-    # For evaluation environment, optionally wrap with RecordVideo based on config
-    if Config.ENABLE_VALIDATION_VIDEO:
-        eval_env = RecordVideo(
-            validation_env,
-            video_folder="output/validation_videos",
-            episode_trigger=lambda episode_id: True,  # Record all validation episodes
-            name_prefix="validation",
-            video_length=0  # Record entire episode
-        )
+    # Extract underlying maze data from created base environments
+    train_data = (base_env.unwrapped.maze_grids, base_env.unwrapped.starts, base_env.unwrapped.exits)
+    val_data = (validation_env.unwrapped.maze_grids, validation_env.unwrapped.starts, validation_env.unwrapped.exits)
+
+    if Config.N_ENVS > 1:
+        logging.info(f"Creating SubprocVecEnv with {Config.N_ENVS} parallel environments")
+        env_fns = [make_env_from_data(*train_data) for _ in range(Config.N_ENVS)]
+        env = SubprocVecEnv(env_fns)
     else:
-        eval_env = validation_env
+        logging.info("Creating single-process DummyVecEnv")
+        env = DummyVecEnv([make_env_from_data(*train_data)])
+
+    # Wrap the training env with a video recorder if enabled
+    if Config.ENABLE_TRAINING_VIDEO:
+        training_video_dir = "output/training_videos"
+        os.makedirs(training_video_dir, exist_ok=True)
+        # Record at the beginning and then every 10k env steps; adjust as needed
+        env = VecVideoRecorder(
+            env,
+            video_folder=training_video_dir,
+            record_video_trigger=lambda step: step == 0 or (step % 10_000 == 0),
+            video_length=Config.MAX_TEST_STEPS,
+            name_prefix="training"
+        )
+        logging.info(f"Training video recording enabled. Videos will be saved to: {training_video_dir}")
+
+    # Vectorized evaluation environment (single env is enough)
+    eval_env = DummyVecEnv([make_env_from_data(*val_data)])
+    # Enable validation video recording
+    if Config.ENABLE_VALIDATION_VIDEO:
+        validation_video_dir = "output/validation_videos"
+        os.makedirs(validation_video_dir, exist_ok=True)
+        eval_env = VecVideoRecorder(
+            eval_env,
+            video_folder=validation_video_dir,
+            # Record the first eval episode; you can add periodic triggers if desired
+            record_video_trigger=lambda step: step == 0,
+            video_length=Config.MAX_TEST_STEPS,
+            name_prefix="validation"
+        )
+        logging.info(f"Validation video recording enabled. Videos will be saved to: {validation_video_dir}")
+    else:
+        logging.info("Validation video recording is disabled (Config.ENABLE_VALIDATION_VIDEO=False)")
 
     # Validate compatibility (check base environments)
     validate_environments(base_env, validation_env)
@@ -403,21 +472,13 @@ def main():
         logging.info(f"Training complete. TensorBoard logs saved in {tensorboard_log}")
         logging.info("To view training progress, open http://localhost:6006 in your browser")
 
-        # Close environments to ensure videos are saved
+        # Close environments to ensure videos are saved and finalized
         env.close()
 
         if Config.ENABLE_TRAINING_VIDEO:
-            logging.info(f"\nTraining videos saved to: output/videos/")
+            logging.info(f"\nTraining videos saved to: output/training_videos/")
         else:
             logging.info("\nTraining video recording is disabled (Config.ENABLE_TRAINING_VIDEO=False)")
-
-        if Config.ENABLE_VALIDATION_VIDEO:
-            logging.info(f"Validation videos saved to: output/validation_videos/")
-        else:
-            logging.info("Validation video recording is disabled (Config.ENABLE_VALIDATION_VIDEO=False)")
-
-        logging.info(f"TensorBoard logs saved to: {log_dir}tensorboard/")
-        logging.info("To view TensorBoard, run: tensorboard --logdir output/tensorboard --port 6006")
 
         # Run tests to generate videos if enabled
         try:
