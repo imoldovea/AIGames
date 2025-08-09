@@ -21,7 +21,9 @@ from maze_pool_env import MazePoolEnv
 import sys
 import os
 import logging
-from utils import setup_logging, clean_outupt_folder, profile_method
+from datetime import datetime
+from typing import Sequence
+from utils import setup_logging, clean_outupt_folder, profile_method, save_movie_v2  # Uses the renderer to synthesize per-step frames when needed
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -36,6 +38,9 @@ class Config:
     ENABLE_VALIDATION_VIDEO = True  # If True, record validation episodes during EvalCallback
     ENABLE_TEST_VIDEO = True  # If True, record videos during testing ("flagf")
     N_ENVS = int(os.environ.get("N_ENVS", "8"))  # Parallel envs to keep GPU busier
+    # Record a validation video every this many env steps inside the validation wrapper
+    # Using MAX_TEST_STEPS means we start a new recording near each episode start.
+    VALIDATION_VIDEO_INTERVAL_STEPS = MAX_TEST_STEPS
 
 
 class ProgressLoggingCallback(BaseCallback):
@@ -49,9 +54,7 @@ class ProgressLoggingCallback(BaseCallback):
         """Initialize progress bar at start of training"""
         # Disable the default progress bar from stable-baselines3
         self.model.progress_bar = True
-        self.pbar = tqdm(total=self.total_timesteps, desc="Training Progress",
-                         unit="steps", ncols=100,
-                         bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
+        self.pbar = None
 
     def _on_step(self) -> bool:
         """Update progress bar on each step"""
@@ -453,8 +456,8 @@ def main():
         eval_env = VecVideoRecorder(
             eval_env,
             video_folder=validation_video_dir,
-            # Record the first eval episode; you can add periodic triggers if desired
-            record_video_trigger=lambda step: step == 0,
+            # Start a recording periodically so we capture multiple validation episodes
+            record_video_trigger=lambda step: (step % Config.VALIDATION_VIDEO_INTERVAL_STEPS) == 0,
             video_length=Config.MAX_TEST_STEPS,
             name_prefix="validation"
         )
@@ -479,6 +482,22 @@ def main():
             logging.info(f"\nTraining videos saved to: output/training_videos/")
         else:
             logging.info("\nTraining video recording is disabled (Config.ENABLE_TRAINING_VIDEO=False)")
+
+        # Post-training: create validation video for best mazes sampled every interval
+        try:
+            if Config.ENABLE_VALIDATION_VIDEO:
+                out = evaluate_validation_and_save_best_video(
+                    model,
+                    val_data,
+                    stride=Config.VALIDATION_VIDEO_INTERVAL_STEPS,
+                    max_steps=Config.MAX_TEST_STEPS,
+                    output_dir="output/validation_videos",
+                    top_k=5,
+                )
+                if out:
+                    logging.info(f"Best validation GIF saved to: {out}")
+        except Exception as e:
+            logging.error(f"Error during best-validation video generation: {e}")
 
         # Run tests to generate videos if enabled
         try:
@@ -600,3 +619,126 @@ if __name__ == "__main__":
 
     tensorboard_process = start_tensorboard("output/")  # Start tensorboard on output logs
     main()  # Run the main training and evaluation function
+
+def _timestamp_str() -> str:
+    """Return a compact timestamp suitable for filenames."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def _enable_per_step_animation(mazes: Sequence) -> None:
+    """
+    Ensure each maze will provide per-step frames.
+    - If raw frames aren't stored, the visualizer will synthesize frames from the solution.
+    """
+    for m in mazes or []:
+        # Prefer enabling both flags to allow any recording-aware code paths to run,
+        # while save_movie_v2 will still work from just the solution path.
+        try:
+            setattr(m, "animate", True)
+            setattr(m, "save_movie", True)
+        except Exception:
+            # Keep going even if any individual object doesn't accept these attrs
+            pass
+
+
+# python
+# Make save_phase_video quiet by default (no info prints/logs)
+
+def save_phase_video(mazes: Sequence, phase_name: str, output_dir: str = "output") -> str:
+    """
+    Save a GIF for a phase (training/validation/test) with a timestamped filename,
+    and ensure per-step frames are available. Quiet: no info messages printed/logged.
+    """
+    if not mazes:
+        return ""
+
+    _enable_per_step_animation(mazes)
+
+    ts = _timestamp_str()
+    outfile = f"{output_dir}/{phase_name}_solutions_{ts}.gif"
+
+    try:
+        save_movie_v2(list(mazes), outfile)
+    except Exception:
+        # Keep errors minimal and non-noisy; re-raise for caller handling if needed
+        raise
+
+    return outfile
+
+
+def evaluate_validation_and_save_best_video(model, val_data: tuple, stride: int, max_steps: int,
+                                            output_dir: str = "output/validation_videos",
+                                            top_k: int = 5) -> str:
+    """
+    Evaluate the model on each validation maze, select best-performing mazes, and
+    save a GIF showing status every `stride` steps.
+    Best is defined as successful episodes with the fewest steps. If no success,
+    fallback to top_k mazes with the longest traversed path.
+    Returns output filepath or empty string if nothing to save.
+    """
+    from maze import Maze
+
+    maze_grids, starts, exits = val_data
+    num = len(maze_grids)
+
+    # Fresh env with deterministic maze selection and no video wrapper
+    eval_env = MazePoolEnv(maze_grids, starts, exits, render_mode="rgb_array")
+
+    results = []  # list of dict with keys: idx, success, steps, path, grid
+
+    for i in range(num):
+        obs, info = eval_env.reset(options={"maze_index": i})
+        done = False
+        step_count = 0
+        path = [tuple(eval_env.agent_pos)]
+        while not done and step_count < max_steps:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = eval_env.step(action)
+            done = terminated or truncated
+            # The env maintains its path; ensure we mirror it
+            if eval_env.path and (not path or eval_env.path[-1] != path[-1]):
+                path = list(eval_env.path)
+            step_count += 1
+        success = (eval_env.agent_pos[0] == eval_env.target_pos[0] and eval_env.agent_pos[1] == eval_env.target_pos[1])
+        results.append({
+            "idx": i,
+            "success": bool(success),
+            "steps": step_count,
+            "path": list(path),
+        })
+
+    # Select best mazes
+    best = [r for r in results if r["success"]]
+    best.sort(key=lambda r: r["steps"])
+    if not best:
+        # Fallback: choose those with longest path covered
+        tmp = sorted(results, key=lambda r: len(r["path"]), reverse=True)
+        best = tmp[:min(top_k, len(tmp))]
+    else:
+        best = best[:min(top_k, len(best))]
+
+    if not best:
+        return ""
+
+    # Build Maze objects with solutions; set frame_stride
+    mazes = []
+    for r in best:
+        idx = r["idx"]
+        grid = np.array(maze_grids[idx], copy=True)
+        sr, sc = starts[idx]
+        grid[int(sr), int(sc)] = 3  # mark start
+        m = Maze(grid, index=idx)
+        try:
+            m.set_algorithm("PPO")
+        except Exception:
+            pass
+        # Use the traversed path as solution for visualization; may be invalid if not success
+        m.set_solution([tuple(p) for p in r["path"]])
+        setattr(m, "frame_stride", max(1, int(stride)))
+        mazes.append(m)
+
+    os.makedirs(output_dir, exist_ok=True)
+    ts = _timestamp_str()
+    outfile = f"{output_dir}/best_validation_{ts}.gif"
+    save_movie_v2(mazes, outfile)
+    return outfile

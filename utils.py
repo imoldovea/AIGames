@@ -465,13 +465,35 @@ def save_mazes_as_pdf_v2(solved_mazes: list, output_path: str) -> None:
     fig.savefig(output_path, format='pdf', dpi=300, bbox_inches='tight')
 
 
-def save_movie_v2(solved_mazes: list, output_path: str) -> None:
-    """New renderer-based version of save_movie."""
-    from maze_visualizer import MazeVisualizer
+def save_movie_v2(solved_mazes: list, output_path: str) -> str:
+    """
+    Renderer-based video export that now saves GIF animations.
+    - Accepts a list of maze objects (with frames or with solution data).
+    - Uses MazeVisualizer.create_maze_gif to produce a single GIF that concatenates animations.
+    Returns the final file path.
+    """
+    from pathlib import Path
+    from maze_visualizer import MazeVisualizer, AnimationMode
 
-    visualizer = MazeVisualizer(renderer_type="matplotlib")
-    animation_data = visualizer._prepare_animation_data(solved_mazes)
-    anim = visualizer.animate_solution_progress(animation_data, save_filename=output_path)
+    if not solved_mazes:
+        raise ValueError("No mazes provided to save_movie_v2")
+
+    out_path = Path(output_path)
+    out_dir = out_path.parent if out_path.parent.as_posix() not in ("", ".") else Path("output")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Force GIF extension regardless of provided extension
+    gif_name = out_path.stem + ".gif"
+
+    visualizer = MazeVisualizer(renderer_type="matplotlib", output_dir=str(out_dir))
+    # Create a single GIF that includes all provided mazes in step-by-step mode
+    gif_path = visualizer.create_maze_gif(
+        solved_mazes,
+        filename=gif_name,
+        animation_mode=AnimationMode.STEP_BY_STEP,
+        duration=0.2,
+    )
+    return gif_path
 
 
 def display_all_mazes(solved_mazes: list) -> None:

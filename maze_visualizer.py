@@ -566,8 +566,17 @@ class MazeVisualizer:
         if not frames:
             raise ValueError("No frames created")
 
-        # Save as GIF
-        imageio.mimsave(str(gif_path), frames, duration=duration, format='GIF')
+        # Save as GIF (suppress any internal tqdm progress output)
+        import os as _os
+        _prev_tqdm_disable = _os.environ.get("TQDM_DISABLE")
+        try:
+            _os.environ["TQDM_DISABLE"] = "1"
+            imageio.mimsave(str(gif_path), frames, duration=duration, format='GIF')
+        finally:
+            if _prev_tqdm_disable is None:
+                _os.environ.pop("TQDM_DISABLE", None)
+            else:
+                _os.environ["TQDM_DISABLE"] = _prev_tqdm_disable
         logging.debug(f"Created GIF: {gif_path}")
         return str(gif_path)
 
@@ -649,15 +658,24 @@ class MazeVisualizer:
         return [frame]
 
     def _create_animation_frames(self, maze) -> List[np.ndarray]:
-        """Create step-by-step animation frames."""
+        """Create step-by-step animation frames.
+        Supports optional sampling via maze.frame_stride (default 1).
+        """
         solution = maze.get_solution() if hasattr(maze, 'get_solution') else []
 
         if not solution:
             return self._create_structure_frames(maze)
 
         frames = []
+        stride = max(1, int(getattr(maze, 'frame_stride', 1) or 1))
+        total_steps = len(solution)
 
-        for step in range(len(solution) + 1):
+        # Ensure we always include step 0
+        steps_to_render = list(range(0, total_steps + 1, stride))
+        if steps_to_render[-1] != total_steps:
+            steps_to_render.append(total_steps)
+
+        for step in steps_to_render:
             fig, ax = plt.subplots(figsize=self.figsize)
 
             # Add header

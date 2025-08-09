@@ -73,8 +73,15 @@ class MazePoolEnv(gymnasium.Env):
         if seed is not None:
             np.random.seed(seed)
 
-        # Randomly select a maze
-        self.current_maze = np.random.randint(self.num_mazes)
+        # Select a maze: use provided options if available, otherwise random
+        if options and isinstance(options, dict) and 'maze_index' in options:
+            idx = int(options['maze_index'])
+            if 0 <= idx < self.num_mazes:
+                self.current_maze = idx
+            else:
+                self.current_maze = np.random.randint(self.num_mazes)
+        else:
+            self.current_maze = np.random.randint(self.num_mazes)
         self.maze_grid = self.maze_grids[self.current_maze].copy()
 
         # Set agent and target positions (convert from (row, col) to (row, col))
