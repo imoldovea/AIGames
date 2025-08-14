@@ -561,8 +561,8 @@ def main():
     Sets up environment, loads mazes, solves them and saves results.
     """
     # Initialize logging and clean output directory
-    setup_logging()
     clean_outupt_folder()
+    setup_logging()
     logging.info("Starting Genetic Maze Solver")
 
     mazes = load_mazes(TEST_MAZES_FILE, 100)
