@@ -10,7 +10,7 @@ import tqdm
 import wandb
 
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
-from genetic_monitoring import visualize_evolution, print_fitness
+from genetic.genetic_monitoring import visualize_evolution, print_fitness
 from maze import Maze
 from maze_solver import MazeSolver
 from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf, clean_outupt_folder
@@ -568,7 +568,8 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    mazes = [mazes[-1]]
+    mazes = mazes[-2:] if len(mazes) >= 2 else mazes
+
 
     # long_solutions_index = []
     # failed_maze_index = [28, 86]  #
