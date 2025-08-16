@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from deap import base, creator, tools, algorithms
 from tqdm import tqdm
 
-OUTPUT_FOLDER = "output"
+OUTPUT_FOLDER = "/output"
 HTML_FILE_PATH = os.path.join(OUTPUT_FOLDER, "guesssentence.html")
 
 # Create output folder if it doesn't exist
