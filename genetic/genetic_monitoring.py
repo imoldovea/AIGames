@@ -75,6 +75,12 @@ class FrameRenderer:
             plt.figure(figsize=self.config.figure_size)
             plt.imshow(maze.grid, cmap="binary")
 
+            # Mark the starting point distinctly
+            self._mark_start_position(maze)
+
+            # Mark the exit point distinctly
+            self._mark_exit_position(maze)
+            
             self._plot_paths(paths, fitnesses)
             self._configure_plot(maze, generation)
 
@@ -102,6 +108,22 @@ class FrameRenderer:
                 except (ValueError, IndexError) as e:
                     logging.warning(f"Error plotting path {i}: {e}")
                     continue
+
+    def _mark_start_position(self, maze):
+        """Mark the starting position with a distinct visual marker."""
+        if hasattr(maze, 'start_position') and maze.start_position:
+            start_y, start_x = maze.start_position
+            # Mark start with a large green star
+            plt.plot(start_x, start_y, marker='*', color='lime', markersize=15,
+                     markeredgecolor='darkgreen', markeredgewidth=2, label='START')
+
+    def _mark_exit_position(self, maze):
+        """Mark the exit position with a distinct visual marker."""
+        if hasattr(maze, 'exit') and maze.exit:
+            exit_y, exit_x = maze.exit
+            # Mark exit with a large red diamond
+            plt.plot(exit_x, exit_y, marker='D', color='red', markersize=12,
+                     markeredgecolor='darkred', markeredgewidth=2, label='EXIT')
 
     def _configure_plot(self, maze, generation: int):
         """Configure plot appearance and layout."""
