@@ -24,9 +24,10 @@ class VisualizationConfig:
     figure_dpi: int = 100
     colors: List[str] = None
     line_width: int = 2
-    marker_size: int = 3
+    marker_size: int = 2
     video_fps: int = 4
-    gif_duration: float = 0.4
+    gif_duration: float = 5.0
+    gif_clear_duration: float = 0.2
     video_scale_factor: int = 2
     pause_frames: int = 5
 
@@ -42,12 +43,18 @@ class ExportConfig:
     output_dir: str = "output"
     csv_precision: int = 2
     export_columns: List[str] = None
+    species_export_columns: List[str] = None
 
     def __post_init__(self):
         if self.export_columns is None:
             self.export_columns = [
                 "maze_index", "complexity", "generation", "max_fitness",
                 "avg_fitness", "diversity", "longest_path"
+            ]
+        if self.species_export_columns is None:
+            self.species_export_columns = [
+                "maze_index", "complexity", "generation", "species_id",
+                "species_size", "best_fitness", "best_gene"
             ]
 
 
@@ -80,7 +87,7 @@ class FrameRenderer:
 
             # Mark the exit point distinctly
             self._mark_exit_position(maze)
-            
+
             self._plot_paths(paths, fitnesses)
             self._configure_plot(maze, generation)
 
@@ -114,16 +121,16 @@ class FrameRenderer:
         if hasattr(maze, 'start_position') and maze.start_position:
             start_y, start_x = maze.start_position
             # Mark start with a large green star
-            plt.plot(start_x, start_y, marker='*', color='lime', markersize=15,
-                     markeredgecolor='darkgreen', markeredgewidth=2, label='START')
+            plt.plot(start_x, start_y, marker='*', color='lime', markersize=8,
+                     markeredgecolor='darkgreen', markeredgewidth=1, label='START')
 
     def _mark_exit_position(self, maze):
         """Mark the exit position with a distinct visual marker."""
         if hasattr(maze, 'exit') and maze.exit:
             exit_y, exit_x = maze.exit
             # Mark exit with a large red diamond
-            plt.plot(exit_x, exit_y, marker='D', color='red', markersize=12,
-                     markeredgecolor='darkred', markeredgewidth=2, label='EXIT')
+            plt.plot(exit_x, exit_y, marker='D', color='red', markersize=6,
+                     markeredgecolor='darkred', markeredgewidth=1, label='EXIT')
 
     def _configure_plot(self, maze, generation: int):
         """Configure plot appearance and layout."""
@@ -198,7 +205,7 @@ class VideoCreator:
             logging.error(f"Error creating video: {e}")
             raise
 
-    def create_gif(self, frames: List[np.ndarray], output_file: str) -> None:
+    def create_gif(self, frames: List[np.ndarray], output_file: str, durations: Optional[List[float]] = None) -> None:
         """
         Create a GIF from in-memory NumPy frames.
         
@@ -213,8 +220,14 @@ class VideoCreator:
             # Normalize frame sizes
             padded_frames = self._normalize_frame_sizes(frames)
 
+            # Determine durations per frame: list or single value
+            if durations is None:
+                durations = [self.config.gif_duration] * len(padded_frames)
+            elif len(durations) != len(padded_frames):
+                raise ValueError("Length of durations must match number of frames")
+
             imageio.imwrite(output_file, padded_frames,
-                            duration=self.config.gif_duration, format="GIF")
+                            duration=durations, format="GIF")
             logging.debug(f"GIF saved as {output_file}")
 
         except Exception as e:
@@ -281,6 +294,37 @@ class DataExporter:
 
         except Exception as e:
             logging.error(f"Error exporting monitoring data: {e}")
+            raise
+
+    def export_species_data(self, species_records: List[Dict[str, Any]], filename: str = None) -> None:
+        """Export species-level monitoring data to CSV."""
+        if not species_records:
+            logging.warning("No species records to export")
+            return
+        filename = filename or os.path.join(self.config.output_dir, "species_data.csv")
+        try:
+            # Prepare dataframe
+            rows = []
+            for rec in species_records:
+                maze = rec.get('maze')
+                row = {
+                    'maze_index': getattr(maze, 'index', None),
+                    'complexity': getattr(maze, 'complexity', None),
+                    'generation': rec.get('generation', 0) + 1,  # 1-based
+                    'species_id': rec.get('species_id'),
+                    'species_size': rec.get('species_size'),
+                    'best_fitness': round(float(rec.get('best_fitness', 0.0)), self.config.csv_precision),
+                    'best_gene': rec.get('best_gene')
+                }
+                rows.append(row)
+            df = pd.DataFrame(rows)
+            df = df[self.config.species_export_columns]
+            df.sort_values(by=["maze_index", "generation", "species_id"], inplace=True)
+            write_header = not os.path.exists(filename)
+            df.to_csv(filename, mode='a', header=write_header, index=False)
+            logging.debug(f"Species data exported to {filename}")
+        except Exception as e:
+            logging.error(f"Error exporting species data: {e}")
             raise
 
     def _process_monitoring_data(self, monitoring_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -388,16 +432,41 @@ class GeneticMonitor:
             return
 
         try:
-            # Generate frames
-            frames = []
-            for data in monitoring_data:
-                frame = self.frame_renderer.render_maze_frame(
-                    maze=data["maze"],
-                    paths=data["paths"],
-                    generation=data["generation"],
-                    fitnesses=data.get("fitnesses")
-                )
-                frames.append(frame)
+            if mode == "gif":
+                # Generate frames with clear frames and per-frame durations
+                frames = []
+                durations = []
+                for data in monitoring_data:
+                    # Frame with paths
+                    frame = self.frame_renderer.render_maze_frame(
+                        maze=data["maze"],
+                        paths=data["paths"],
+                        generation=data["generation"],
+                        fitnesses=data.get("fitnesses")
+                    )
+                    frames.append(frame)
+                    durations.append(self.vis_config.gif_duration)
+
+                    # Clear frame (no paths) to "delete" the path
+                    clear_frame = self.frame_renderer.render_maze_frame(
+                        maze=data["maze"],
+                        paths=[],
+                        generation=data["generation"],
+                        fitnesses=None
+                    )
+                    frames.append(clear_frame)
+                    durations.append(self.vis_config.gif_clear_duration)
+            else:
+                # Generate regular frames for video
+                frames = []
+                for data in monitoring_data:
+                    frame = self.frame_renderer.render_maze_frame(
+                        maze=data["maze"],
+                        paths=data["paths"],
+                        generation=data["generation"],
+                        fitnesses=data.get("fitnesses")
+                    )
+                    frames.append(frame)
 
             # Ensure output directory exists
             os.makedirs(self.export_config.output_dir, exist_ok=True)
@@ -408,7 +477,7 @@ class GeneticMonitor:
                 self.video_creator.create_video(frames, output_file)
             elif mode == "gif":
                 output_file = os.path.join(self.export_config.output_dir, f"evolution_{index}.gif")
-                self.video_creator.create_gif(frames, output_file)
+                self.video_creator.create_gif(frames, output_file, durations=durations)
             else:
                 raise ValueError(f"Unsupported visualization mode: {mode}")
 

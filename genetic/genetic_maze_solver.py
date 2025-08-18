@@ -13,7 +13,7 @@ from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktr
 from genetic.genetic_monitoring import visualize_evolution, print_fitness
 from maze import Maze
 from maze_solver import MazeSolver
-from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf, clean_outupt_folder
+from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf_v2, clean_outupt_folder
 from utils import profile_method
 
 PARAMETERS_FILE = "config.properties"
@@ -570,7 +570,6 @@ def main():
 
     mazes = mazes[-2:] if len(mazes) >= 2 else mazes
 
-
     # long_solutions_index = []
     # failed_maze_index = [28, 86]  #
     #
@@ -637,7 +636,7 @@ def main():
     logging.info(f"Success rate: {success_rate:.1f}%")
 
     save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
-    save_mazes_as_pdf(mazes, OUTPUT_PDF)
+    save_mazes_as_pdf_v2(solved_mazes, OUTPUT_PDF)
     wandb.finish()
     # Print list of top 5 solved maze indices having the highest generations count. Print only for solved mazes
     logging.info(

@@ -1,6 +1,6 @@
-# genetic_maze_solver_refactored.py
+# genetic_algorithm_maze_solver.py
 """
-Refactored Genetic Algorithm Maze Solver.
+Genetic Algorithm Maze Solver.
 Improved organization, separated concerns, and better maintainability.
 """
 
@@ -13,7 +13,7 @@ import wandb
 
 from fitness_calculator import FitnessCalculator
 from genetic_config import GeneticConfigManager
-from genetic_monitoring import visualize_evolution, print_fitness
+from genetic_monitoring import visualize_evolution, print_fitness, DataExporter
 from maze import Maze
 from maze_solver import MazeSolver
 from utils import profile_method
@@ -46,6 +46,9 @@ class GeneticMazeSolver(MazeSolver):
             directions=self.directions,
             max_steps=self.config.max_steps
         )
+
+        # Derived speciation thresholds
+        self._species_abs_threshold = max(1, int(self.config.species_distance_threshold * self.config.max_steps))
 
         # Set algorithm name for maze
         self.maze.set_algorithm(self.__class__.__name__)
@@ -121,7 +124,7 @@ class GeneticMazeSolver(MazeSolver):
 
         return chromosome.tolist()
 
-    @profile_method(output_file="solve_genetic_maze_solver_refactored.py")
+    @profile_method(output_file="solve_genetic_algorithm_maze_solver.py")
     def solve(self):
         """Main genetic algorithm solving method."""
         # Initialize evolution state
@@ -181,11 +184,13 @@ class GeneticMazeSolver(MazeSolver):
             'diversity_collapse_events': 0,
             'low_diversity_counter': 0,
             'patience_counter': 0,
-            'monitoring_data': []
+            'monitoring_data': [],
+            'species': [],
+            'species_records': []
         }
 
     def _evaluate_population(self, evolution_state):
-        """Evaluate fitness for entire population."""
+        """Evaluate fitness for entire population and build species."""
         population = evolution_state['population']
         generation = evolution_state['generation']
 
@@ -210,6 +215,11 @@ class GeneticMazeSolver(MazeSolver):
             evolution_state['best_chromosome'] = scored[0][0]
 
         evolution_state['scored_population'] = scored
+
+        # Build species from the scored population and record species stats
+        species = self._build_species(scored)
+        evolution_state['species'] = species
+        self._record_species_data(evolution_state)
 
     def _should_terminate_early(self, evolution_state):
         """Check if evolution should terminate early due to solution found."""
@@ -280,49 +290,154 @@ class GeneticMazeSolver(MazeSolver):
             evolution_state['low_diversity_counter'] = 0
 
     def _create_next_generation(self, evolution_state):
-        """Create the next generation through selection, crossover, and mutation."""
+        """Create the next generation through selection, crossover, and mutation with speciation."""
         scored = evolution_state['scored_population']
+        species = evolution_state.get('species') or []
 
-        # Preserve elites
+        # Preserve global elites
         elites = [chrom for chrom, _ in scored[:self.config.elitism_count]]
         new_population = elites[:]
 
-        # Fill rest of population through selection, crossover, mutation
+        # Preserve species elites
+        if species:
+            for sp in species:
+                # Sort members by fitness desc and take species elites
+                members_sorted = sorted(sp['members'], key=lambda x: x[1], reverse=True)
+                se = max(0, self.config.species_elitism_count)
+                new_population.extend([chrom for chrom, _ in members_sorted[:se]])
+                sp['members_sorted'] = members_sorted  # cache for selection
+
+        # Helper to sample parents within or across species
+        rng = np.random.default_rng()
         while len(new_population) < self.population_size:
-            # Tournament selection from top performers
-            tournament_size = min(10, len(scored))
-            selected_indices = np.random.choice(tournament_size, size=2, replace=False)
-            parent1 = scored[selected_indices[0]][0]
-            parent2 = scored[selected_indices[1]][0]
+            if not species:
+                # Fallback to previous global tournament
+                tournament_size = min(10, len(scored))
+                idx = np.random.choice(tournament_size, size=2, replace=False)
+                p1 = scored[idx[0]][0]
+                p2 = scored[idx[1]][0]
+            else:
+                # Choose base species weighted by size
+                sizes = np.array([len(sp['members']) for sp in species])
+                if sizes.sum() == 0:
+                    tournament_size = min(10, len(scored))
+                    idx = np.random.choice(tournament_size, size=2, replace=False)
+                    p1 = scored[idx[0]][0]
+                    p2 = scored[idx[1]][0]
+                else:
+                    probs = sizes / sizes.sum()
+                    s1 = rng.choice(len(species), p=probs)
+                    # Choose whether to mate across species
+                    if np.random.rand() < self.config.interspecies_mating_rate and len(species) > 1:
+                        choices = [i for i in range(len(species)) if i != s1]
+                        s2 = rng.choice(choices)
+                    else:
+                        s2 = s1
 
-            # Crossover and mutation
-            child1, child2 = self._crossover(parent1, parent2)
-            new_population.append(self._mutate(child1))
+                    def pick_parent(sp_idx):
+                        members = species[sp_idx].get('members_sorted') or sorted(species[sp_idx]['members'],
+                                                                                  key=lambda x: x[1], reverse=True)
+                        tsize = min(10, len(members))
+                        inds = np.random.choice(tsize, size=2, replace=False)
+                        return members[inds[0]][0]
 
+                    p1 = pick_parent(s1)
+                    p2 = pick_parent(s2)
+
+            c1, c2 = self._crossover(p1, p2)
+            new_population.append(self._mutate(c1))
             if len(new_population) < self.population_size:
-                new_population.append(self._mutate(child2))
+                new_population.append(self._mutate(c2))
 
-        evolution_state['population'] = new_population
+        # Trim in case elites overfilled
+        evolution_state['population'] = new_population[:self.population_size]
 
     def _record_monitoring_data(self, evolution_state):
-        """Record data for monitoring and visualization."""
+        """Record data for monitoring and visualization.
+        Modified to record only every 20 generations and to include the best
+        path from each species when available.
+        """
         scored = evolution_state['scored_population']
         generation = evolution_state['generation']
         avg_fitness = evolution_state['avg_fitness_history'][-1]
         diversity = evolution_state['diversity_history'][-1] if evolution_state['diversity_history'] else 0
 
-        # Select top chromosomes for visualization
-        selected = scored[:self.config.evolution_chromosomes]
-        paths = [self.decode_path(chromosome) for chromosome, _ in selected]
+        # Only record every 20 generations (1-based display already added later)
+        if generation % 20 != 0:
+            return
+
+        # Collect best from each species if species info exists; otherwise top-K
+        species = evolution_state.get('species') or []
+        paths = []
+        fitnesses = []
+        if species:
+            for sp in species:
+                if not sp['members']:
+                    continue
+                best_chrom, best_fit = max(sp['members'], key=lambda x: x[1])
+                paths.append(self.decode_path(best_chrom))
+                fitnesses.append(float(best_fit))
+        else:
+            selected = scored[:self.config.evolution_chromosomes]
+            paths = [self.decode_path(chromosome) for chromosome, _ in selected]
+            fitnesses = [float(score) for _, score in selected]
 
         evolution_state['monitoring_data'].append({
             "maze": self.maze,
             "paths": paths,
+            "fitnesses": fitnesses,
             "avg_fitness": avg_fitness,
             "max_fitness": evolution_state['best_score'],
             "generation": generation + 1,
             "diversity": diversity
         })
+
+    def _hamming_distance(self, c1, c2):
+        """Compute Hamming distance between two chromosomes (lists/arrays)."""
+        if len(c1) != len(c2):
+            L = min(len(c1), len(c2))
+            return int(np.sum(np.array(c1[:L]) != np.array(c2[:L]))) + abs(len(c1) - len(c2))
+        return int(np.sum(np.array(c1) != np.array(c2)))
+
+    def _build_species(self, scored_population):
+        """
+        Group chromosomes into species by Hamming distance threshold to species representatives.
+        Args:
+            scored_population: list of (chromosome, fitness) sorted by fitness desc
+        Returns:
+            list of species dicts: {'rep': chromosome, 'members': [(chrom, fitness), ...]}
+        """
+        species = []
+        for chrom, fit in scored_population:
+            placed = False
+            for sp in species:
+                if self._hamming_distance(chrom, sp['rep']) <= self._species_abs_threshold:
+                    sp['members'].append((chrom, fit))
+                    placed = True
+                    break
+            if not placed:
+                species.append({'rep': chrom, 'members': [(chrom, fit)]})
+        return species
+
+    def _record_species_data(self, evolution_state):
+        """Record best member per species for monitoring/export."""
+        generation = evolution_state['generation']
+        species_records = []
+        for sid, sp in enumerate(evolution_state['species']):
+            members = sp['members']
+            if not members:
+                continue
+            best_chrom, best_fit = max(members, key=lambda x: x[1])
+            record = {
+                'maze': self.maze,
+                'generation': generation,
+                'species_id': sid,
+                'species_size': len(members),
+                'best_fitness': float(best_fit),
+                'best_gene': ",".join(str(int(g)) for g in best_chrom)
+            }
+            species_records.append(record)
+        evolution_state['species_records'].extend(species_records)
 
     def _check_early_stopping(self, evolution_state):
         """Check for early stopping based on fitness improvement."""
@@ -405,6 +520,13 @@ class GeneticMazeSolver(MazeSolver):
             diversity_history=evolution_state['diversity_history'],
             show=True
         )
+
+        # Export species-level CSV
+        try:
+            exporter = DataExporter()
+            exporter.export_species_data(evolution_state.get('species_records', []))
+        except Exception as e:
+            logging.error(f"Failed to export species data: {e}")
 
         logging.info(f"Best path length: {len(self.decode_path(evolution_state['best_chromosome']))}")
 

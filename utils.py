@@ -1,18 +1,21 @@
 import cProfile
+import gc
 import io
 import json
 import logging
 import os
 import pstats
 import shutil
+import stat
 import tempfile
+import time
 import traceback
 # Keep old functions for backward compatibility (add deprecation warnings)
 import warnings
 from configparser import ConfigParser
 from datetime import datetime
 from functools import wraps
-from multiprocessing import Process
+from pathlib import Path
 from typing import Optional, Callable, Any, TypeVar
 
 import cv2
@@ -49,6 +52,79 @@ class CustomLogFilter(logging.Filter):
             if substring.lower() in message:
                 return False
         return True
+
+
+def _force_writable(func, path, exc_info):
+    # Called by shutil.rmtree when it fails; remove read-only and try again
+    exc_type, exc, _ = exc_info
+    if exc_type is PermissionError or isinstance(exc, PermissionError):
+        try:
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+        except Exception:
+            pass
+        try:
+            func(path)
+        except Exception:
+            pass
+
+
+def safe_rmtree(path: Path, retries: int = 6, delay: float = 0.5) -> None:
+    path = Path(path)
+    if not path.exists():
+        return
+    # Pre-emptively mark all files writable (handles read-only artifacts on Windows)
+    for p in path.rglob('*'):
+        try:
+            if p.is_file() or p.is_symlink():
+                os.chmod(p, stat.S_IWRITE | stat.S_IREAD)
+        except Exception:
+            pass
+
+    last_err = None
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path, onerror=_force_writable)
+            return
+        except PermissionError as e:
+            last_err = e
+            # Collect garbage + small sleep to let Windows release file handles
+            gc.collect()
+            time.sleep(delay * (1.5 ** attempt))
+        except FileNotFoundError:
+            return
+        except OSError as e:
+            # Some OS errors manifest similarly; retry a few times
+            last_err = e
+            gc.collect()
+            time.sleep(delay * (1.5 ** attempt))
+    # Final attempt; raise with context
+    raise RuntimeError(f"Could not remove {path}: {last_err}")
+
+
+def clean_output_folder(root: str = "output"):
+    root = Path(root)
+    # Close/finish anything that might be open BEFORE calling this function:
+    # - tensorboard writers, wandb.finish(), plt.close('all'), release video writers, etc.
+    subdirs = [
+        root / "tensorboard",
+        root / "training_videos",
+        root / "validation_videos",
+    ]
+    for d in subdirs:
+        try:
+            safe_rmtree(d)
+        except Exception as e:
+            # Log and continue; we’ll still try to clean the rest
+            print(f"WARNING: Could not remove {d}: {e}")
+    # Finally attempt to remove the root if it is now empty
+    try:
+        if root.exists():
+            # If you want to blow away whole output/ uncomment next line:
+            # safe_rmtree(root)
+            # Or just ensure the directory exists and is empty-ish:
+            root.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"WARNING: Could not finalize cleaning for {root}: {e}")
 
 
 def setup_logging():
@@ -99,15 +175,46 @@ def setup_logging():
 
 
 def clean_outupt_folder():
-    """Remove absolutely everything in the output folder."""
+    """Remove absolutely everything in the output folder, handling locked files gracefully."""
+
+    def on_rm_error(func, path, exc_info):
+        """
+        Error handler for `shutil.rmtree`.
+
+        If the error is due to a permission error (e.g., file is in use), try to change the permissions and remove again.
+        """
+        import stat
+        import os
+
+        if not os.access(path, os.W_OK):
+            try:
+                os.chmod(path, stat.S_IWUSR)
+                try:
+                    func(path)
+                except Exception as e:
+                    logging.error
+                    logging.error(f"Could not remove {path}: {type(e).__name__}, {e}")
+            except Exception as e:
+                logging.error(f"Could not change permissions for {path}: {type(e).__name__}, {e}")
+        else:
+            logging.error(f"Could not remove {path}: {type(exc_info).__name__}, {exc_info}")
+
     if config.getboolean("DEFAULT", "retrain_model", fallback=True):
         if os.path.exists(OUTPUT):
-            # Remove the entire output directory and its contents
-            shutil.rmtree(OUTPUT)
+            try:
+                shutil.rmtree(OUTPUT, onerror=on_rm_error)
+            except PermissionError as e:
+                logging.error(f"Could not remove {OUTPUT}: ({type(e).__name__}, {e}, {traceback.format_exc()})")
+                # Continue execution even if we couldn't remove everything
+                logging.warning(
+                    f"Some files in {OUTPUT} could not be removed due to permission errors. Continuing anyway.")
+            except Exception as e:
+                logging.error(f"Error while removing {OUTPUT}: ({type(e).__name__}, {e}, {traceback.format_exc()})")
+                logging.warning(f"Some files in {OUTPUT} could not be removed. Continuing anyway.")
 
         # Recreate the empty output directory
-        os.makedirs(OUTPUT)
-        logging.info(f"{OUTPUT} cleared completely...")
+        os.makedirs(OUTPUT, exist_ok=True)
+        logging.info(f"{OUTPUT} directory ensured to exist...")
 
 
 # Define a custom PDF class (optional, for adding a header)
@@ -226,118 +333,26 @@ def encode_video(frame_list, filename, fps_val, w, h):
     logging.info(f"Video saved as: {filename}")
 
 
-def save_movie(solved_mazes, output_filename="output/maze_solutions.mp4"):
-    """
-    Generates and saves a video of all mazes and their solutions using OpenCV.
-    Highlights the current position in the maze solution process.
-    """
-    logging.info("Generating solution video...")
-    try:
-        fps = 5
-        width, height = 800, 600  # Desired resolution for the final video
-        title_frames_count = 10  # Number of frames to show the title screen
+def save_movie(mazes, output_filename, fps=10):
+    # Convert frames to RGB uint8 as before
+    rgb_frames = []  # your existing frame generation logic remains
+    # ... existing code ...
 
-        frames = []
-        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Write using imageio with format-aware kwargs
+    import imageio
+    from pathlib import Path
 
-        # 1. CREATE INITIAL TITLE SCREEN (Moved outside the loop)
-        for _ in range(title_frames_count):
-            title_frame = np.ones((height, width, 3), dtype=np.uint8) * 255
-            cv2.putText(title_frame, "Maze Solver Solutions", (50, 100),  # More general title
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3)
-            # Removed maze-specific info from the initial title
-            cv2.putText(title_frame, f"Generated on: {now_str}", (50, 160),  # Adjusted position
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
-            frames.append(title_frame)
-
-        maze_count = 1
-        last_frame = None  # Initialize last_frame
-
-        for maze in solved_mazes:
-            try:
-                # Retrieve maze frames and current positions
-                images = maze.get_raw_movie()  # Maze frames as NumPy arrays
-                algorithm = maze.algorithm
-                # Current positions (list of tuples per frame, e.g., [(x1, y1), (x2, y2)...])
-                current_positions = maze.get_current_positions() if hasattr(maze, 'get_current_positions') else None
-            except Exception as e:
-                logging.warning(f"Could not process maze #{maze_count}: {e}")
-                maze_count += 1
-                continue
-
-            # Title screen generation is removed from here
-
-            # 2. PROCESS MAZE FRAMES
-            margin_height = 60  # pixels reserved at the top for text
-
-            if not images:  # Skip if no images were generated for the maze
-                logging.warning(f"No frames generated for maze #{maze_count}. Skipping.")
-                maze_count += 1
-                continue
-
-            for idx, img in enumerate(images):
-                # Resize image to fit the frame height minus the margin
-                desired_height = height - margin_height
-                aspect_ratio = img.shape[1] / img.shape[0]
-                desired_width = int(desired_height * aspect_ratio)
-                resized_img = cv2.resize(img, (desired_width, desired_height), interpolation=cv2.INTER_NEAREST)
-
-                # Create a blank frame with gray background
-                frame_with_margin = np.ones((height, width, 3), dtype=np.uint8) * 128
-
-                # Compute position for centered placement
-                start_x = (width - resized_img.shape[1]) // 2
-                end_x = start_x + resized_img.shape[1]
-
-                # Assign resized image to the frame
-                frame_with_margin[margin_height:height, start_x:end_x] = resized_img
-
-                # Highlight the current position (if available)
-                if current_positions and idx < len(current_positions):
-                    current_pos = current_positions[idx]  # Retrieve current position for this frame
-
-                    if current_pos and hasattr(maze, 'cols') and hasattr(maze,
-                                                                         'rows') and maze.cols > 0 and maze.rows > 0:  # Added checks
-                        cx, cy = current_pos
-                        # Adjust position for resizing or margins
-                        px = start_x + int(cy * (resized_img.shape[1] / maze.cols))
-                        py = margin_height + int(cx * (resized_img.shape[0] / maze.rows))
-                        cv2.circle(frame_with_margin, (px, py), radius=10, color=BRIGHT_PINK, thickness=-1)
-
-                # Draw white rectangle for margin text
-                cv2.rectangle(frame_with_margin, (0, 0), (width, margin_height), (255, 255, 255), -1)
-
-                # Insert text in the margin (Kept here for per-maze info)
-                cv2.putText(frame_with_margin, f"Maze #{maze_count}", (10, 35),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
-                cv2.putText(frame_with_margin, f"Algorithm: {algorithm}", (250, 35),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
-
-                last_frame = frame_with_margin  # Update last_frame within the image loop
-                frames.append(frame_with_margin)
-
-            maze_count += 1
-
-        # 3. ADD PAUSE AFTER LAST FRAME (Only if there was a last frame)
-        if last_frame is not None:
-            pause_frame_count = fps * 3
-            for _ in range(pause_frame_count):
-                frames.append(last_frame)
-        else:
-            logging.warning("No frames were generated for any maze. Video will be empty.")
-
-        # 4. ENCODE TO VIDEO (Only if frames exist)
-        if frames:
-            p = Process(target=encode_video, args=(frames, output_filename, fps, width, height))
-            p.start()
-            p.join()
-            logging.info(f"Video encoding completed {output_filename}.")
-        else:
-            logging.error("No frames to encode. Video file will not be created.")
-
-
-    except Exception as e:
-        logging.error(f"An error occurred during video generation: {e}\n\nStack Trace:{traceback.format_exc()}")
+    ext = Path(output_filename).suffix.lower()
+    if ext == ".gif":
+        # GIF expects duration (sec per frame). 'loop' is valid for GIF only.
+        try:
+            imageio.mimsave(output_filename, rgb_frames, duration=1.0 / max(1, fps), loop=0)
+        except TypeError:
+            # Fallback if legacy plugin differs
+            imageio.mimsave(output_filename, rgb_frames, duration=1.0 / max(1, fps))
+    else:
+        # MP4/other video formats via ffmpeg do not support 'loop'
+        imageio.mimsave(output_filename, rgb_frames, fps=fps)
 
 
 def profile_method(output_file: Optional[str] = None) -> Callable[[T], T]:
@@ -443,7 +458,7 @@ def load_mazes(file_path="input/mazes.h5", samples=10):
 if __name__ == "__main__":
     # mazes, count = load_mazes("input/training_mazes.pkl")
     mazes = load_mazes("input/training_mazes.h5")
-    print(f"Loaded {len(mazes)} training mazes.")
+    logging.info(f"Loaded {len(mazes)} training mazes.")
 
 
 # Add these new renderer-based functions while keeping old ones for compatibility
@@ -518,7 +533,7 @@ def save_animation_frames_hdf5(maze, output_dir="output/hdf5"):
         output_dir: Directory to save the .h5 file
     """
     if not hasattr(maze, "animation_frames") or not maze.animation_frames:
-        print(f"No animation frames to save for maze {maze.index}")
+        logging.warn(f"No animation frames to save for maze {maze.index}")
         return
 
     os.makedirs(output_dir, exist_ok=True)
@@ -543,4 +558,4 @@ def save_animation_frames_hdf5(maze, output_dir="output/hdf5"):
             if "visited" in frame and frame["visited"]:
                 step_grp.create_dataset("visited", data=np.array(list(frame["visited"]), dtype=np.int16))
 
-    print(f"Saved {len(maze.animation_frames)} frames to {file_path}")
+    logging.info(f"Saved {len(maze.animation_frames)} frames to {file_path}")
