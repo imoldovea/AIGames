@@ -202,12 +202,27 @@ def clean_outupt_folder():
     if config.getboolean("DEFAULT", "retrain_model", fallback=True):
         if os.path.exists(OUTPUT):
             try:
-                shutil.rmtree(OUTPUT, onerror=on_rm_error)
+                safe_rmtree(OUTPUT)
             except PermissionError as e:
-                logging.error(f"Could not remove {OUTPUT}: ({type(e).__name__}, {e}, {traceback.format_exc()})")
-                # Continue execution even if we couldn't remove everything
-                logging.warning(
-                    f"Some files in {OUTPUT} could not be removed due to permission errors. Continuing anyway.")
+                logging.error(f"Could not remove {OUTPUT}: {e}")
+                # Best-effort cleanup of directory contents to avoid hard failure on Windows locks
+                try:
+                    for root, dirs, files in os.walk(OUTPUT, topdown=False):
+                        for name in files:
+                            path = os.path.join(root, name)
+                            try:
+                                _force_writable(path)
+                                os.remove(path)
+                            except Exception:
+                                pass
+                        for name in dirs:
+                            path = os.path.join(root, name)
+                            try:
+                                os.rmdir(path)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
             except Exception as e:
                 logging.error(f"Error while removing {OUTPUT}: ({type(e).__name__}, {e}, {traceback.format_exc()})")
                 logging.warning(f"Some files in {OUTPUT} could not be removed. Continuing anyway.")
@@ -559,3 +574,60 @@ def save_animation_frames_hdf5(maze, output_dir="output/hdf5"):
                 step_grp.create_dataset("visited", data=np.array(list(frame["visited"]), dtype=np.int16))
 
     logging.info(f"Saved {len(maze.animation_frames)} frames to {file_path}")
+
+
+# Existing content above retained
+
+from collections import deque
+import numpy as _np
+
+
+def compute_distance_map_for_maze(maze) -> _np.ndarray:
+    """
+    Compute a distance-to-exit map for a given maze using BFS from the exit.
+    The result is a 2D NumPy array (float32) with the shortest distance in steps
+    from each cell to the exit. Unreachable cells are set to +inf.
+
+    This function should be called once per maze and reused to avoid per-chromosome
+    shortest path computations.
+    """
+    rows, cols = maze.rows, maze.cols
+    dist = _np.full((rows, cols), _np.inf, dtype=_np.float32)
+
+    exit_pos = getattr(maze, 'exit', None)
+    if exit_pos is None:
+        # If exit is not set, try to set it automatically if the Maze supports it
+        try:
+            maze.set_exit()
+            exit_pos = maze.exit
+        except Exception:
+            return dist  # no exit; return inf map
+
+    er, ec = exit_pos
+    if not (0 <= er < rows and 0 <= ec < cols):
+        return dist
+
+    # Initialize BFS
+    q = deque()
+    # Only start if exit itself is a valid move cell
+    if maze.is_valid_move(exit_pos):
+        dist[er, ec] = 0.0
+        q.append(exit_pos)
+
+    # 4-neighborhood
+    neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+    while q:
+        r, c = q.popleft()
+        base_d = dist[r, c]
+        nd = base_d + 1.0
+        for dr, dc in neighbors:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < rows and 0 <= nc < cols:
+                pos = (nr, nc)
+                # Use maze validity to match solver rules
+                if maze.is_valid_move(pos) and nd < dist[nr, nc]:
+                    dist[nr, nc] = nd
+                    q.append(pos)
+
+    return dist

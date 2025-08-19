@@ -6,7 +6,7 @@ Provides clean separation of concerns, configurable parameters, and better error
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -15,6 +15,10 @@ import imageio.v3 as imageio
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+from utils import encode_video
+
+SAMPLE_STEP = 2
 
 
 @dataclass
@@ -26,8 +30,8 @@ class VisualizationConfig:
     line_width: int = 2
     marker_size: int = 2
     video_fps: int = 4
-    gif_duration: float = 5.0
-    gif_clear_duration: float = 0.2
+    gif_duration: float = 50.0
+    gif_clear_duration: float = 2.0
     video_scale_factor: int = 2
     pause_frames: int = 5
 
@@ -41,9 +45,26 @@ class VisualizationConfig:
 class ExportConfig:
     """Configuration for data export parameters."""
     output_dir: str = "output"
-    csv_precision: int = 2
-    export_columns: List[str] = None
-    species_export_columns: List[str] = None
+    csv_precision: int = 4
+    export_columns: List[str] = field(default_factory=lambda: [
+        "generation",
+        "best_fitness",
+        "avg_fitness",
+        "median_fitness",
+        "std_fitness",
+        "diversity",
+        "population_size",
+        "elapsed_sec",
+        "species_count",  # NEW: include species count in evolution_data.csv
+    ])
+    species_export_columns: List[str] = field(default_factory=lambda: [
+        "generation",
+        "species_id",
+        "size",
+        "best_fitness",
+        "avg_fitness",
+        "age",
+    ])
 
     def __post_init__(self):
         if self.export_columns is None:
@@ -65,7 +86,9 @@ class FrameRenderer:
         self.config = config or VisualizationConfig()
 
     def render_maze_frame(self, maze, paths: List[List[Tuple]], generation: int,
-                          fitnesses: Optional[List[float]] = None) -> np.ndarray:
+                          fitnesses: Optional[List[float]] = None,
+                          species_ids: Optional[List[int]] = None,
+                          genes: Optional[List[str]] = None) -> np.ndarray:
         """
         Create a frame in memory using matplotlib and return it as a NumPy array.
         
@@ -88,7 +111,7 @@ class FrameRenderer:
             # Mark the exit point distinctly
             self._mark_exit_position(maze)
 
-            self._plot_paths(paths, fitnesses)
+            self._plot_paths(paths, fitnesses, species_ids, genes)
             self._configure_plot(maze, generation)
 
             return self._convert_to_array()
@@ -97,7 +120,9 @@ class FrameRenderer:
             logging.error(f"Error rendering maze frame: {e}")
             raise
 
-    def _plot_paths(self, paths: List[List[Tuple]], fitnesses: Optional[List[float]]):
+    def _plot_paths(self, paths: List[List[Tuple]], fitnesses: Optional[List[float]],
+                    species_ids: Optional[List[int]] = None,
+                    genes: Optional[List[str]] = None):
         """Plot all paths on the current figure."""
         for i, path in enumerate(paths):
             if path and len(path) > 0:
@@ -106,9 +131,14 @@ class FrameRenderer:
                     color = self.config.colors[i % len(self.config.colors)]
 
                     # Create label with optional fitness score
-                    label = f'Path {i + 1}'
+                    if species_ids and i < len(species_ids) and species_ids[i] is not None:
+                        label = f'Species {species_ids[i] + 1}'
+                    else:
+                        label = f'Path {i + 1}'
                     if fitnesses and i < len(fitnesses):
                         label += f' (fit={fitnesses[i]:.2f})'
+                    if genes and i < len(genes) and genes[i] is not None:
+                        label += f' | gene={genes[i]}'
 
                     plt.plot(py, px, color=color, linewidth=self.config.line_width,
                              marker='o', markersize=self.config.marker_size, label=label)
@@ -178,27 +208,22 @@ class VideoCreator:
             scaled_width = original_width * self.config.video_scale_factor
             scaled_height = original_height * self.config.video_scale_factor
 
-            # Initialize video writer
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            video = cv2.VideoWriter(output_file, fourcc, self.config.video_fps,
-                                    (scaled_width, scaled_height))
-
-            # Write frames
+            # Prepare frames (resize and convert to BGR)
+            out_frames = []
             for frame in frames:
                 scaled_frame = cv2.resize(frame, (scaled_width, scaled_height),
                                           interpolation=cv2.INTER_LINEAR)
                 bgr_frame = cv2.cvtColor(scaled_frame, cv2.COLOR_RGB2BGR)
-                video.write(bgr_frame)
+                out_frames.append(bgr_frame)
 
             # Add pause at the end
-            final_frame = cv2.resize(frames[-1], (scaled_width, scaled_height),
-                                     interpolation=cv2.INTER_LINEAR)
-            final_bgr = cv2.cvtColor(final_frame, cv2.COLOR_RGB2BGR)
+            if out_frames:
+                final_bgr = out_frames[-1]
+                for _ in range(self.config.video_fps * self.config.pause_frames):
+                    out_frames.append(final_bgr)
 
-            for _ in range(self.config.video_fps * self.config.pause_frames):
-                video.write(final_bgr)
-
-            video.release()
+            # Use utils encoder for MP4 writing
+            encode_video(out_frames, output_file, self.config.video_fps, scaled_width, scaled_height)
             logging.debug(f"Video saved as {output_file}")
 
         except Exception as e:
@@ -254,8 +279,6 @@ class VideoCreator:
                             mode='constant', constant_values=255)
             padded_frames.append(padded)
 
-        return padded_frames
-
 
 class DataExporter:
     """Handles data export and CSV generation."""
@@ -283,8 +306,14 @@ class DataExporter:
             processed_data = self._process_monitoring_data(monitoring_data.copy())
 
             df = pd.DataFrame(processed_data)
+            # Sort before narrowing columns to ensure required sort keys are present
+            if "maze_index" in df.columns and "generation" in df.columns:
+                df.sort_values(by=["maze_index", "generation"], inplace=True)
+            else:
+                missing = [c for c in ("maze_index", "generation") if c not in df.columns]
+                logging.warning(f"Monitoring export missing expected sort columns: {missing}. "
+                                f"Proceeding without sort.")
             df = df[self.config.export_columns]  # Ensure column order
-            df.sort_values(by=["maze_index", "generation"], inplace=True)
 
             # Check if file exists to determine if header should be written
             write_header = not os.path.exists(filename)
@@ -327,33 +356,64 @@ class DataExporter:
             logging.error(f"Error exporting species data: {e}")
             raise
 
-    def _process_monitoring_data(self, monitoring_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process monitoring data for CSV export."""
-        for data in monitoring_data:
-            # Extract maze information
-            maze = data.get("maze")
-            if maze:
-                data["maze_index"] = maze.index
-                data["complexity"] = maze.complexity
+    def _process_monitoring_data(self, monitoring_history):
+        """
+        Normalize raw monitoring items into a list of dicts suitable for CSV export.
 
-            # Calculate path statistics
-            paths = data.get("paths", [])
-            data["longest_path"] = max((len(path) for path in paths), default=0)
+        Each item is expected to be a dict-like record. This normalizer will ensure
+        the presence of the configured export columns, filling missing values with None.
+        Also attempts to derive 'species_count' if not explicitly present.
+        """
+        processed = []
+        for rec in monitoring_history:
+            # Ensure dict copy for safe mutation
+            row = dict(rec)
+
+            # Derive species_count if missing
+            if "species_count" not in row or row["species_count"] is None:
+                # Common fallbacks
+                if "num_species" in row and row["num_species"] is not None:
+                    row["species_count"] = row["num_species"]
+                elif "species" in row and row["species"] is not None:
+                    try:
+                        row["species_count"] = len(row["species"])
+                    except Exception:
+                        row["species_count"] = None
+                else:
+                    row["species_count"] = None
+
+            # Calculate path statistics if paths available
+            paths = row.get("paths", [])
+            try:
+                row["longest_path"] = max((len(p) for p in paths), default=0)
+            except Exception:
+                row["longest_path"] = 0
 
             # Round numerical values
             for key in ["avg_fitness", "max_fitness", "diversity"]:
-                if key in data and isinstance(data[key], (int, float)):
-                    data[key] = round(data[key], self.config.csv_precision)
+                val = row.get(key)
+                if isinstance(val, (int, float)):
+                    row[key] = round(float(val), self.config.csv_precision)
 
-            # Adjust generation number (1-based indexing)
-            if "generation" in data:
-                data["generation"] = data["generation"] + 1
+            # Attach maze metadata if present
+            maze_obj = row.get("maze")
+            if maze_obj is not None:
+                row.setdefault("maze_index", getattr(maze_obj, "index", None))
+                row.setdefault("complexity", getattr(maze_obj, "complexity", None))
+
+            # Do NOT increment generation here; upstream may already provide 1-based
 
             # Remove objects that can't be serialized to CSV
-            data.pop("maze", None)
-            data.pop("paths", None)
+            row.pop("maze", None)
+            row.pop("paths", None)
 
-        return monitoring_data
+            # Normalize to configured columns and append
+            normalized = {}
+            for col in self.config.export_columns:
+                normalized[col] = row.get(col, None)
+            processed.append(normalized)
+
+        return processed
 
 
 class FitnessPlotter:
@@ -417,75 +477,114 @@ class GeneticMonitor:
         self.data_exporter = DataExporter(self.export_config)
         self.fitness_plotter = FitnessPlotter(self.export_config)
 
-    def visualize_evolution(self, monitoring_data: List[Dict[str, Any]],
-                            mode: str = "video", index: int = 0) -> None:
+    def visualize_evolution(
+            self,
+            monitoring_history,
+            frames_memory=None,
+            save_video=True,
+            save_gif=False,
+            genetic_algorithm=None,
+            sample_step=SAMPLE_STEP,  # NEW: sampling multiplier for display label
+    ):
         """
-        Visualize the evolution by generating frames and creating video/GIF.
-        
-        Args:
-            monitoring_data: List of monitoring data for each generation
-            mode: Output mode ("video" or "gif")
-            index: Maze index for filename
+        Visualize the sampled evolution. The displayed generation number reflects
+        the sampling step (e.g., gen_index * sample_step).
         """
-        if not monitoring_data:
+        if not monitoring_history:
             logging.warning("No monitoring data provided for visualization")
             return
 
         try:
-            if mode == "gif":
-                # Generate frames with clear frames and per-frame durations
-                frames = []
-                durations = []
-                for data in monitoring_data:
-                    # Frame with paths
-                    frame = self.frame_renderer.render_maze_frame(
-                        maze=data["maze"],
-                        paths=data["paths"],
-                        generation=data["generation"],
-                        fitnesses=data.get("fitnesses")
-                    )
-                    frames.append(frame)
-                    durations.append(self.vis_config.gif_duration)
+            # Helper: for each generation, keep only the best path per species
+            def _best_per_species(gen_data: Dict[str, Any]) -> Dict[str, Any]:
+                paths = gen_data.get("paths") or []
+                fitnesses = gen_data.get("fitnesses") or []
+                species_ids = gen_data.get("species_ids") or []
+                genes = gen_data.get("genes") or []
 
-                    # Clear frame (no paths) to "delete" the path
-                    clear_frame = self.frame_renderer.render_maze_frame(
-                        maze=data["maze"],
-                        paths=[],
-                        generation=data["generation"],
-                        fitnesses=None
-                    )
-                    frames.append(clear_frame)
-                    durations.append(self.vis_config.gif_clear_duration)
+                # If species are not provided or lengths mismatch, fall back to original data
+                if (not species_ids or len(species_ids) != len(paths)
+                        or len(fitnesses) != len(paths)):
+                    return {
+                        "paths": paths,
+                        "fitnesses": fitnesses if fitnesses else None,
+                        "species_ids": species_ids if species_ids else None,
+                        "genes": genes if genes else None,
+                    }
+
+                best_idx_by_species = {}
+                for idx, (sid, fit) in enumerate(zip(species_ids, fitnesses)):
+                    if fit is None:
+                        continue
+                    if sid not in best_idx_by_species or fit > fitnesses[best_idx_by_species[sid]]:
+                        best_idx_by_species[sid] = idx
+
+                # Preserve deterministic order by species id where possible
+                ordered_species = sorted(best_idx_by_species.keys())
+                filtered_paths = [paths[best_idx_by_species[sid]] for sid in ordered_species]
+                filtered_fitnesses = [fitnesses[best_idx_by_species[sid]] for sid in ordered_species]
+                filtered_species = ordered_species
+                filtered_genes = None
+                if genes and len(genes) == len(paths):
+                    filtered_genes = [genes[best_idx_by_species[sid]] for sid in ordered_species]
+
+                return {
+                    "paths": filtered_paths,
+                    "fitnesses": filtered_fitnesses,
+                    "species_ids": filtered_species,
+                    "genes": filtered_genes,
+                }
+
+            # Build frames from monitoring history (optionally sampled)
+            frames: List[np.ndarray] = []
+
+            if isinstance(sample_step, int) and sample_step > 1:
+                sampled = [(i, monitoring_history[i]) for i in range(0, len(monitoring_history), sample_step)]
             else:
-                # Generate regular frames for video
-                frames = []
-                for data in monitoring_data:
+                sampled = list(enumerate(monitoring_history))
+
+            for gen_index, gen_data in sampled:
+                try:
+                    best = _best_per_species(gen_data)
+                    maze = gen_data.get("maze")
                     frame = self.frame_renderer.render_maze_frame(
-                        maze=data["maze"],
-                        paths=data["paths"],
-                        generation=data["generation"],
-                        fitnesses=data.get("fitnesses")
+                        maze,
+                        best.get("paths", []),
+                        generation=gen_index,
+                        fitnesses=best.get("fitnesses"),
+                        species_ids=best.get("species_ids"),
+                        genes=best.get("genes"),
                     )
                     frames.append(frame)
+                except Exception as e:
+                    logging.warning(f"Skipping frame for generation {gen_index}: {e}")
+                    continue
+
+            # If external frames were supplied, prefer them
+            if frames_memory and isinstance(frames_memory, list):
+                frames = frames_memory
 
             # Ensure output directory exists
             os.makedirs(self.export_config.output_dir, exist_ok=True)
 
-            # Create visualization based on mode
-            if mode == "video":
-                output_file = os.path.join(self.export_config.output_dir, f"evolution_{index}.mp4")
-                self.video_creator.create_video(frames, output_file)
-            elif mode == "gif":
-                output_file = os.path.join(self.export_config.output_dir, f"evolution_{index}.gif")
-                self.video_creator.create_gif(frames, output_file, durations=durations)
-            else:
-                raise ValueError(f"Unsupported visualization mode: {mode}")
+            # Derive a stable filename using the maze index if present, else fallback
+            try:
+                maze_index = getattr(monitoring_history[0].get("maze"), "index", 0)
+            except Exception:
+                maze_index = 0
 
-            # Export data to CSV
-            self.data_exporter.export_monitoring_data(monitoring_data)
+            # Save outputs
+            if save_video and frames:
+                output_file = os.path.join(self.export_config.output_dir, f"evolution_{maze_index}.mp4")
+                self.video_creator.create_video(frames, output_file)
+
+            if save_gif and frames:
+                output_file_gif = os.path.join(self.export_config.output_dir, f"evolution_{maze_index}.gif")
+                durations = [1.0] * len(frames)
+                self.video_creator.create_gif(frames, output_file_gif, durations=durations)
 
         except Exception as e:
-            logging.error(f"Error visualizing evolution: {e}")
+            logging.error(f"Error during evolution visualization: {e}")
             raise
 
     def plot_fitness_history(self, maze, fitness_history: List[float],
@@ -501,7 +600,19 @@ class GeneticMonitor:
 def visualize_evolution(monitoring_data, mode="video", index=0):
     """Backward compatibility function for visualize_evolution."""
     monitor = GeneticMonitor()
-    monitor.visualize_evolution(monitoring_data, mode, index)
+    # Map legacy 'mode' to the current API flags without passing positional args incorrectly
+    mode_l = (mode or "video").lower()
+    save_video = mode_l in ("video", "mp4")
+    save_gif = mode_l == "gif"
+
+    # We no longer pass 'mode' or 'index' positionally; the class method will infer filename from monitoring_data
+    monitor.visualize_evolution(
+        monitoring_data,
+        frames_memory=None,
+        save_video=save_video,
+        save_gif=save_gif,
+        genetic_algorithm=None
+    )
 
 
 def print_fitness(maze, fitness_history, avg_fitness_history, diversity_history, show=False):
@@ -534,3 +645,58 @@ def create_gif_from_memory(frames, output_gif="output/evolution.gif", duration=0
     config = VisualizationConfig(gif_duration=duration)
     creator = VideoCreator(config)
     creator.create_gif(frames, output_gif)
+
+
+def create_video_from_memory(frames, fps=10, sample_step=20):
+    """
+    Create a video from in-memory frames. The fps is applied via VisualizationConfig.
+    """
+    config = VisualizationConfig(video_fps=fps)
+    creator = VideoCreator(config)
+    # Default output path; callers may prefer the class-based API for custom names
+    return creator.create_video(frames, output_file="output/evolution.mp4")
+
+
+def create_gif_from_memory(frames, fps=10):
+    """
+    Create a GIF from in-memory frames. fps is converted to per-frame duration.
+    """
+    duration = 1.0 / max(fps, 1)
+    config = VisualizationConfig(gif_duration=duration)
+    creator = VideoCreator(config)
+    # Default output path; callers may prefer the class-based API for custom names
+    return creator.create_gif(frames, output_file="output/evolution.gif")
+
+
+def data_to_csv(monitoring_history, csv_path, precision=4):
+    """
+    Lightweight CSV export; ensures species_count column is included if present
+    or derivable.
+    """
+    import pandas as pd
+    rows = []
+    for rec in monitoring_history:
+        row = dict(rec)
+        if "species_count" not in row or row["species_count"] is None:
+            if "num_species" in row and row["num_species"] is not None:
+                row["species_count"] = row["num_species"]
+            elif "species" in row and row["species"] is not None:
+                try:
+                    row["species_count"] = len(row["species"])
+                except Exception:
+                    row["species_count"] = None
+            else:
+                row["species_count"] = None
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    if "species_count" not in df.columns:
+        df["species_count"] = None
+    df = df.sort_values(by="generation").reset_index(drop=True)
+
+    # Round numeric columns
+    num_cols = df.select_dtypes(include=["float64", "float32"]).columns
+    df[num_cols] = df[num_cols].round(precision)
+
+    df.to_csv(csv_path, index=False)
+    return csv_path

@@ -21,6 +21,7 @@ from utils import profile_method
 # Global constants for diversity management
 DIVERSITY_THRESHOLD = 5
 DIVERSITY_PATIENCE = 20
+SAMPLE_STEP = 2
 
 
 class GeneticMazeSolver(MazeSolver):
@@ -136,7 +137,8 @@ class GeneticMazeSolver(MazeSolver):
         # Main evolution loop
         for generation in tqdm.tqdm(
                 range(self.config.generations),
-                desc=f"Evolving Population maze index:{self.maze.index} complexity: {self.maze.complexity}"
+                desc=f"Evolving Population maze index:{self.maze.index} complexity: {self.maze.complexity}",
+                leave=False
         ):
             evolution_state['generation'] = generation
 
@@ -362,34 +364,58 @@ class GeneticMazeSolver(MazeSolver):
         avg_fitness = evolution_state['avg_fitness_history'][-1]
         diversity = evolution_state['diversity_history'][-1] if evolution_state['diversity_history'] else 0
 
-        # Only record every 20 generations (1-based display already added later)
-        if generation % 20 != 0:
+        # Only record every 20 generations based on actual iteration count (1-based)
+        # This ensures frames correspond to iterations 20, 40, 60, ... and avoids recording at iteration 0
+        if (generation + 1) % SAMPLE_STEP != 0:
             return
 
         # Collect best from each species if species info exists; otherwise top-K
         species = evolution_state.get('species') or []
         paths = []
         fitnesses = []
+        species_ids = []
+        genes = []
         if species:
-            for sp in species:
+            # Compute best member per species
+            best_per_species = []
+            for sid, sp in enumerate(species):
                 if not sp['members']:
                     continue
                 best_chrom, best_fit = max(sp['members'], key=lambda x: x[1])
+                best_per_species.append((sid, best_chrom, float(best_fit)))
+            # Order by species id to match visualization requirement (species 1..n)
+            best_per_species.sort(key=lambda t: t[0])
+            for sid, best_chrom, best_fit in best_per_species:
                 paths.append(self.decode_path(best_chrom))
-                fitnesses.append(float(best_fit))
+                fitnesses.append(best_fit)
+                species_ids.append(sid)
+                genes.append(",".join(str(int(g)) for g in best_chrom))
         else:
-            selected = scored[:self.config.evolution_chromosomes]
+            k = min(3, len(scored))
+            selected = scored[:k]
             paths = [self.decode_path(chromosome) for chromosome, _ in selected]
             fitnesses = [float(score) for _, score in selected]
+            species_ids = [None] * len(paths)
+            # Optional genes for non-species view
+            try:
+                genes = [",".join(str(int(g)) for g, _ in [])]  # placeholder empty
+                genes = None
+            except Exception:
+                genes = None
 
         evolution_state['monitoring_data'].append({
             "maze": self.maze,
             "paths": paths,
             "fitnesses": fitnesses,
+            "species_ids": species_ids,
             "avg_fitness": avg_fitness,
             "max_fitness": evolution_state['best_score'],
+            # Keep original generation field unchanged for CSV/backward-compat
             "generation": generation + 1,
-            "diversity": diversity
+            # Add display_generation for correct title labeling in GIF
+            "display_generation": generation + 1,
+            "diversity": diversity,
+            "genes": genes
         })
 
     def _hamming_distance(self, c1, c2):
@@ -493,15 +519,52 @@ class GeneticMazeSolver(MazeSolver):
     def _generate_final_reports(self, evolution_state):
         """Generate final visualizations and reports."""
         if self.monitoring_config.save_evolution_movie:
-            # Add final solution frame
-            final_path = self.decode_path(evolution_state['best_chromosome'])
-            if final_path and len(final_path) > 1:
+            # Add final solution frame with best path from each species
+            species = evolution_state.get('species') or []
+            paths = []
+            fitnesses = []
+            species_ids = []
+            if species:
+                # Collect best member per species and select top 3 by best fitness
+                best_per_species = []
+                for sid, sp in enumerate(species):
+                    if not sp['members']:
+                        continue
+                    best_chrom, best_fit = max(sp['members'], key=lambda x: x[1])
+                    best_per_species.append((sid, best_chrom, float(best_fit)))
+                best_per_species.sort(key=lambda t: t[2], reverse=True)
+                for sid, best_chrom, best_fit in best_per_species[:3]:
+                    paths.append(self.decode_path(best_chrom))
+                    fitnesses.append(best_fit)
+                    species_ids.append(sid)
+            else:
+                # Fallback to top 3 globally best if no species info available
+                scored = evolution_state.get('scored_population') or []
+                if scored:
+                    k = min(3, len(scored))
+                    selected = scored[:k]
+                    paths = [self.decode_path(chromosome) for chromosome, _ in selected]
+                    fitnesses = [float(score) for _, score in selected]
+                    species_ids = [None] * len(paths)
+                else:
+                    # Final fallback to global best chromosome
+                    final_path = self.decode_path(evolution_state['best_chromosome'])
+                    if final_path and len(final_path) > 1:
+                        paths = [final_path]
+                        fitnesses = [float(evolution_state['best_score'])]
+                        species_ids = [None]
+
+            if paths:
                 evolution_state['monitoring_data'].append({
                     "maze": self.maze,
-                    "paths": [final_path],
-                    "avg_fitness": evolution_state['avg_fitness_history'][-1],
+                    "paths": paths,
+                    "fitnesses": fitnesses,
+                    "species_ids": species_ids,
+                    "avg_fitness": evolution_state['avg_fitness_history'][-1] if evolution_state[
+                        'avg_fitness_history'] else 0,
                     "max_fitness": evolution_state['best_score'],
                     "generation": evolution_state['generation'] + 1,
+                    "display_generation": evolution_state['generation'] + 1,
                     "diversity": evolution_state['diversity_history'][-1] if evolution_state['diversity_history'] else 0
                 })
 

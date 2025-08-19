@@ -155,7 +155,7 @@ class GeneticConfigManager:
         return MonitoringConfig(
             save_evolution_movie=self.config.getboolean("MONITORING", "save_evolution_movie", fallback=False),
             save_solution_movie=self.config.getboolean("MONITORING", "save_solution_movie", fallback=False),
-            visualization_mode=self.config.get("MONITORING", "visualization_mode", fallback="gif"),
+            visualization_mode=self.config.get("MONITORING", "visualization_mode", fallback="video"),
             wandb_enabled=self.config.getboolean("MONITORING", "wandb", fallback=False)
         )
 

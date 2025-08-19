@@ -9,8 +9,8 @@ from configparser import ConfigParser
 
 import numpy as np
 
-from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from maze import Maze
+from utils import compute_distance_map_for_maze
 
 
 class FitnessCalculator:
@@ -27,6 +27,8 @@ class FitnessCalculator:
 
         # Load all fitness weights from config
         self._load_fitness_weights()
+        # Precompute distance map once per maze for fast lookups
+        self.distance_map = compute_distance_map_for_maze(self.maze)
 
     def _load_fitness_weights(self):
         """Load all fitness calculation weights from configuration."""
@@ -180,20 +182,18 @@ class FitnessCalculator:
             return -2.0
 
     def _calculate_bfs_proximity_reward(self, final_position):
-        """Calculate reward based on BFS distance to exit."""
+        """Calculate reward based on precomputed distance map lookup."""
         try:
-            grid_copy = np.copy(self.maze.grid)
-            grid_copy[self.maze.start_position] = 3
-            temp_maze = Maze(grid_copy, index=self.maze.index)
-            temp_maze.current_position = final_position
-
-            backtrack_solver = OptimizedBacktrackingMazeSolver(temp_maze)
-            bfs_path = backtrack_solver.solve()
-            bfs_distance = len(bfs_path) if bfs_path else self.max_steps
-
-            return self.bfs_distance_reward_weight * (1.0 / (1 + bfs_distance)) ** 3
+            r, c = final_position
+            if 0 <= r < self.maze.rows and 0 <= c < self.maze.cols:
+                d = self.distance_map[r, c]
+            else:
+                d = np.inf
+            if not np.isfinite(d):
+                d = self.max_steps
+            return self.bfs_distance_reward_weight * (1.0 / (1 + d)) ** 3
         except Exception as e:
-            logging.warning(f"BFS distance calculation failed: {e}")
+            logging.warning(f"Distance map lookup failed: {e}")
             return 0
 
     def _calculate_diversity_penalty(self, chromosome, population):
