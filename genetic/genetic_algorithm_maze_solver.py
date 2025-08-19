@@ -546,7 +546,9 @@ class GeneticMazeSolver(MazeSolver):
                     best_chrom, best_fit = max(sp['members'], key=lambda x: x[1])
                     best_per_species.append((sid, best_chrom, float(best_fit)))
                 best_per_species.sort(key=lambda t: t[2], reverse=True)
-                for sid, best_chrom, best_fit in best_per_species[:3]:
+                # Include up to configured max_species paths (default 10)
+                limit = getattr(self.config, 'max_species', 10)
+                for sid, best_chrom, best_fit in best_per_species[:limit]:
                     paths.append(self.decode_path(best_chrom))
                     fitnesses.append(best_fit)
                     species_ids.append(sid)

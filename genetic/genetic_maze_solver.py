@@ -425,15 +425,51 @@ class GeneticMazeSolver(MazeSolver):
                     new_pop.append(self._mutate(c2, mutation_rate))
             population = new_pop
 
-            # Select chromosomes you wish to visualize (cap to top 3 by fitness)
-            k = min(3, len(scored))
-            selected = scored[:k]
-            paths = [self.decode_path(chromosome) for chromosome, _ in selected]
-            mon_fitnesses = [fitness for _, fitness in selected]
+            # Build species and select best chromosome per species for visualization (up to max_species)
+            def _hamming_distance(c1, c2):
+                if len(c1) != len(c2):
+                    L = min(len(c1), len(c2))
+                    return int(np.sum(np.array(c1[:L]) != np.array(c2[:L]))) + abs(len(c1) - len(c2))
+                return int(np.sum(np.array(c1) != np.array(c2)))
+
+            # Species grouping by Hamming distance to representative
+            chromosome_len = len(scored[0][0]) if scored else self.chromosome_length
+            abs_threshold = max(1, int(0.15 * chromosome_len))  # 15% threshold similar to refactored solver
+            max_species_cap = config.getint("GENETIC", "max_species", fallback=10)
+
+            species = []  # list of dicts { 'rep': chrom, 'members': [(chrom, fit), ...] }
+            for chrom, fit in scored:
+                placed = False
+                for sp in species:
+                    if _hamming_distance(chrom, sp['rep']) <= abs_threshold:
+                        sp['members'].append((chrom, fit))
+                        placed = True
+                        break
+                if not placed:
+                    if len(species) < max_species_cap:
+                        species.append({'rep': chrom, 'members': [(chrom, fit)]})
+                    else:
+                        # assign to closest existing species
+                        closest_sp = min(species, key=lambda sp: _hamming_distance(chrom, sp['rep']))
+                        closest_sp['members'].append((chrom, fit))
+
+            # Take best per species in species-id order
+            paths = []
+            mon_fitnesses = []
+            species_ids = []
+            for sid, sp in enumerate(species):
+                if not sp['members']:
+                    continue
+                best_chrom, best_fit = max(sp['members'], key=lambda x: x[1])
+                paths.append(self.decode_path(best_chrom))
+                mon_fitnesses.append(float(best_fit))
+                species_ids.append(sid)
 
             monitoring_data.append({
                 "maze": self.maze,
                 "paths": paths,
+                "fitnesses": mon_fitnesses,
+                "species_ids": species_ids,
                 "avg_fitness": avg_fitness,
                 "max_fitness": best_score,
                 "generation": generations + 1,
@@ -483,18 +519,64 @@ class GeneticMazeSolver(MazeSolver):
 
         save_evolution_movie = config.getboolean("MONITORING", "save_evolution_movie", fallback=False)
         if save_evolution_movie:
-            # Add final solution as a frame
-            final_path = self.decode_path(best)  # safe, tested decode method
+            # Add final frame showing best path per species as well
+            # Re-evaluate final population to build species view
+            try:
+                pop_array = np.array(population)
+                scored_final = [(chrom, self._fitness(chrom, pop_array, generation=generations)) for chrom in
+                                population]
+                scored_final.sort(key=lambda x: x[1], reverse=True)
 
-            if final_path and len(final_path) > 1:
-                monitoring_data.append({
-                    "maze": self.maze,
-                    "paths": [final_path],
-                    "avg_fitness": avg_fitness,  # Corresponding list of fitness scores
-                    "max_fitness": best_score,
-                    "generation": generations + 1,
-                    "diversity": diversity
-                })
+                def _hamming_distance(c1, c2):
+                    if len(c1) != len(c2):
+                        L = min(len(c1), len(c2))
+                        return int(np.sum(np.array(c1[:L]) != np.array(c2[:L]))) + abs(len(c1) - len(c2))
+                    return int(np.sum(np.array(c1) != np.array(c2)))
+
+                chromosome_len = len(scored_final[0][0]) if scored_final else self.chromosome_length
+                abs_threshold = max(1, int(0.15 * chromosome_len))
+                max_species_cap = config.getint("GENETIC", "max_species", fallback=10)
+
+                species = []
+                for chrom, fit in scored_final:
+                    placed = False
+                    for sp in species:
+                        if _hamming_distance(chrom, sp['rep']) <= abs_threshold:
+                            sp['members'].append((chrom, fit))
+                            placed = True
+                            break
+                    if not placed:
+                        if len(species) < max_species_cap:
+                            species.append({'rep': chrom, 'members': [(chrom, fit)]})
+                        else:
+                            closest_sp = min(species, key=lambda sp: _hamming_distance(chrom, sp['rep']))
+                            closest_sp['members'].append((chrom, fit))
+
+                # Build paths, fitnesses, species_ids for final frame
+                final_paths = []
+                final_fitnesses = []
+                final_species_ids = []
+                for sid, sp in enumerate(species):
+                    if not sp['members']:
+                        continue
+                    best_chrom, best_fit = max(sp['members'], key=lambda x: x[1])
+                    final_paths.append(self.decode_path(best_chrom))
+                    final_fitnesses.append(float(best_fit))
+                    final_species_ids.append(sid)
+
+                if final_paths:
+                    monitoring_data.append({
+                        "maze": self.maze,
+                        "paths": final_paths,
+                        "fitnesses": final_fitnesses,
+                        "species_ids": final_species_ids,
+                        "avg_fitness": avg_fitness,
+                        "max_fitness": best_score,
+                        "generation": generations + 1,
+                        "diversity": diversity
+                    })
+            except Exception as e:
+                logging.warning(f"Failed to prepare final species frame: {e}")
 
             visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
