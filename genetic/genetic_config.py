@@ -33,6 +33,7 @@ class GeneticAlgorithmConfig:
     species_distance_threshold: float  # fraction of chromosome length regarded as species boundary
     interspecies_mating_rate: float  # probability to mate across species
     species_elitism_count: int  # elites preserved per species
+    max_species: int  # maximum number of species allowed
 
     # Performance parameters
     max_workers: int
@@ -126,6 +127,7 @@ class GeneticConfigManager:
             species_distance_threshold=self.config.getfloat("GENETIC", "species_distance_threshold", fallback=0.15),
             interspecies_mating_rate=self.config.getfloat("GENETIC", "interspecies_mating_rate", fallback=0.1),
             species_elitism_count=self.config.getint("GENETIC", "species_elitism_count", fallback=1),
+            max_species=self.config.getint("GENETIC", "max_species", fallback=10),
             max_workers=self.config.getint("GENETIC", "max_workers", fallback=1),
             max_steps=self.config.getint("GENETIC", "max_steps", fallback=100),
             patience=self.config.getfloat("GENETIC", "patience", fallback=5),

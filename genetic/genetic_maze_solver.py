@@ -573,12 +573,21 @@ class GeneticMazeSolver(MazeSolver):
     def _species_count(self, pop):
         """
         Approximate 'species' as unique genotypes in the given population snapshot.
+        Additionally, clamp the reported count by a configurable cap (GENETIC.max_species).
+        This avoids misleadingly large and constant values in CSV logs.
         """
+        # Compute robust unique genotype count
         try:
-            return len({tuple(ind) for ind in pop})
-        except TypeError:
-            # Fallback in case items are not hashable for some reason
-            return len(np.unique(np.array(pop), axis=0))
+            unique_count = len({"|".join(str(int(g)) for g in ind) for ind in pop})
+        except Exception:
+            try:
+                unique_count = len({tuple(map(int, ind)) for ind in pop})
+            except Exception:
+                unique_count = len(np.unique(np.array(pop), axis=0))
+        # Clamp to plausible bounds
+        unique_count = min(unique_count, len(pop))
+        max_species_cap = config.getint("GENETIC", "max_species", fallback=10)
+        return min(unique_count, max_species_cap)
 
     def decode_path(self, chromosome):
         """

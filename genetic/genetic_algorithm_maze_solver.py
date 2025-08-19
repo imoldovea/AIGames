@@ -428,21 +428,34 @@ class GeneticMazeSolver(MazeSolver):
     def _build_species(self, scored_population):
         """
         Group chromosomes into species by Hamming distance threshold to species representatives.
+        Enforces a hard cap on the number of species using config.max_species.
         Args:
             scored_population: list of (chromosome, fitness) sorted by fitness desc
         Returns:
             list of species dicts: {'rep': chromosome, 'members': [(chrom, fitness), ...]}
         """
         species = []
+        max_species = getattr(self.config, 'max_species', 10)
         for chrom, fit in scored_population:
             placed = False
+            # Try to place into existing species within threshold
             for sp in species:
                 if self._hamming_distance(chrom, sp['rep']) <= self._species_abs_threshold:
                     sp['members'].append((chrom, fit))
                     placed = True
                     break
             if not placed:
-                species.append({'rep': chrom, 'members': [(chrom, fit)]})
+                if len(species) < max_species:
+                    # Create a new species if under cap
+                    species.append({'rep': chrom, 'members': [(chrom, fit)]})
+                else:
+                    # Cap reached: assign to the closest existing species
+                    # regardless of threshold to prevent unbounded species growth
+                    closest_sp = min(
+                        species,
+                        key=lambda sp: self._hamming_distance(chrom, sp['rep'])
+                    )
+                    closest_sp['members'].append((chrom, fit))
         return species
 
     def _record_species_data(self, evolution_state):
