@@ -30,7 +30,7 @@ OUTPUT_PDF = f"{OUTPUT}solved_mazes_rnn.pdf"
 
 os.environ["WANDB_DIR"] = "output"
 
-DIVERSITY_THRESHOLD = 5  # average Hamming distance in chromosome positions
+DIVERSITY_THRESHOLD = 0.1  # average Hamming distance in chromosome positions
 DIVERSITY_PATIENCE = 20
 MIN_POP = 50
 
@@ -110,6 +110,13 @@ class GeneticMazeSolver(MazeSolver):
             list: Random sequence of direction indices of length chromosome_length
         """
         return np.random.randint(0, len(self.directions), size=self.chromosome_length).tolist()
+
+    @staticmethod
+    def _hamming_distance(c1, c2):
+        if len(c1) != len(c2):
+            L = min(len(c1), len(c2))
+            return int(np.sum(np.array(c1[:L]) != np.array(c2[:L]))) + abs(len(c1) - len(c2))
+        return int(np.sum(np.array(c1) != np.array(c2)))
 
     def _fitness(self, chromosome, population=None, generation=None, unique_paths_seen=None):
         """
@@ -193,11 +200,8 @@ class GeneticMazeSolver(MazeSolver):
             chrom_array = np.array(chromosome)
             diffs = pop_array != chrom_array
             mask = ~np.all(pop_array == chrom_array, axis=1)
-            if np.any(mask):
-                diversity_penalty = max(
-                    0,
-                    self.chromosome_length * self.diversity_penalty_threshold - diffs[mask].sum(axis=1).mean()
-                )
+            mean_hamming = diffs[mask].sum(axis=1).mean() / self.chromosome_length
+            diversity_penalty = max(0, self.diversity_penalty_threshold - mean_hamming)
 
         # --- Path Diversity Reward ---
         path_diversity_bonus = 0
@@ -441,7 +445,11 @@ class GeneticMazeSolver(MazeSolver):
                         f"Diversity collapse at generation {gen}, #{diversity_collapse_events} (value = {diversity:.2f})")
                     num_random = int(self.population_size * self.diversity_infusion)
                     num_random = max(1, num_random)
-                    population[:num_random] = [self._random_chromosome() for _ in range(num_random)]
+                    # Replace worst individuals, preserving elites
+                    for i in range(1, num_random + 1):
+                        new_chrom = self._random_chromosome()
+                        fitness, _ = self._fitness(new_chrom, pop_array, generation=gen)
+                        scored[-i] = (new_chrom, fitness)
             else:
                 low_diversity_counter = 0  # reset if diversity recovers
 
@@ -465,23 +473,17 @@ class GeneticMazeSolver(MazeSolver):
                     new_pop.append(self._mutate(c2, mutation_rate))
             population = new_pop
 
-            # Build species and select best chromosome per species for visualization (up to max_species)
-            def _hamming_distance(c1, c2):
-                if len(c1) != len(c2):
-                    L = min(len(c1), len(c2))
-                    return int(np.sum(np.array(c1[:L]) != np.array(c2[:L]))) + abs(len(c1) - len(c2))
-                return int(np.sum(np.array(c1) != np.array(c2)))
-
             # Species grouping by Hamming distance to representative
             chromosome_len = len(scored[0][0]) if scored else self.chromosome_length
-            abs_threshold = max(1, int(0.15 * chromosome_len))  # 15% threshold similar to refactored solver
+            species_threshold_frac = config.getfloat("GENETIC", "species_distance_threshold", fallback=0.15)
+            abs_threshold = max(1, int(species_threshold_frac * chromosome_len))
             max_species_cap = config.getint("GENETIC", "max_species", fallback=10)
 
             species = []  # list of dicts { 'rep': chrom, 'members': [(chrom, fit), ...] }
             for chrom, fit in scored:
                 placed = False
                 for sp in species:
-                    if _hamming_distance(chrom, sp['rep']) <= abs_threshold:
+                    if self._hamming_distance(chrom, sp['rep']) <= abs_threshold:
                         sp['members'].append((chrom, fit))
                         placed = True
                         break
@@ -490,7 +492,7 @@ class GeneticMazeSolver(MazeSolver):
                         species.append({'rep': chrom, 'members': [(chrom, fit)]})
                     else:
                         # assign to closest existing species
-                        closest_sp = min(species, key=lambda sp: _hamming_distance(chrom, sp['rep']))
+                        closest_sp = min(species, key=lambda sp: self._hamming_distance(chrom, sp['rep']))
                         closest_sp['members'].append((chrom, fit))
 
             # Take best per species in species-id order
@@ -565,23 +567,18 @@ class GeneticMazeSolver(MazeSolver):
                 pop_array = np.array(population)
                 scored_final = [(chrom, self._fitness(chrom, pop_array, generation=generations)) for chrom in
                                 population]
-                scored_final.sort(key=lambda x: x[1], reverse=True)
-
-                def _hamming_distance(c1, c2):
-                    if len(c1) != len(c2):
-                        L = min(len(c1), len(c2))
-                        return int(np.sum(np.array(c1[:L]) != np.array(c2[:L]))) + abs(len(c1) - len(c2))
-                    return int(np.sum(np.array(c1) != np.array(c2)))
+                scored_final.sort(key=lambda x: x[1][0], reverse=True)
 
                 chromosome_len = len(scored_final[0][0]) if scored_final else self.chromosome_length
-                abs_threshold = max(1, int(0.15 * chromosome_len))
+                species_threshold_frac = config.getfloat("GENETIC", "species_distance_threshold", fallback=0.15)
+                abs_threshold = max(1, int(species_threshold_frac * chromosome_len))
                 max_species_cap = config.getint("GENETIC", "max_species", fallback=10)
 
                 species = []
                 for chrom, fit in scored_final:
                     placed = False
                     for sp in species:
-                        if _hamming_distance(chrom, sp['rep']) <= abs_threshold:
+                        if self._hamming_distance(chrom, sp['rep']) <= abs_threshold:
                             sp['members'].append((chrom, fit))
                             placed = True
                             break
@@ -589,7 +586,11 @@ class GeneticMazeSolver(MazeSolver):
                         if len(species) < max_species_cap:
                             species.append({'rep': chrom, 'members': [(chrom, fit)]})
                         else:
-                            closest_sp = min(species, key=lambda sp: _hamming_distance(chrom, sp['rep']))
+                            try:
+                                closest_sp = min(species, key=lambda sp: self._hamming_distance(chrom, sp['rep']))
+                            except Exception as e:
+                                logging.warning(f"Failed to assign species due to: {e}")
+                                continue  # Skip malformed chromosome
                             closest_sp['members'].append((chrom, fit))
 
                 # Build paths, fitnesses, species_ids for final frame
@@ -690,6 +691,8 @@ class GeneticMazeSolver(MazeSolver):
         distances = (a != b).mean(axis=1)
 
         mean_hamming_distance = float(distances.mean())
+        logging.debug(f"Mean Hamming diversity: {mean_hamming_distance:.3f}")
+
         return mean_hamming_distance
 
     def _species_count(self, pop):
