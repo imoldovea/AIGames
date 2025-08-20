@@ -249,7 +249,18 @@ class GeneticMazeSolver(MazeSolver):
                 f"Exploration={exploration_score}, Backtracks={backtracks}, Loops={loops}, ExitBonus={exit_bonus}"
             )
 
-        return fitness
+        return fitness, {
+            "exit_bonus": exit_bonus,
+            "exploration": exploration_score,
+            "path_diversity": path_diversity_bonus,
+            "recover_bonus": recover_bonus,
+            "bfs_proximity": bfs_proximity_reward,
+            "backtracks": backtracks,
+            "loops": loops,
+            "distance_penalty": distance_penalty,
+            "diversity_penalty": diversity_penalty,
+            "invalid_penalty": min(penalty, 3)
+        }
 
     def _crossover(self, parent1, parent2):
         # Convert to NumPy arrays for fast slicing
@@ -342,7 +353,11 @@ class GeneticMazeSolver(MazeSolver):
         if not os.path.exists(csv_path):
             with open(csv_path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["generation", "best_fitness", "avg_fitness", "diversity", "species_count"])
+                writer.writerow([
+                    "generation", "best_fitness", "avg_fitness", "diversity", "species_count",
+                    "exit_bonus", "exploration", "path_diversity", "recover_bonus",
+                    "bfs_proximity", "backtracks", "loops", "distance_penalty", "diversity_penalty", "invalid_penalty"
+                ])
 
         if config.getboolean("MONITORING", "wandb", fallback=False):
             wandb.init(project="genetic-maze-solver", name=f"maze_{self.maze.index}")
@@ -360,7 +375,12 @@ class GeneticMazeSolver(MazeSolver):
             pop_array = np.array(population)
             # Evaluate fitness
             if self.max_workers <= 1:
-                scored = [(chrom, self._fitness(chrom, pop_array, generation=gen)) for chrom in population]
+                scored = []
+                component_logs = []
+                for chrom in population:
+                    fitness, details = self._fitness(chrom, pop_array, generation=gen)
+                    scored.append((chrom, fitness))
+                    component_logs.append(details)
             else:
                 with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     futures = [executor.submit(self._fitness, chrom, pop_array, gen) for chrom in population]
@@ -370,6 +390,7 @@ class GeneticMazeSolver(MazeSolver):
             if scored[0][1] > best_score:
                 best_score = scored[0][1]
                 best = scored[0][0]
+                best_components = component_logs[0]  # Track best components globally
 
             elites = [chrom for chrom, _ in scored[:self.elitism_count]]
 
@@ -391,8 +412,27 @@ class GeneticMazeSolver(MazeSolver):
             # Append CSV row
             with open(csv_path, "a", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow([gen, best_score, avg_fitness, diversity, species_count])
+                if best_components is not None:
+                    writer.writerow([
+                        gen, best_score, avg_fitness, diversity, species_count,
+                        best_components["exit_bonus"], best_components["exploration"],
+                        best_components["path_diversity"],
+                        best_components["recover_bonus"], best_components["bfs_proximity"],
+                        best_components["backtracks"], best_components["loops"],
+                        best_components["distance_penalty"], best_components["diversity_penalty"],
+                        best_components["invalid_penalty"]
+                    ])
+                else:
+                    logging.warning(f"No best_components available in generation {generation} — skipping extended log.")
 
+                if gen % 10 == 0:
+                    best_components = component_logs[0]
+                    with open(os.path.join("output", f"fitness_components_{self.maze.index}.csv"), "a",
+                              newline="") as cf:
+                        cwriter = csv.writer(cf)
+                        if gen == 0:
+                            cwriter.writerow(["generation"] + list(best_components.keys()))
+                        cwriter.writerow([gen] + list(best_components.values()))
             if diversity < DIVERSITY_THRESHOLD:
                 low_diversity_counter += 1
                 if low_diversity_counter >= DIVERSITY_PATIENCE:
