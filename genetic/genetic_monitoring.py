@@ -437,11 +437,15 @@ class FitnessPlotter:
             show: Whether to display plot interactively
         """
         try:
+            # multiply diversity history scle by 10x
+            diversity_history_10x = np.interp(diversity_history, (min(diversity_history), max(diversity_history)),
+                                              (-10, 10))
+
             plt.figure(figsize=(10, 5))
 
             plt.plot(fitness_history, label="Best Fitness", linewidth=2)
             plt.plot(avg_fitness_history, label="Avg Fitness", linewidth=2)
-            plt.plot(diversity_history, label="Diversity", linewidth=2)
+            plt.plot(diversity_history_10x, label="10X Diversity", linewidth=1)
 
             plt.xlabel("Generation")
             plt.ylabel("Fitness")
