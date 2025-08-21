@@ -35,10 +35,10 @@ class FitnessCalculator:
         self.loop_penalty_weight = self.config.getfloat("GENETIC", "loop_penalty_weight", fallback=10.0)
         self.backtrack_penalty_weight = self.config.getfloat("GENETIC", "backtrack_penalty_weight", fallback=5.0)
         self.exit_bonus_weight = self.config.getfloat("GENETIC", "exit_weight", fallback=10.0)
-        self.exploration_bonus_weight = self.config.getfloat("DEFAULT", "exploration_weight", fallback=2.0)
+        self.exploration_bonus_weight = self.config.getfloat("GENETIC", "exploration_weight", fallback=2.0)
         self.diversity_penalty_weight = self.config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.1)
-        self.max_distance_penalty_weight = self.config.getfloat("DEFAULT", "distance_penalty_weight", fallback=0.5)
-        self.dead_end_recover_bonus_weight = self.config.getfloat("DEFAULT", "recover_bonus_weight", fallback=5.0)
+        self.max_distance_penalty_weight = self.config.getfloat("GENETIC", "distance_penalty_weight", fallback=0.5)
+        self.dead_end_recover_bonus_weight = self.config.getfloat("GENETIC", "recover_bonus_weight", fallback=5.0)
         self.bfs_distance_reward_weight = self.config.getfloat("GENETIC", "bfs_distance_reward_weight", fallback=5.0)
         self.diversity_penalty_threshold = self.config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
 
