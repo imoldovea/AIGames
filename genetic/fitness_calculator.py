@@ -42,40 +42,43 @@ class FitnessCalculator:
         self.bfs_distance_reward_weight = self.config.getfloat("GENETIC", "bfs_distance_reward_weight", fallback=5.0)
         self.diversity_penalty_threshold = self.config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
 
+    # fitness_calculator.py
+
     def calculate_fitness(self, chromosome, population=None, generation=None, unique_paths_seen=None):
-        """
-        Calculate fitness score for a chromosome.
-        
-        Args:
-            chromosome: Sequence of direction indices
-            population: Current population for diversity calculations
-            generation: Current generation number for logging
-            unique_paths_seen: Set to track unique valid paths
-            
-        Returns:
-            float: Computed fitness score
-        """
         path_data = self._decode_chromosome_path(chromosome)
         movement_penalties = self._calculate_movement_penalties(path_data)
         bonuses = self._calculate_bonuses(path_data, unique_paths_seen)
-        diversity_penalty = self._calculate_diversity_penalty(chromosome, population)
+        diversity_penalty_val = self._calculate_diversity_penalty(chromosome, population)
         distance_penalties = self._calculate_distance_penalties(path_data)
 
         fitness = (
-                bonuses['exit_bonus'] +
-                bonuses['exploration_bonus'] +
-                bonuses['path_diversity_bonus'] +
-                bonuses['recover_bonus'] +
-                bonuses['bfs_proximity_reward'] -
-                movement_penalties['backtrack_penalty'] -
-                movement_penalties['loop_penalty'] -
-                distance_penalties['distance_penalty'] -
-                diversity_penalty -
-                min(movement_penalties['invalid_move_penalty'], 3)
+                bonuses['exit_bonus']
+                + bonuses['exploration_bonus']
+                + bonuses['path_diversity_bonus']
+                + bonuses['recover_bonus']
+                + bonuses['bfs_proximity_reward']
+                - movement_penalties['backtrack_penalty']
+                - movement_penalties['loop_penalty']
+                - distance_penalties['distance_penalty']
+                - diversity_penalty_val
+                - min(movement_penalties['invalid_move_penalty'], 3)
         )
 
+        details = {
+            "exit_bonus": bonuses['exit_bonus'],
+            "exploration": len(path_data['visited']),
+            "path_diversity": bonuses['path_diversity_bonus'],
+            "recover_bonus": bonuses['recover_bonus'],
+            "bfs_proximity": bonuses['bfs_proximity_reward'],
+            "backtracks": path_data['backtracks'],
+            "loops": path_data['loops'],
+            "distance_penalty": distance_penalties['distance_penalty'],
+            "diversity_penalty": diversity_penalty_val,
+            "invalid_penalty": min(movement_penalties['invalid_move_penalty'], 3),
+        }
+
         self._log_fitness_debug(generation, fitness, path_data, movement_penalties, bonuses)
-        return fitness
+        return fitness, details
 
     def _decode_chromosome_path(self, chromosome):
         """Decode chromosome into path data with movement analysis."""
