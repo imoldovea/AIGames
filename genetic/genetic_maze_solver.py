@@ -249,11 +249,19 @@ class GeneticMazeSolver(MazeSolver):
             except ValueError:
                 best_components = component_logs[0]  # fallback
 
+            # Track global best
+            current_best_score = scored[0][1]
+            current_best_chrom = scored[0][0]
+            if current_best_score > best_score or best is None:
+                best_score = current_best_score
+                best = current_best_chrom
+
             elites = [chrom for chrom, _ in scored[:self.elitism_count]]
 
             # Early exit if solution reached
             min_generations = 5
-            if gen >= min_generations and best_score > self.threshold and self.maze.exit in self.decode_path(best):
+            if (gen >= min_generations and best is not None and best_score > self.threshold and self.maze.exit
+                    in self.decode_path(best)):
                 break
 
             fitness_values = [score for (_, score) in scored]
@@ -283,7 +291,12 @@ class GeneticMazeSolver(MazeSolver):
                     logging.warning(f"No best_components available in generation {gen} — skipping extended log.")
 
                 if gen % 10 == 0:
-                    best_components = component_logs[0]
+                    # Make sure we log the components of the actual best chromosome of THIS generation
+                    try:
+                        idx_best = population.index(best_chrom)
+                        best_components = component_logs[idx_best]
+                    except ValueError:
+                        best_components = component_logs[0]  # fallback
                     with open(os.path.join("output", f"fitness_components_{self.maze.index}.csv"), "a",
                               newline="") as cf:
                         cwriter = csv.writer(cf)
@@ -403,6 +416,15 @@ class GeneticMazeSolver(MazeSolver):
         # Decode best into a path and move through maze
         pos = self.maze.start_position
         path = [pos]
+        # Fallback: if no global best was captured (e.g., early break), use the last gen’s top
+        if best is None:
+            if 'scored' in locals() and scored:
+                best = scored[0][0]
+                best_score = scored[0][1]
+            else:
+                # last-resort fallback to a random individual
+                best = population[0]
+                best_score = float('-inf')
         for gene in best:
             move = self.directions[gene]
             next_pos = (pos[0] + move[0], pos[1] + move[1])
@@ -613,7 +635,8 @@ def main():
     mazes = load_mazes(TEST_MAZES_FILE, 100)
     mazes.sort(key=lambda maze: maze.complexity, reverse=False)
 
-    mazes = mazes[-1:] if len(mazes) >= 2 else mazes
+    # load the 2nd least complex maze
+    mazes = mazes[-4:] if len(mazes) >= 2 else mazes
 
     # long_solutions_index = []
     # failed_maze_index = [28, 86]  #
