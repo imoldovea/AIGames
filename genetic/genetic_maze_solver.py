@@ -5,18 +5,18 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from fitness_calculator import FitnessCalculator
 from configparser import ConfigParser
 
 import numpy as np
 import tqdm
 import wandb
 
+from fitness_calculator import FitnessCalculator
 from genetic.genetic_monitoring import visualize_evolution, print_fitness
 from maze import Maze
 from maze_solver import MazeSolver
 from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf_v2, clean_outupt_folder
-from utils import profile_method, compute_distance_map_for_maze
+from utils import profile_method
 
 PARAMETERS_FILE = "config.properties"
 config = ConfigParser()
@@ -59,17 +59,22 @@ class GeneticMazeSolver(MazeSolver):
         self.initial_rate = mutation_rate
         self.generations = generations
         self.directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N,S,W,E
-        self.threshold = -min(5, 0.05 * max_steps)
         self.max_workers = config.getint("GENETIC", "max_workers", fallback=1)
         self.diversity_penalty_weight = config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.0)
         self.diversity_penalty_threshold = config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
         self.diversity_infusion = config.getfloat("GENETIC", "diversity_infusion", fallback=0.01)
         self.evolution_chromosomes = config.getint("GENETIC", "evolution_chromosomes", fallback=5)
         self.elitism_count = config.getint("GENETIC", "elitism_count", fallback=2)
-        self.max_steps = config.getint("GENETIC", "max_steps", fallback=100)
+        self.max_steps = config.getint("DEFAULT", "max_steps", fallback=100)
+        self.threshold = -min(5, 0.05 * self.max_steps)
         # mutation gradient across the chromosome (low → high)
         self.start_multiplier = config.getfloat("GENETIC", "start_multiplier", fallback=0.5)
         self.stop_multiplier = config.getfloat("GENETIC", "stop_multiplier", fallback=1.5)
+        self.mutation_start_multiplier = config.getfloat("GENETIC", "mutation_start_multiplier", fallback=0.5)
+        self.mutation_stop_multiplier = config.getfloat("GENETIC", "mutation_stop_multiplier", fallback=1.5)
+        self.mutation_rate_floor = config.getfloat("GENETIC", "mutation_rate_floor", fallback=0.02)
+        self.mutation_rate_ceiling = config.getfloat("GENETIC", "mutation_rate_ceiling", fallback=0.25)
+        self.tournament_count = config.getint("GENETIC", "tournament_count", fallback=50)
 
         # Cache frequently used fitness weights to avoid ConfigParser calls in hot paths
         # Early stopping params
@@ -165,10 +170,12 @@ class GeneticMazeSolver(MazeSolver):
         chromosome = np.array(chromosome)
 
         # gradient from start→stop across gene positions
-        gradient = np.linspace(self.start_multiplier, self.stop_multiplier, self.chromosome_length)
-        dynamic_mutation_rate = mutation_rate * gradient
-        dynamic_mutation_rate = np.clip(dynamic_mutation_rate, 0.0, 1.0)  # safety
-
+        gradient = np.linspace(self.mutation_start_multiplier,
+                               self.mutation_stop_multiplier,
+                               self.chromosome_length)
+        dynamic_mutation_rate = np.clip(mutation_rate * gradient,
+                                        self.mutation_rate_floor,
+                                        self.mutation_rate_ceiling)
         mutation_mask = np.random.rand(self.chromosome_length) < dynamic_mutation_rate
         chromosome[mutation_mask] = np.random.randint(0, len(self.directions), mutation_mask.sum())
 
@@ -235,10 +242,12 @@ class GeneticMazeSolver(MazeSolver):
                     scored = list(zip(population, fitnesses))  # [(chrom, fitness), ...]
 
             scored.sort(key=lambda x: x[1], reverse=True)
-            if scored[0][1] > best_score:
-                best_score = scored[0][1]
-                best = scored[0][0]
-                best_components = component_logs[0]  # Track best components globally
+            best_chrom = scored[0][0]
+            try:
+                idx_best = population.index(best_chrom)
+                best_components = component_logs[idx_best]
+            except ValueError:
+                best_components = component_logs[0]  # fallback
 
             elites = [chrom for chrom, _ in scored[:self.elitism_count]]
 
@@ -308,7 +317,9 @@ class GeneticMazeSolver(MazeSolver):
             new_pop = elites[:]
             mutation_rate = self.initial_rate
             while len(new_pop) < self.population_size:
-                a, b = [scored[:10][i] for i in np.random.choice(len(scored[:10]), size=2, replace=False)]
+                k = min(self.tournament_count, len(scored))
+                i1, i2 = np.random.choice(k, size=2, replace=False)
+                a, b = scored[:k][i1], scored[:k][i2]
                 p1 = a[0]
                 p2 = b[0]
                 c1, c2 = self._crossover(p1, p2)
