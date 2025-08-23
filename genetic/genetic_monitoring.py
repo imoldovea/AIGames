@@ -58,12 +58,11 @@ class ExportConfig:
     ])
 
     species_export_columns: List[str] = field(default_factory=lambda: [
-        "generation",
-        "species_id",
-        "size",
-        "best_fitness",
-        "avg_fitness",
-        "age",
+        'maze_index', 'complexity', 'generation',
+        'species_id', 'species_size',
+        'best_fitness', 'best_fitness_norm',
+        'avg_fitness', 'avg_fitness_norm',
+        'best_gene'
     ])
 
     def __post_init__(self):
@@ -465,7 +464,7 @@ class FitnessPlotter:
             plt.plot(avg_fitness_history, label="Avg Fitness (normalized)", linewidth=2)
 
             # Diversity (still useful context)
-            plt.plot(diversity_history, label="10X Diversity", linewidth=1)
+            plt.plot(diversity_history, label="Diversity", linewidth=1)
 
             plt.xlabel("Generation")
             plt.ylabel("Normalized Fitness [0..1]")
@@ -644,9 +643,10 @@ def print_fitness(maze, fitness_history, avg_fitness_history, diversity_history,
     monitor = GeneticMonitor()
     monitor.plot_fitness_history(
         maze,
-        fitness_history=[rec["best_fitness_norm"] for rec in monitoring_history],
-        avg_fitness_history=[rec["avg_fitness_norm"] for rec in monitoring_history],
-        diversity_history=[rec["diversity"] for rec in monitoring_history],
+        fitness_history=fitness_history,
+        avg_fitness_history=avg_fitness_history,
+        diversity_history=diversity_history,
+        show=show,
     )
 
 
