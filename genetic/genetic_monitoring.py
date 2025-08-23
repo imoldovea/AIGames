@@ -460,13 +460,16 @@ class FitnessPlotter:
 
             plt.figure(figsize=(10, 5))
 
-            plt.plot(fitness_history, label="Best Fitness", linewidth=2)
-            plt.plot(avg_fitness_history, label="Avg Fitness", linewidth=2)
-            plt.plot(diversity_history_10x, label="10X Diversity", linewidth=1)
+            # Plot normalized fitness instead of raw
+            plt.plot(fitness_history, label="Best Fitness (normalized)", linewidth=2)
+            plt.plot(avg_fitness_history, label="Avg Fitness (normalized)", linewidth=2)
+
+            # Diversity (still useful context)
+            plt.plot(diversity_history, label="10X Diversity", linewidth=1)
 
             plt.xlabel("Generation")
-            plt.ylabel("Fitness")
-            plt.title(f"Fitness Over Generations - Maze {maze.index}")
+            plt.ylabel("Normalized Fitness [0..1]")
+            plt.title(f"Normalized Fitness Over Generations - Maze {maze.index}")
             plt.legend()
             plt.grid(True, alpha=0.3)
 
@@ -639,7 +642,12 @@ def visualize_evolution(monitoring_data, mode="video", index=0):
 def print_fitness(maze, fitness_history, avg_fitness_history, diversity_history, show=False):
     """Backward compatibility function for print_fitness."""
     monitor = GeneticMonitor()
-    monitor.plot_fitness_history(maze, fitness_history, avg_fitness_history, diversity_history, show)
+    monitor.plot_fitness_history(
+        maze,
+        fitness_history=[rec["best_fitness_norm"] for rec in monitoring_history],
+        avg_fitness_history=[rec["avg_fitness_norm"] for rec in monitoring_history],
+        diversity_history=[rec["diversity"] for rec in monitoring_history],
+    )
 
 
 def data_to_csv(monitoring_data, filename="output/evolution_data.csv"):
