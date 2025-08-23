@@ -638,13 +638,13 @@ def visualize_evolution(monitoring_data, mode="video", index=0):
     )
 
 
-def print_fitness(maze, best_fitness_norm, avg_fitness_norm, diversity_history, show=False):
+def print_fitness(maze, best_fitness_norm_history, avg_fitness_norm_history, diversity_history, show=False):
     """Backward compatibility function for print_fitness."""
     monitor = GeneticMonitor()
     monitor.plot_fitness_history(
         maze,
-        fitness_history=best_fitness_norm,
-        avg_fitness_history=avg_fitness_norm,
+        fitness_history=best_fitness_norm_history,
+        avg_fitness_history=avg_fitness_norm_history,
         diversity_history=diversity_history,
         show=show,
     )
