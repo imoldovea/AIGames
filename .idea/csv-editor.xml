@@ -24,7 +24,21 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\output\fitness_96.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\output\fitness_components_55.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\output\fitness_components_96.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

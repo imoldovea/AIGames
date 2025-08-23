@@ -48,15 +48,15 @@ class ExportConfig:
     csv_precision: int = 4
     export_columns: List[str] = field(default_factory=lambda: [
         "generation",
-        "best_fitness",
-        "avg_fitness",
-        "median_fitness",
-        "std_fitness",
-        "diversity",
-        "population_size",
-        "elapsed_sec",
-        "species_count",  # NEW: include species count in evolution_data.csv
+        "best_fitness", "avg_fitness", "median_fitness", "std_fitness",
+        "diversity", "population_size", "elapsed_sec", "species_count",
+        # NEW normalized fitness columns
+        "best_fitness_norm", "avg_fitness_norm",
+        "s_exit", "s_exploration", "s_bfs", "s_recover",
+        "s_path_diversity", "s_backtracks", "s_loops",
+        "s_distance", "s_invalid", "s_diversity",
     ])
+
     species_export_columns: List[str] = field(default_factory=lambda: [
         "generation",
         "species_id",
@@ -73,11 +73,14 @@ class ExportConfig:
                 "avg_fitness", "diversity", "longest_path"
             ]
         if self.species_export_columns is None:
+            # wherever you define ExportConfig (same file or imported)
             self.species_export_columns = [
-                "maze_index", "complexity", "generation", "species_id",
-                "species_size", "best_fitness", "best_gene"
+                'maze_index', 'complexity', 'generation',
+                'species_id', 'species_size',
+                'best_fitness', 'best_fitness_norm',
+                'avg_fitness', 'avg_fitness_norm',
+                'best_gene'
             ]
-
 
 class FrameRenderer:
     """Handles the rendering of individual maze frames for visualization."""
@@ -343,8 +346,22 @@ class DataExporter:
                     'species_id': rec.get('species_id'),
                     'species_size': rec.get('species_size'),
                     'best_fitness': round(float(rec.get('best_fitness', 0.0)), self.config.csv_precision),
-                    'best_gene': rec.get('best_gene')
+                    'best_fitness_norm': (
+                        None if rec.get('best_fitness_norm') is None
+                        else round(float(rec.get('best_fitness_norm')), self.config.csv_precision)
+                    ),
+                    # optional if you compute/store them in rec
+                    'avg_fitness': (
+                        None if rec.get('avg_fitness') is None
+                        else round(float(rec.get('avg_fitness')), self.config.csv_precision)
+                    ),
+                    'avg_fitness_norm': (
+                        None if rec.get('avg_fitness_norm') is None
+                        else round(float(rec.get('avg_fitness_norm')), self.config.csv_precision)
+                    ),
+                    'best_gene': rec.get('best_gene'),
                 }
+
                 rows.append(row)
             df = pd.DataFrame(rows)
             df = df[self.config.species_export_columns]

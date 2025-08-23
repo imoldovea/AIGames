@@ -42,6 +42,26 @@ class FitnessCalculator:
         self.bfs_distance_reward_weight = self.config.getfloat("GENETIC", "bfs_distance_reward_weight", fallback=5.0)
         self.diversity_penalty_threshold = self.config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
 
+        # --- Normalization controls (all optional; safe defaults) ---
+        self.normalize_fitness = self.config.getboolean("GENETIC", "normalize_fitness", fallback=False)
+        # caps / bounds
+        self.invalid_penalty_cap = self.config.getint("GENETIC", "invalid_penalty_cap", fallback=10)
+        # If not provided, use a sane bound ~ maze "diameter"
+        perimeter = self.maze.rows + self.maze.cols
+        self.max_distance_bound = self.config.getint("GENETIC", "max_distance", fallback=perimeter)
+        self.diversity_penalty_cap = self.config.getfloat("GENETIC", "diversity_penalty_cap", fallback=1.0)
+        # component weights (non-negative)
+        self.w_exit = self.config.getfloat("GENETIC", "w_exit", fallback=10.0)
+        self.w_exploration = self.config.getfloat("GENETIC", "w_exploration", fallback=3.0)
+        self.w_bfs = self.config.getfloat("GENETIC", "w_bfs", fallback=4.0)
+        self.w_recover = self.config.getfloat("GENETIC", "w_recover", fallback=1.0)
+        self.w_path_diversity = self.config.getfloat("GENETIC", "w_path_diversity", fallback=1.0)
+        self.w_backtracks = self.config.getfloat("GENETIC", "w_backtracks", fallback=2.0)
+        self.w_loops = self.config.getfloat("GENETIC", "w_loops", fallback=2.0)
+        self.w_distance = self.config.getfloat("GENETIC", "w_distance", fallback=2.0)
+        self.w_invalid = self.config.getfloat("GENETIC", "w_invalid", fallback=2.0)
+        self.w_diversity = self.config.getfloat("GENETIC", "w_diversity", fallback=2.0)
+
     # fitness_calculator.py
 
     def calculate_fitness(self, chromosome, population=None, generation=None, unique_paths_seen=None):
@@ -76,6 +96,73 @@ class FitnessCalculator:
             "diversity_penalty": diversity_penalty_val,
             "invalid_penalty": min(movement_penalties['invalid_move_penalty'], 3),
         }
+
+        # --- Build normalized [0..1]0 components and a final normalized fitness ---
+        fitness_norm = None
+        if self.normalize_fitness:
+            # A) Bounds & basics
+            start_r, start_c = self.maze.start_position
+            exit_r, exit_c = self.maze.exit
+            d0 = abs(start_r - exit_r) + abs(start_c - exit_c)  # start→exit reference
+            dT = abs(path_data['final_position'][0] - exit_r) + abs(path_data['final_position'][1] - exit_c)
+            free_cells = int(np.count_nonzero(self.maze.grid == self.maze.CORRIDOR))
+            free_cells = max(1, free_cells)  # avoid /0
+
+            # B) Positive “goodness” components in [0,1]
+            s_exit = 1.0 if path_data['final_position'] == self.maze.exit else 0.0
+            s_exploration = min(1.0, len(path_data['visited']) / free_cells)
+            # BFS/Distance goodness: closer to exit relative to start distance
+            denom = max(1, d0)
+            s_bfs = max(0.0, 1.0 - (dT / denom))
+            s_recover = 1.0 if path_data['dead_end_recovered'] else 0.0
+            s_pathdiv = 1.0 if bonuses['path_diversity_bonus'] > 0 else 0.0
+
+            # C) Penalty→goodness (higher is better) in [0,1]
+            s_backtracks = 1.0 - FitnessCalculator.normalize_component(
+                path_data['backtracks'], 0, max(1, self.max_steps)
+            )
+            s_loops = 1.0 - FitnessCalculator.normalize_component(
+                path_data['loops'], 0, max(1, self.max_steps)
+            )
+            s_distance = 1.0 - FitnessCalculator.normalize_component(
+                dT, 0, max(1, self.max_distance_bound)
+            )
+            s_invalid = 1.0 - FitnessCalculator.normalize_component(
+                min(path_data['invalid_moves'], self.invalid_penalty_cap), 0, max(1, self.invalid_penalty_cap)
+            )
+            # Diversity: convert penalty to goodness
+            s_diversity = 1.0 - FitnessCalculator.normalize_component(
+                diversity_penalty_val, 0.0, max(1e-9, self.diversity_penalty_cap)
+            )
+
+            components = {
+                "exit": s_exit,
+                "exploration": s_exploration,
+                "bfs": s_bfs,
+                "recover": s_recover,
+                "path_diversity": s_pathdiv,
+                "backtracks": s_backtracks,
+                "loops": s_loops,
+                "distance": s_distance,
+                "invalid": s_invalid,
+                "diversity": s_diversity,
+            }
+            weights = {
+                "exit": self.w_exit,
+                "exploration": self.w_exploration,
+                "bfs": self.w_bfs,
+                "recover": self.w_recover,
+                "path_diversity": self.w_path_diversity,
+                "backtracks": self.w_backtracks,
+                "loops": self.w_loops,
+                "distance": self.w_distance,
+                "invalid": self.w_invalid,
+                "diversity": self.w_diversity,
+            }
+            fitness_norm = FitnessCalculator.combine_normalized(components, weights)
+            # expose normalized fitness and (optionally) components for logging
+            details["fitness_norm"] = fitness_norm
+            details.update({f"s_{k}": v for k, v in components.items()})
 
         self._log_fitness_debug(generation, fitness, path_data, movement_penalties, bonuses)
         return fitness, details
@@ -224,6 +311,27 @@ class FitnessCalculator:
         return {
             'distance_penalty': self.max_distance_penalty_weight * dist_to_exit
         }
+
+    @staticmethod
+    def normalize_component(value, min_val, max_val):
+        """Normalize a single component to [0, 1]."""
+        if max_val == min_val:
+            return 0.0
+        return max(0.0, min(1.0, (value - min_val) / (max_val - min_val)))
+
+    @staticmethod
+    def combine_normalized(components, weights):
+        """
+        Combine normalized [0,1] components into a final [0,1] fitness.
+        components: dict of {name: score in [0,1]}
+        weights: dict of {name: weight >= 0}
+        """
+        total_w = sum(weights.values())
+        if total_w == 0:
+            return 0.0
+        raw_score = sum(weights[k] * components.get(k, 0.0) for k in weights)
+        # final normalization: already in [0,1] if inputs are in [0,1]
+        return raw_score / total_w
 
     def _log_fitness_debug(self, generation, fitness, path_data, penalties, bonuses):
         """Log fitness calculation details for debugging."""

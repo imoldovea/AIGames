@@ -1,0 +1,32 @@
+ def _load_fitness_weights(self):
+     """Load all fitness calculation weights from configuration."""
+     self.loop_penalty_weight = self.config.getfloat("GENETIC", "loop_penalty_weight", fallback=10.0)
+     self.backtrack_penalty_weight = self.config.getfloat("GENETIC", "backtrack_penalty_weight", fallback=5.0)
+     self.exit_bonus_weight = self.config.getfloat("GENETIC", "exit_weight", fallback=10.0)
+     self.exploration_bonus_weight = self.config.getfloat("GENETIC", "exploration_weight", fallback=2.0)
+     self.diversity_penalty_weight = self.config.getfloat("GENETIC", "diversity_penalty_weight", fallback=0.1)
+     self.max_distance_penalty_weight = self.config.getfloat("GENETIC", "distance_penalty_weight", fallback=0.5)
+     self.dead_end_recover_bonus_weight = self.config.getfloat("GENETIC", "recover_bonus_weight", fallback=5.0)
+     self.bfs_distance_reward_weight = self.config.getfloat("GENETIC", "bfs_distance_reward_weight", fallback=5.0)
+     self.diversity_penalty_threshold = self.config.getfloat("GENETIC", "diversity_penalty_threshold", fallback=0.0)
++
++    # --- Normalization controls (all optional; safe defaults) ---
++    self.normalize_fitness = self.config.getboolean("GENETIC", "normalize_fitness", fallback=False)
++    # caps / bounds
++    self.invalid_penalty_cap = self.config.getint("GENETIC", "invalid_penalty_cap", fallback=10)
++    # If not provided, use a sane bound ~ maze "diameter"
++    self.max_distance_bound = self.config.getint(
++        "GENETIC", "max_distance", fallback=(self.maze.rows + self.maze.cols)
++    )
++    self.diversity_penalty_cap = self.config.getfloat("GENETIC", "diversity_penalty_cap", fallback=1.0)
++    # component weights (non-negative)
++    self.w_exit           = self.config.getfloat("GENETIC", "w_exit",           fallback=10.0)
++    self.w_exploration    = self.config.getfloat("GENETIC", "w_exploration",    fallback=3.0)
++    self.w_bfs            = self.config.getfloat("GENETIC", "w_bfs",            fallback=4.0)
++    self.w_recover        = self.config.getfloat("GENETIC", "w_recover",        fallback=1.0)
++    self.w_path_diversity = self.config.getfloat("GENETIC", "w_path_diversity", fallback=1.0)
++    self.w_backtracks     = self.config.getfloat("GENETIC", "w_backtracks",     fallback=2.0)
++    self.w_loops          = self.config.getfloat("GENETIC", "w_loops",          fallback=2.0)
++    self.w_distance       = self.config.getfloat("GENETIC", "w_distance",       fallback=2.0)
++    self.w_invalid        = self.config.getfloat("GENETIC", "w_invalid",        fallback=2.0)
++    self.w_diversity      = self.config.getfloat("GENETIC", "w_diversity",      fallback=2.0)

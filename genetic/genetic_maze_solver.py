@@ -212,9 +212,16 @@ class GeneticMazeSolver(MazeSolver):
             with open(csv_path, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    "generation", "best_fitness", "avg_fitness", "diversity", "species_count",
+                    "generation",
+                    "best_fitness", "avg_fitness",
+                    "best_fitness_norm", "avg_fitness_norm",  # NEW overall normalized
+                    "diversity", "species_count",
+                    # raw component details (unchanged)
                     "exit_bonus", "exploration", "path_diversity", "recover_bonus",
-                    "bfs_proximity", "backtracks", "loops", "distance_penalty", "diversity_penalty", "invalid_penalty"
+                    "bfs_proximity", "backtracks", "loops", "distance_penalty", "diversity_penalty", "invalid_penalty",
+                    # normalized component scores (NEW; all in [0,1])
+                    "s_exit", "s_exploration", "s_bfs", "s_recover", "s_path_diversity",
+                    "s_backtracks", "s_loops", "s_distance", "s_invalid", "s_diversity",
                 ])
 
         if config.getboolean("MONITORING", "wandb", fallback=False):
@@ -278,14 +285,41 @@ class GeneticMazeSolver(MazeSolver):
             with open(csv_path, "a", newline="") as f:
                 writer = csv.writer(f)
                 if best_components is not None:
+                    # Overall normalized fitness (best & avg) if calculator produced it
+                    best_norm = best_components.get("fitness_norm")
+                    # Average normalized fitness across population if present
+                    all_norms = [d.get("fitness_norm") for d in component_logs if
+                                 isinstance(d, dict) and "fitness_norm" in d]
+                    avg_norm = float(np.mean(all_norms)) if all_norms else None
+
                     writer.writerow([
-                        gen, best_score, avg_fitness, diversity, species_count,
-                        best_components["exit_bonus"], best_components["exploration"],
+                        # core
+                        gen,
+                        best_score, avg_fitness,
+                        best_norm, avg_norm,  # NEW normalized overall
+                        diversity, species_count,
+                        # raw components (existing columns)
+                        best_components["exit_bonus"],
+                        best_components["exploration"],
                         best_components["path_diversity"],
-                        best_components["recover_bonus"], best_components["bfs_proximity"],
-                        best_components["backtracks"], best_components["loops"],
-                        best_components["distance_penalty"], best_components["diversity_penalty"],
-                        best_components["invalid_penalty"]
+                        best_components["recover_bonus"],
+                        best_components["bfs_proximity"],
+                        best_components["backtracks"],
+                        best_components["loops"],
+                        best_components["distance_penalty"],
+                        best_components["diversity_penalty"],
+                        best_components["invalid_penalty"],
+                        # normalized component scores (NEW; presence-checked with .get)
+                        best_components.get("s_exit"),
+                        best_components.get("s_exploration"),
+                        best_components.get("s_bfs"),
+                        best_components.get("s_recover"),
+                        best_components.get("s_path_diversity"),
+                        best_components.get("s_backtracks"),
+                        best_components.get("s_loops"),
+                        best_components.get("s_distance"),
+                        best_components.get("s_invalid"),
+                        best_components.get("s_diversity"),
                     ])
                 else:
                     logging.warning(f"No best_components available in generation {gen} — skipping extended log.")
