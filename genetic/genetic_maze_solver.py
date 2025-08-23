@@ -537,8 +537,9 @@ class GeneticMazeSolver(MazeSolver):
 
             visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
-        print_fitness(maze=self.maze, fitness_history=best_fitness_norm_history,
-                      avg_fitness_history=avg_fitness_norm_history, diversity_history=diversity_history, show=False)
+        print_fitness(maze=self.maze, best_fitness_norm_history=best_fitness_norm_history,
+                      avg_fitness_norm_history=avg_fitness_norm_history, diversity_history=diversity_history,
+                      show=False)
 
         logging.info(f"Best path length: {len(self.decode_path(best))}")
         return path, generations, best_score
