@@ -198,6 +198,8 @@ class GeneticMazeSolver(MazeSolver):
         fitness_history = []
         avg_fitness_history = []
         diversity_history = []
+        best_fitness_norm_history = []
+        avg_fitness_norm_history = []
         diversity_collapse_events = 0
         low_diversity_counter = 0
         generations = 0
@@ -356,6 +358,8 @@ class GeneticMazeSolver(MazeSolver):
             fitness_history.append(best_score)
             avg_fitness_history.append(avg_fitness)
             diversity_history.append(diversity)
+            best_fitness_norm_history.append(best_norm if best_norm is not None else 0.0)
+            avg_fitness_norm_history.append(avg_norm if avg_norm is not None else 0.0)
 
             if config.getboolean("MONITORING", "wandb", fallback=False) and gen % 10 == 0:
                 wandb.log({"generation": gen, "best_fitness": best_score})
@@ -533,8 +537,8 @@ class GeneticMazeSolver(MazeSolver):
 
             visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
-        print_fitness(maze=self.maze, fitness_history=fitness_history, avg_fitness_history=avg_fitness_history,
-                      diversity_history=diversity_history, show=False)
+        print_fitness(maze=self.maze, fitness_history=best_fitness_norm_history,
+                      avg_fitness_history=avg_fitness_norm_history, diversity_history=diversity_history, show=False)
 
         logging.info(f"Best path length: {len(self.decode_path(best))}")
         return path, generations, best_score
