@@ -487,12 +487,25 @@ def display_all_mazes_v2(solved_mazes: list, renderer_type: str = "matplotlib") 
 
 
 def save_mazes_as_pdf_v2(solved_mazes: list, output_path: str) -> None:
-    """New renderer-based version of save_mazes_as_pdf."""
-    from maze_visualizer import MazeVisualizer
+    from matplotlib.backends.backend_pdf import PdfPages
+    import matplotlib.pyplot as plt
+    from maze_visualizer import MazeVisualizer, Theme
 
-    visualizer = MazeVisualizer(renderer_type="matplotlib")
-    fig = visualizer.visualize_multiple_solutions(solved_mazes)
-    fig.savefig(output_path, format='pdf', dpi=300, bbox_inches='tight')
+    visualizer = MazeVisualizer(renderer_type="matplotlib", theme=Theme.CLASSIC)
+
+    per_page = 6  # e.g., 3x2 grid per page
+    with PdfPages(output_path) as pdf:
+        for page_start in range(0, len(solved_mazes), per_page):
+            page_chunk = solved_mazes[page_start:page_start + per_page]
+            # Render this chunk as a single figure with all chunk mazes
+            fig = visualizer.visualize_multiple_solutions(
+                page_chunk,
+                max_algorithms=len(page_chunk),
+                title=f"Mazes {page_start + 1}–{page_start + len(page_chunk)}"
+            )
+            if fig is not None:
+                pdf.savefig(fig, dpi=300, bbox_inches='tight')
+                plt.close(fig)
 
 
 def save_movie_v2(solved_mazes: list, output_path: str) -> str:
@@ -524,20 +537,6 @@ def save_movie_v2(solved_mazes: list, output_path: str) -> str:
         duration=0.2,
     )
     return gif_path
-
-
-def display_all_mazes(solved_mazes: list) -> None:
-    """DEPRECATED: Use display_all_mazes_v2() instead."""
-    warnings.warn("display_all_mazes is deprecated. Use display_all_mazes_v2() instead.",
-                  DeprecationWarning, stacklevel=2)
-    # Original implementation stays here...
-
-
-def save_mazes_as_pdf(solved_mazes: list, output_path: str) -> None:
-    """DEPRECATED: Use save_mazes_as_pdf_v2() instead."""
-    warnings.warn("save_mazes_as_pdf is deprecated. Use save_mazes_as_pdf_v2() instead.",
-                  DeprecationWarning, stacklevel=2)
-    # Original implementation stays here...
 
 
 def save_animation_frames_hdf5(maze, output_dir="output/hdf5"):

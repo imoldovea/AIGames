@@ -12,6 +12,7 @@ config.read(PARAMETERS_FILE)
 OUTPUT = config.get("FILES", "OUTPUT", fallback="output/")
 INPUT = config.get("FILES", "INPUT", fallback="input/")
 
+
 class Maze:
     WALL = 1
     CORRIDOR = 0
@@ -75,7 +76,6 @@ class Maze:
         # Exit can be defined later using set_exit()
         self.set_exit()
         self.self_test()
-
 
     def reset_solution(self):
         """
@@ -385,7 +385,7 @@ class Maze:
             Updates the current position and records the move in the path.
             Returns True if the move was successful, False otherwise.
             """
-        self.valid_solution = False #Assume that solving maze is still in progress
+        self.valid_solution = False  # Assume that solving maze is still in progress
         if self.is_valid_move(position):
             self.current_position = position
             self.path.append(position)
@@ -419,7 +419,6 @@ class Maze:
         if not isinstance(value, bool):
             raise ValueError("The 'animate' attribute must be a boolean.")
         self.animate = value
-
 
     def get_raw_movie(self):
         """
@@ -865,11 +864,9 @@ class Maze:
                     image_data[r, c] = solution_color
 
         if show_position:
-            image_data[self.current_position] = [255, 192, 203] #Pink
+            image_data[self.current_position] = [255, 192, 203]  # Pink
 
         # Mark the start (green) and exit (blue, if defined)
-        start_r, start_c = self.start_position
-        image_data[start_r, start_c] = [255, 255, 0]  # Start in yellow
         if self.exit is not None:
             exit_r, exit_c = self.exit
             image_data[exit_r, exit_c] = [0, 255, 255]  # Start of gradient (green to cyan).
@@ -879,14 +876,16 @@ class Maze:
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         image_data[r, c] = [128, 128, 128]
 
-                for idx, (r, c) in enumerate(self.path): #show active track
+                for idx, (r, c) in enumerate(self.path):  # show active track
                     if 0 <= r < self.rows and 0 <= c < self.cols:
                         # Calculate the gradient color from green ([0, 255, 0]) to cyan ([0, 255, 255])
                         t = idx / (path_length - 1) if path_length > 1 else 0
                         color = [0, 255, int(255 * t)]
                         image_data[r, c] = np.clip(color, 0, 255)
-
-
+        # After painting path/solution/visited, force the *first* cell in the path to red
+        if self.path:
+            sr, sc = self.path[0]
+            image_data[sr, sc] = [255, 0, 0]  # Start = red
         resized_image = self.create_padded_image(image_data, self.IMG_SIZE, self.IMG_SIZE)
         return resized_image
 
@@ -963,7 +962,7 @@ class Maze:
             None
         """
         image_data = self.get_maze_as_png(show_path=show_path, show_solution=show_solution,
-                                           show_position=show_position)
+                                          show_position=show_position)
         plt.imshow(image_data, interpolation='none')
 
         # Get the result of the solution test

@@ -862,11 +862,7 @@ class MazeVisualizer:
                 renderer=renderer
             )
 
-    def visualize_multiple_solutions(self,
-                                     maze_data: List,
-                                     max_algorithms: int = 20,
-                                     title: str = "Algorithm Comparison",
-                                     save_filename: Optional[str] = None):
+    def visualize_multiple_solutions(self, processed_data, max_algorithms=10, title="Maze Solutions"):
         """
         Visualize multiple algorithm solutions using the configured renderer.
 
@@ -876,58 +872,15 @@ class MazeVisualizer:
             title: Plot title
             save_filename: Optional filename to save the visualization
         """
-        if not maze_data:
-            raise ValueError("No maze data provided")
-
-        # Convert maze objects to dictionaries if needed
-        processed_data = []
-        for item in maze_data:
-            if isinstance(item, dict):
-                # Already in dictionary format
-                processed_data.append(item)
-            elif hasattr(item, 'grid') and hasattr(item, 'get_solution'):
-                # It's a maze object, convert to dictionary
-                maze_dict = {
-                    'grid': item.grid,
-                    'solution': item.get_solution(),
-                    'start_position': getattr(item, 'start_position', None),
-                    'exit': getattr(item, 'exit', None),
-                    'algorithm': getattr(item, 'algorithm', 'Unknown')
-                }
-                processed_data.append(maze_dict)
-            else:
-                # Handle tuple format from genetic_maze_solver.py: (maze, generations, fitness)
-                if isinstance(item, tuple) and len(item) >= 1 and hasattr(item[0], 'grid'):
-                    maze = item[0]
-                    maze_dict = {
-                        'grid': maze.grid,
-                        'solution': maze.get_solution(),
-                        'start_position': getattr(maze, 'start_position', None),
-                        'exit': getattr(maze, 'exit', None),
-                        'algorithm': getattr(maze, 'algorithm', 'Unknown')
-                    }
-                    processed_data.append(maze_dict)
-                else:
-                    logging.warning(f"Skipping unsupported item type: {type(item)}")
-
-        # Group by algorithm
-        algorithms = {}
-        for data in processed_data[:max_algorithms]:
-            alg = data.get('algorithm', 'Unknown')
-            if alg not in algorithms:
-                algorithms[alg] = []
-            algorithms[alg].append(data)
-
-        # Create subplots
-        n_algorithms = len(algorithms)
-        if n_algorithms == 0:
+        n = min(len(processed_data), max_algorithms)
+        if n == 0:
             return None
 
-        cols = min(3, n_algorithms)
-        rows = (n_algorithms + cols - 1) // cols
-
+        cols = min(3, n)
+        rows = (n + cols - 1) // cols
         fig, axes = plt.subplots(rows, cols, figsize=self.figsize)
-        if n_algorithms == 1:
+
+        if n == 1:
             axes = [axes]
         elif rows == 1:
             axes = list(axes)
@@ -935,29 +888,16 @@ class MazeVisualizer:
             axes = axes.flatten()
 
         style = get_style(self.theme)
-
-        for i, (alg_name, alg_data) in enumerate(algorithms.items()):
-            if i >= len(axes):
-                break
-
+        for i, data in enumerate(processed_data[:n]):
             ax = axes[i]
+            alg = data.get('algorithm', 'Unknown')
+            self._plot_single_maze(ax, data, style, f"{alg} #{i + 1}")
 
-            # Use first maze of this algorithm
-            if alg_data:
-                self._plot_single_maze(ax, alg_data[0], style, alg_name)
-
-        # Hide unused subplots
-        for i in range(len(algorithms), len(axes)):
-            axes[i].set_visible(False)
+        for j in range(n, len(axes)):
+            axes[j].set_visible(False)
 
         plt.suptitle(title)
         plt.tight_layout()
-
-        if save_filename:
-            save_path = self.output_dir / f"{save_filename}.png"
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Saved visualization: {save_path}")
-
         return fig
 
     def _plot_single_maze(self, ax, maze_data, style, algorithm_name):

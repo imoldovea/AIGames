@@ -121,11 +121,11 @@ def run_ga():
 
         # 4e: Identify the top two individuals by fitness
         sorted_pop = sorted(pop, key=lambda ind: ind.fitness.values[0], reverse=True)
-        top2 = sorted_pop[:2]
+        top = sorted_pop[:5]
 
         # 4f: Append the top two to the HTML log with correct letters colored
         append_to_html(f"<h2>Generation {gen + 1}</h2>")
-        for i, individual in enumerate(top2, start=1):
+        for i, individual in enumerate(top, start=1):
             decoded_str = decode(individual)
             colored_str = color_correct_char(decoded_str, TARGET)
             append_to_html(

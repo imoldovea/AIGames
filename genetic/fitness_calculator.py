@@ -82,7 +82,7 @@ class FitnessCalculator:
                 - distance_penalties['distance_penalty']
                 - diversity_penalty_val
                 # - min(movement_penalties['invalid_move_penalty'], 3)
-                + movement_penalties['invalid_move_penalty']
+                - movement_penalties['invalid_move_penalty']
         )
 
         details = {
@@ -95,7 +95,7 @@ class FitnessCalculator:
             "loops": path_data['loops'],
             "distance_penalty": distance_penalties['distance_penalty'],
             "diversity_penalty": diversity_penalty_val,
-            "invalid_penalty": min(movement_penalties['invalid_move_penalty'], 3),
+            "invalid_penalty": movement_penalties['invalid_move_penalty'],
         }
 
         # --- Build normalized [0..1]0 components and a final normalized fitness ---
@@ -166,6 +166,8 @@ class FitnessCalculator:
             details.update({f"s_{k}": v for k, v in components.items()})
 
         self._log_fitness_debug(generation, fitness, path_data, movement_penalties, bonuses)
+        if self.normalize_fitness and details.get("fitness_norm") is not None:
+            return details["fitness_norm"], details
         return fitness, details
 
     def _decode_chromosome_path(self, chromosome):

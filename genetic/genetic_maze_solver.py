@@ -6,7 +6,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from configparser import ConfigParser
-
+from genetic_monitoring import GeneticMonitor
+from utils import save_movie_v2
 import numpy as np
 import tqdm
 import wandb
@@ -16,6 +17,8 @@ from genetic.genetic_monitoring import visualize_evolution, print_fitness
 from maze import Maze
 from maze_solver import MazeSolver
 from utils import load_mazes, setup_logging, save_movie, save_mazes_as_pdf_v2, clean_outupt_folder
+from utils import save_mazes_as_pdf
+from maze import Maze
 from utils import profile_method
 
 PARAMETERS_FILE = "config.properties"
@@ -27,7 +30,7 @@ INPUT = config.get("FILES", "INPUT", fallback="input/")
 
 MAZES = LSTM_MODEL = config.get("FILES", "MAZES", fallback="mazes.pkl")
 TEST_MAZES_FILE = f"{INPUT}{MAZES}"
-OUTPUT_PDF = f"{OUTPUT}solved_mazes_rnn.pdf"
+OUTPUT_PDF = f"{OUTPUT}solved_mazes.pdf"
 
 os.environ["WANDB_DIR"] = "output"
 
@@ -537,8 +540,14 @@ class GeneticMazeSolver(MazeSolver):
             except Exception as e:
                 logging.warning(f"Failed to prepare final species frame: {e}")
 
-            visualization_mode = config.get("MONITORING", "visualization_mode", fallback="gif")
+            visualization_mode = config.get("MONITORING", "visualization_mode", fallback="video")
             visualize_evolution(monitoring_data, mode=visualization_mode, index=self.maze.index)
+            monitor = GeneticMonitor()
+            # monitor.visualize_evolution(
+            #     monitoring_data,
+            #     save_video=True,  # Always produce MP4
+            #     save_gif=True,  # Always produce GIF
+            # )
         print_fitness(maze=self.maze, best_fitness_norm_history=best_fitness_norm_history,
                       avg_fitness_norm_history=avg_fitness_norm_history, diversity_history=diversity_history,
                       show=False)
@@ -748,8 +757,16 @@ def main():
     logging.info(f"Success rate: {success_rate:.1f}%")
 
     if config.getboolean("MONITORING", "save_solution_movie", fallback=False):
-        save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
-        save_mazes_as_pdf_v2(solved_mazes, OUTPUT_PDF)
+        # save_movie(mazes, f"{OUTPUT}maze_solutions.mp4")
+        save_movie_v2(mazes, f"{OUTPUT}maze_solutions.gif")
+        # save_mazes_as_pdf_v2(solved_mazes, OUTPUT_PDF)
+        maze_objs = []
+        for item in solved_mazes:
+            maze_objs.append(item[0])
+
+    # One page per maze, includes title/metadata, uses Maze.get_maze_as_png()
+    save_mazes_as_pdf(maze_objs, OUTPUT_PDF)
+
     if config.getboolean("MONITORING", "wandb", fallback=False):
         wandb.finish()
     # Print list of top 5 solved maze indices having the highest generations count. Print only for solved mazes
