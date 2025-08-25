@@ -12,6 +12,7 @@ import utils
 
 OUTPUT_FOLDER = "output"
 HTML_FILE_PATH = os.path.join(OUTPUT_FOLDER, "guesssentence.html")
+LOSS_FILE_PATH = os.path.join(OUTPUT_FOLDER, "loss.html")
 
 # Create output folder if it doesn't exist
 if not os.path.exists(OUTPUT_FOLDER):
@@ -169,12 +170,12 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
     # Optionally, initialize the HTML file
-    with open(os.path.join(HTML_FILE_PATH), "w", encoding="utf-8") as f:
+    with open(os.path.join(LOSS_FILE_PATH), "w", encoding="utf-8") as f:
         f.write("<html><body><h1>GA Progress</h1>")
     fitness_records = run_ga()
 
     # Save the fitness data to an HTML file
-    with open(HTML_FILE_PATH, "w", encoding="utf-8") as f:
+    with open(LOSS_FILE_PATH, "w", encoding="utf-8") as f:
         f.write("<html><head><title>Fitness History</title></head><body>")
         f.write("<h1>Fitness over Generations</h1>")
         f.write("<table border='1'><tr><th>Generation</th><th>Max Fitness</th><th>Average Fitness</th></tr>")
