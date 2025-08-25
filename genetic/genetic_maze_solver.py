@@ -55,6 +55,8 @@ class GeneticMazeSolver(MazeSolver):
         super().__init__(maze)
 
         self.chromosome_length = chromosome_length
+        estimate = (maze.rows + maze.cols) * 2
+        self.chromosome_length = max(chromosome_length, estimate)
         self.crossover_rate = crossover_rate
         self.initial_rate = mutation_rate
         self.generations = generations

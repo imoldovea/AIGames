@@ -81,7 +81,8 @@ class FitnessCalculator:
                 - movement_penalties['loop_penalty']
                 - distance_penalties['distance_penalty']
                 - diversity_penalty_val
-                - min(movement_penalties['invalid_move_penalty'], 3)
+                # - min(movement_penalties['invalid_move_penalty'], 3)
+                + movement_penalties['invalid_move_penalty']
         )
 
         details = {
@@ -223,10 +224,14 @@ class FitnessCalculator:
 
     def _calculate_movement_penalties(self, path_data):
         """Calculate penalties for movement patterns."""
+        invalids = min(path_data['invalid_moves'], self.invalid_penalty_cap)
+        # choose ONE of the lines below (linear or sqrt). linear is simpler; sqrt is gentler early on:
+        invalid_term = self.w_invalid * invalids
+        # invalid_term = self.w_invalid * (invalids ** 0.5)
         return {
             'backtrack_penalty': self.backtrack_penalty_weight * path_data['backtracks'],
             'loop_penalty': self.loop_penalty_weight * path_data['loops'],
-            'invalid_move_penalty': path_data['invalid_moves']
+            'invalid_move_penalty': invalid_term
         }
 
     def _calculate_bonuses(self, path_data, unique_paths_seen):

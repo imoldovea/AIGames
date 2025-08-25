@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 from deap import base, creator, tools, algorithms
 from tqdm import tqdm
 
-OUTPUT_FOLDER = "/output"
+import utils
+
+OUTPUT_FOLDER = "output"
 HTML_FILE_PATH = os.path.join(OUTPUT_FOLDER, "guesssentence.html")
 
 # Create output folder if it doesn't exist
@@ -161,18 +163,18 @@ def plot_fitness(fitnesses):
 
 # 🚀 Execute the algorithm and show results
 if __name__ == "__main__":
+    utils.clean_output_folder()
+    utils.setup_logging()
     # Make sure to create the output folder if it doesn’t exist at the start:
-    if not os.path.exists(OUTPUT_FOLDER):
-        os.makedirs(OUTPUT_FOLDER)
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
     # Optionally, initialize the HTML file
-    with open(os.path.join(OUTPUT_FOLDER, "generation_progress.html"), "w", encoding="utf-8") as f:
+    with open(os.path.join(HTML_FILE_PATH), "w", encoding="utf-8") as f:
         f.write("<html><body><h1>GA Progress</h1>")
     fitness_records = run_ga()
 
     # Save the fitness data to an HTML file
-    html_output_path = os.path.join(OUTPUT_FOLDER, "fitness_history.html")
-    with open(html_output_path, "w", encoding="utf-8") as f:
+    with open(HTML_FILE_PATH, "w", encoding="utf-8") as f:
         f.write("<html><head><title>Fitness History</title></head><body>")
         f.write("<h1>Fitness over Generations</h1>")
         f.write("<table border='1'><tr><th>Generation</th><th>Max Fitness</th><th>Average Fitness</th></tr>")
