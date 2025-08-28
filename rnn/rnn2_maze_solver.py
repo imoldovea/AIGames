@@ -54,8 +54,11 @@ LOSS_FILE = f"{OUTPUT}loss_data.csv"
 MODELS_DIAGRAM = f"{OUTPUT}models_diagram.pdf"
 OUTPUT_PDF = f"{OUTPUT}solved_mazes_rnn.pdf"
 SECRETS = "secrets.properties"
-MAZES = LSTM_MODEL = config.get("FILES", "MAZES", fallback="mazes.pkl")
-TEST_MAZES_FILE = f"{INPUT}{MAZES}"
+# The line below had a bug, incorrectly overwriting LSTM_MODEL.
+# It also pointed to MAZES, which is likely not what is desired for testing after training.
+# We now point to the validation mazes file by default.
+MAZES_FOR_TESTING = config.get("FILES", "VALIDATION_MAZES", fallback="validation_mazes.h5")
+TEST_MAZES_FILE = f"{INPUT}{MAZES_FOR_TESTING}"
 
 
 # -------------------------------
@@ -372,7 +375,9 @@ def main():
             wandb_run_url = "WandB Disabled"
 
         if config.getboolean("MONITORING", "dashboard", fallback=True):
-            dashboard_process = subprocess.Popen(["python", "rnn/dashboard.py"])
+            # Construct path relative to this script to avoid CWD issues and use sys.executable
+            dashboard_path = os.path.join(os.path.dirname(__file__), "dashboard.py")
+            dashboard_process = subprocess.Popen([sys.executable, dashboard_path])
 
         for handler in logging.getLogger('werkzeug').handlers:
             logging.getLogger('werkzeug').removeHandler(handler)
@@ -425,7 +430,8 @@ def main():
             visualize_model_weights(models)
 
         # Apply the model to the test data.
-        mazes = load_mazes(TEST_MAZES_FILE)
+        logging.info(f"Loading test mazes from {TEST_MAZES_FILE}...")
+        mazes = load_mazes(TEST_MAZES_FILE, samples=100)  # Load up to 100 validation mazes for testing
         solved_mazes, model_success_rates = rnn2_solver(models=models, mazes=mazes, device=device.type)
         logging.info(f"Model success rates: {model_success_rates}")
 
@@ -439,10 +445,6 @@ def main():
                 maze.plot_maze(show_path=True, show_solution=False, show_position=False)
         if config.getboolean("MONITORING", "save_solution_movie", fallback=True):
             save_movie(solved_mazes, f"{OUTPUT}solved_mazes_rnn.mp4")
-
-        if config.getboolean("MONITORING", "plotly", fallback=True):
-            logging.info("Closing Dash Dashboard...")
-            dashboard_process = subprocess.Popen(["python", "dashboard.py"])
 
         # save the running configuations
         with open(f"{OUTPUT}config.properties", "w") as configfile:

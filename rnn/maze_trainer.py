@@ -614,7 +614,7 @@ def load_models(allowed_models):
             gru_model = MazeRecurrentModel(
                 mode_type="GRU",
                 input_size=config.getint("GRU", "input_size", fallback=7),
-                hidden_size=config.getint("GRU", "hidden_size"),
+                hidden_size=config.getint("GRU", "hidden_size", fallback=128),
             )
             model_path = os.path.join(INPUT, GRU_MODEL_PATH)
             if os.path.exists(model_path):
@@ -624,7 +624,7 @@ def load_models(allowed_models):
             rnn_model = MazeRecurrentModel(
                 mode_type="RNN",
                 input_size=config.getint("RNN", "input_size", fallback=7),
-                hidden_size=config.getint("RNN", "hidden_size"),
+                hidden_size=config.getint("RNN", "hidden_size", fallback=128),
             )
             model_path = os.path.join(INPUT, RNN_MODEL_PATH)
             if os.path.exists(model_path):
@@ -634,7 +634,7 @@ def load_models(allowed_models):
             lstm_model = MazeRecurrentModel(
                 mode_type="LSTM",
                 input_size=config.getint("LSTM", "input_size", fallback=7),
-                hidden_size=config.getint("LSTM", "hidden_size"),
+                hidden_size=config.getint("LSTM", "hidden_size", fallback=128),
             )
             model_path = os.path.join(INPUT, LSTM_MODEL_PATH)
             if os.path.exists(model_path):

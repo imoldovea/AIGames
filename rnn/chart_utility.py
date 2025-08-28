@@ -196,7 +196,7 @@ def save_neural_network_diagram(models, output_dir="output/"):
                     dummy_input,
                     onnx_path,
                     export_params=True,
-                    opset_version=11,
+                    opset_version=13,
                     do_constant_folding=True,
                     input_names=['input'],
                     output_names=['output'],
