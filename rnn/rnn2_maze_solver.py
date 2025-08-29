@@ -13,7 +13,6 @@ import sys
 import traceback
 from configparser import ConfigParser
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -79,8 +78,6 @@ class RNN2MazeSolver(MazeSolver):
         self.model_type = model.mode_type
         model.to(self.device)
         model.eval()
-        self.fig, self.ax = plt.subplots()
-        self.img = None
         # Initialize the "recurrent" activations as an empty list
         self.activations = {'recurrent': []}
         recurrent = getattr(self.model, 'recurrent', None)
@@ -183,8 +180,6 @@ class RNN2MazeSolver(MazeSolver):
                         step_number_normalized=step_number_normalized,
                     )
 
-                visualize_exit_activations(exit_activations, maze_name=self.maze.index)
-
                 self.maze.move(current_pos)
 
             # logging.debug(
@@ -193,6 +188,7 @@ class RNN2MazeSolver(MazeSolver):
         else:
             if self.maze.exit != current_pos:
                 logging.debug(f"Reached max steps ({max_steps}) without finding a solution.")
+        visualize_exit_activations(exit_activations, maze_name=self.maze.index)
         visualize_exit_confidence_heatmap(maze_overlay, maze_name=self.maze.index)
         return path
 
