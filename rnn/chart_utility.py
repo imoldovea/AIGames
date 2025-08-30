@@ -1,3 +1,4 @@
+
 # chart_utility.py
 
 import io
@@ -146,47 +147,52 @@ def save_neural_network_diagram(models, output_dir="output/"):
             dummy_input = torch.randn(batch_size, seq_length, input_size).to(device)
             output = model(dummy_input)
 
-            # Generate the computational graph using Torchviz and display it using PIL to decode PNG data.
+            # Generate the computational graph using Torchviz.
+            figure = None  # Initialize figure to None
             try:
                 dot = make_dot(output, params=dict(model.named_parameters()))
 
-                # Draw the graph and add it as a page in the PDF
-                figure = plt.figure(figsize=(16, 12), dpi=300)  # Increased size and DPI
+                # Draw the graph and add it as a page in the PDF.
+                figure = plt.figure(figsize=(16, 12), dpi=300)
                 plt.title(f"Model: {model}", fontsize=14)
                 plt.axis("off")
-                # png_data = dot.pipe(format="png")
 
-                try:
-                    temp_dot_file = os.path.join(output_dir, f"temp_model_{idx}.dot")
-                    temp_png_file = os.path.join(output_dir, f"temp_model_{idx}.png")
+                temp_dot_file = os.path.join(output_dir, f"temp_model_{idx}.dot")
+                temp_png_file = os.path.join(output_dir, f"temp_model_{idx}.png")
 
-                    dot.save(temp_dot_file)
-                    # Use subprocess to call dot directly
-                    subprocess.run([
-                        "dot", "-Tpng",
-                        "-Gdpi=300",  # Set higher DPI
-                        temp_dot_file,
-                        "-o", temp_png_file
-                    ], check=True, timeout=60)
+                dot.save(temp_dot_file)
 
-                    # Read the PNG file back
-                    with open(temp_png_file, 'rb') as f:
-                        png_data = f.read()
+                # Use subprocess to call dot directly.
+                subprocess.run(
+                    ["dot", "-Tpng", "-Gdpi=300", temp_dot_file, "-o", temp_png_file],
+                    check=True, timeout=60
+                )
 
-                    # Clean up temp files
-                    os.remove(temp_dot_file)
-                    os.remove(temp_png_file)
-                except Exception as e:
-                    logging.error(f"Torchviz graph generation failed: {e}")
-                    raise RuntimeError(f"Torchviz graph generation failed: {e}")
+                # Read the PNG file back.
+                with open(temp_png_file, 'rb') as f:
+                    png_data = f.read()
+
+                # Clean up temp files.
+                os.remove(temp_dot_file)
+                os.remove(temp_png_file)
+
+                # Display the image and save it to the PDF.
                 pipe_buffer = io.BytesIO(png_data)
                 image = Image.open(pipe_buffer)
                 plt.imshow(image, aspect="auto")
                 pdf.savefig(figure)
-                plt.close(figure)
+
+            except FileNotFoundError:
+                logging.warning(
+                    "Graphviz 'dot' command not found. Skipping diagram generation. "
+                    "Please install Graphviz to generate model diagrams."
+                )
             except Exception as e:
-                logging.error(f"Torchviz graph generation failed: {e}")
-                raise RuntimeError(f"Torchviz graph generation failed: {e}")
+                logging.error(f"An error occurred during diagram generation for model {model}: {e}")
+            finally:
+                # Ensure the figure is closed to free memory.
+                if figure:
+                    plt.close(figure)
 
             # Generate ONNX export for the model for Netron visualization.
             try:
@@ -205,9 +211,13 @@ def save_neural_network_diagram(models, output_dir="output/"):
                         'output': {0: 'batch_size'}
                     }
                 )
+            except torch.onnx.OnnxExporterError as e:
+                # This specific error happens if the 'onnx' package is not installed.
+                # We can log a warning and continue, as it's not a critical failure.
+                logging.warning(f"Skipping ONNX export: {e}. To enable, please run 'pip install onnx'.")
             except Exception as e:
-                logging.error(f"ONNX export for Netron visualization failed: {e}")
-                raise RuntimeError(f"ONNX export for Netron visualization failed: {e}")
+                # Catch other unexpected errors during ONNX export.
+                logging.error(f"An unexpected error occurred during ONNX export: {e}")
 
             # Log the model graph for TensorBoard visualization
             try:

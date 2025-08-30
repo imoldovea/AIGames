@@ -28,7 +28,7 @@ from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
 # Import the unified model
 from rnn.model import MazeRecurrentModel
-from utils import setup_logging, profile_method, clean_outupt_folder
+from utils import profile_method
 
 WALL = 1
 DIRECTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -592,7 +592,7 @@ def get_models():
     models_config = config.get("DEFAULT", "models", fallback="GRU,LSTM,RNN")
     allowed_models = [model.strip().upper() for model in models_config.split(",")]
 
-    retrain_model = config.getboolean("GRU", "retrain_model", fallback=False)
+    retrain_model = config.getboolean("DEFAULT", "retrain_model", fallback=False)
     if retrain_model:
         models = train_models(allowed_models)
     else:
@@ -672,8 +672,6 @@ def collate_fn(batch):
 
 
 def train_models(allowed_models=None):
-    setup_logging()
-    clean_outupt_folder()
     logger = logging.getLogger(__name__)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device: {device}")

@@ -22,7 +22,7 @@ from rnn.chart_utility import (save_latest_loss_chart, save_neural_network_diagr
                                visualize_exit_confidence_heatmap)
 from maze_solver import MazeSolver
 from rnn.maze_trainer import get_models  # Training function from maze_trainer.py
-from utils import load_mazes, save_mazes_as_pdf, setup_logging
+from utils import clean_outupt_folder, load_mazes, save_mazes_as_pdf, setup_logging
 from utils import save_movie
 
 # -------------------------------
@@ -310,15 +310,14 @@ def rnn2_solver(models, mazes, device='cpu'):
             all_model_acivations.append(activations)
 
             # Step 5.b.v: Set the solution and test its validity
-            maze.set_solution(solution_path)
+            # The solution is now set inside the solver's solve() method.
             if len(solution_path) < max_steps and maze.test_solution():
                 # Step 5.b.vi (success): Log and increment successful solutions
                 logging.info(f"Solved Maze {i + 1}: {solution_path}")
                 successful_solutions += 1
             else:
-                # Step 5.b.vi (failure): Log and add maze to solved_mazes list
                 logging.debug(f"Maze {i + 1} failed self-test.")
-                solved_mazes.append(maze)
+            solved_mazes.append(maze)
 
         # Step 5.c: Calculate success rate for the model
         success_rate = successful_solutions / total_mazes * 100
@@ -347,6 +346,11 @@ def is_port_in_use(port: int) -> bool:
 
 
 def main():
+    # The setup sequence is important:
+    # 1. Clean the output folder (if retraining is enabled).
+    # 2. Set up logging, which creates the new debug.log file in the clean directory.
+    # This prevents the log file from being deleted after it's created.
+    clean_outupt_folder()
     setup_logging()
 
     config = ConfigParser()
@@ -415,6 +419,7 @@ def main():
             if config.getboolean("MONITORING", "save_last_loss_chart", fallback=True):
                 logging.info("Generating latest loss chart...")
                 if os.path.isfile(LOSS_FILE):
+                    logging.info(f"Loss file {LOSS_FILE} found. Generating loss chart...")
                     save_latest_loss_chart()
                 else:
                     logging.warning(f"Loss file {LOSS_PLOT_FILE} is missing. Skipping loss chart generation.")
@@ -427,7 +432,7 @@ def main():
 
         # Apply the model to the test data.
         logging.info(f"Loading test mazes from {TEST_MAZES_FILE}...")
-        mazes = load_mazes(TEST_MAZES_FILE, samples=100)  # Load up to 100 validation mazes for testing
+        mazes = load_mazes(TEST_MAZES_FILE, samples=50)  # Load up to 100 validation mazes for testing
         solved_mazes, model_success_rates = rnn2_solver(models=models, mazes=mazes, device=device.type)
         logging.info(f"Model success rates: {model_success_rates}")
 

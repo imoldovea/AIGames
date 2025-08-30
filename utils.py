@@ -229,7 +229,6 @@ def clean_outupt_folder():
 
         # Recreate the empty output directory
         os.makedirs(OUTPUT, exist_ok=True)
-        logging.info(f"{OUTPUT} directory ensured to exist...")
 
 
 # Define a custom PDF class (optional, for adding a header)

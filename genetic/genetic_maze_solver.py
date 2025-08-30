@@ -769,13 +769,18 @@ def main():
 
     if config.getboolean("MONITORING", "wandb", fallback=False):
         wandb.finish()
+
+    # save the running configuations
+    with open(f"{OUTPUT}config.properties", "w") as configfile:
+        config.write(configfile)
+
     # Print list of top 5 solved maze indices having the highest generations count. Print only for solved mazes
     logging.info(
         "Top 5 solved maze indexes with the highest generations count: %s",
         [m.index for m in sorted([mz for mz in mazes if getattr(mz, "valid_solution", False)],
                                  key=lambda x: getattr(x, "generations", 0), reverse=False)[:5]]
     )
-
+    logging.info("All done!")
 
 if __name__ == "__main__":
     main()
