@@ -24,7 +24,7 @@ with open(HTML_FILE_PATH, "w", encoding="utf-8") as f:
     f.write("<h1>Genetic Algorithm Progress</h1>")
 
 # 🎯 Target sentence we want the GA to evolve
-TARGET = "The quick brown fox jumps over the lazy dog "
+TARGET = "The quick brown fox jumps over the lazy dog"
 # Allowed characters for mutation and initial generation
 CHARS = string.ascii_letters + string.punctuation + " "
 
