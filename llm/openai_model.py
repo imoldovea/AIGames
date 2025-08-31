@@ -35,8 +35,6 @@ class OpenAIModel(GPTModel):
             # Send the system prompt along with the actual user prompt
             response = openai.chat.completions.create(
                 model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
                 messages=[
                     {"role": "system", "content": f"{self.system_prompt}"},
                     {"role": "user", "content": f"{prompt}"}

@@ -1,7 +1,7 @@
 # gpt_factiry.py
 
-# from deepseek_model import DeepSeekModel
-# from ollama_model import OllamaModel
+# from llm.deepseek_model import DeepSeekModel
+# from llm.ollama_model import OllamaModel
 from llm.gpt_model import GPTModel
 from llm.openai_model import OpenAIModel
 
