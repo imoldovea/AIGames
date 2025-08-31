@@ -334,8 +334,7 @@ def visualize_model_activations(all_activations, output_folder=OUTPUT, model_nam
     video_writer = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
 
     for frame in frames:
-        for _ in range(fps * 2):  # Duplicate each frame for 2 seconds
-            video_writer.write(frame)
+        video_writer.write(frame)
 
     video_writer.release()
     plt.close('all')
