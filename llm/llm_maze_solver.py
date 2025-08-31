@@ -7,7 +7,7 @@ import numpy as np
 
 from llm.gpt_factory import GPTFactory
 from maze_solver import MazeSolver
-from utils import setup_logging, load_mazes, save_mazes_as_pdf, clean_output_folder, save_movie_v2
+from utils import setup_logging, load_mazes, save_mazes_as_pdf, clean_output_folder, save_movie_v2, save_movie
 
 # --- Centralized Direction Definitions ---
 # Coordinate tuples (row_delta, col_delta)
@@ -164,7 +164,7 @@ class LLMMazeSolver(MazeSolver):
             ]
             logging.info(f"Step {self.steps}, Valid moves: {valid_moves}")
             prompt = self._convert_json_to_prompt(payload, history, valid_moves)
-            print(prompt)
+            #print(prompt)
 
             retries = 0
             move_successful = False
@@ -439,6 +439,7 @@ if __name__ == "__main__":
             if config.getboolean("MONITORING", "save_solution_movie", fallback=True):
                 movie_filename = f"{OUTPUT}solved_maze_llm_{test_maze.index}.gif"
                 save_movie_v2(solved_mazes, movie_filename)
+                save_movie(solved_mazes,f"v1_{movie_filename}")
                 logging.info(f"Saved solution animation to {movie_filename}")
         else:
             logging.error(f"Failed to find a solution for maze {test_maze.index}.")
