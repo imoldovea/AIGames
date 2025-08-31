@@ -7,7 +7,7 @@ import numpy as np
 
 from llm.gpt_factory import GPTFactory
 from maze_solver import MazeSolver
-from utils import setup_logging, load_mazes, save_mazes_as_pdf
+from utils import setup_logging, load_mazes, save_mazes_as_pdf, clean_output_folder
 
 # --- Centralized Direction Definitions ---
 # Coordinate tuples (row_delta, col_delta)
@@ -404,6 +404,7 @@ class LLMMazeSolver(MazeSolver):
 
 # (Example usage __main__ block remains largely the same, ensure it handles potential errors)
 if __name__ == "__main__":
+    clean_output_folder()
     setup_logging()
     try:
         mazes_file = f"{INPUT}mazes.h5"
