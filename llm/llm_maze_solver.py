@@ -7,7 +7,7 @@ import numpy as np
 
 from llm.gpt_factory import GPTFactory
 from maze_solver import MazeSolver
-from utils import setup_logging, load_mazes, save_mazes_as_pdf, clean_output_folder, save_movie_v2, save_movie
+from utils import setup_logging, load_mazes, save_mazes_as_pdf, clean_output_folder, save_movie_v2
 
 # --- Centralized Direction Definitions ---
 # Coordinate tuples (row_delta, col_delta)
@@ -104,6 +104,8 @@ Step-by-step logic:
 - The algorithm continues exploring new paths by popping from the stack, trying valid extensions, and pushing those back onto the stack.
 - This process continues until a complete solution is found, or all paths have been exhausted.
 
+6. Avoid Looping. Do not move in circles and not move back and forth between two directions. Explore more. 
+
 Core principles:
 - Explicit state tracking: Instead of recursive call stacks, the algorithm uses a manual stack to hold decisions.
 - Constraint enforcement: Invalid partial solutions are discarded early.
@@ -112,6 +114,7 @@ Core principles:
 
 Respond with ONLY the next direction to move: north, south, east, or west. No extra text.
 """)
+
 
 class LLMMazeSolver(MazeSolver):
     """
@@ -140,7 +143,7 @@ class LLMMazeSolver(MazeSolver):
         self.maze.move(current_position)
         path = [current_position]
         self.steps = 0
-        #history of decissions 
+        # history of decissions
         history = []  # stores 'north', 'south', etc.
         #
 
@@ -164,7 +167,7 @@ class LLMMazeSolver(MazeSolver):
             ]
             logging.info(f"Step {self.steps}, Valid moves: {valid_moves}")
             prompt = self._convert_json_to_prompt(payload, history, valid_moves)
-            #print(prompt)
+            # print(prompt)
 
             retries = 0
             move_successful = False
@@ -422,9 +425,9 @@ if __name__ == "__main__":
 
         test_maze = mazes[1]
         print(f"Testing maze {test_maze.index}...")
-        test_maze.print_ascii()
+        # test_maze.print_ascii()
         test_maze.animate = True  # Disable animation for faster debugging if needed
-        test_maze.save_movie = False
+        test_maze.save_movie = True
 
         solver = LLMMazeSolver(test_maze)
         solution = solver.solve()
@@ -437,10 +440,11 @@ if __name__ == "__main__":
             logging.info(f"Saved solved maze PDF to {pdf_filename}")
             # Add movie saving if enabled
             if config.getboolean("MONITORING", "save_solution_movie", fallback=True):
-                movie_filename = f"{OUTPUT}solved_maze_llm_{test_maze.index}.gif"
+                movie_filename = f"{OUTPUT}v1_solved_maze_llm_{test_maze.index}.gif"
                 save_movie_v2(solved_mazes, movie_filename)
-                save_movie(solved_mazes,f"v1_{movie_filename}")
-                logging.info(f"Saved solution animation to {movie_filename}")
+                movie_filename = f"{OUTPUT}solved_maze_llm_{test_maze.index}.gif"
+            # save_movie(solved_mazes, f"{movie_filename}")
+            # logging.info(f"Saved solution animation to {movie_filename}")
         else:
             logging.error(f"Failed to find a solution for maze {test_maze.index}.")
 
