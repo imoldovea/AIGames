@@ -1,7 +1,9 @@
 # Python
 import logging
+from collections import deque
 
 from maze_solver import MazeSolver
+from utils import load_mazes, setup_logging
 
 
 class PledgeMazeSolver(MazeSolver):
@@ -177,16 +179,20 @@ class PledgeMazeSolver(MazeSolver):
         return path
 
 
-# Example usage:
-if __name__ == "__main__":
-    import numpy as np
+def pledge_solver(file_path: str = "input/mazes.h5", samples: int = 10) -> None:
+    mazes = load_mazes(file_path, samples=samples)
+    mazes = sorted(mazes, key=lambda m: m.complexity, reverse=False)
 
-    # Create a simple 5x5 maze where 1 (or Maze.WALL) indicates a wall and 0 indicates a free cell.
-    # For demonstration purposes, we assume the Maze class uses 1 for walls.
-    maze_grid = np.array([
-        [0, 1, 0, 0, 0],
-        [0, 1, 0, 1, 0],
-        [0, 0, 0, 1, 0],
-        [1, 1, 0, 1, 0],
-        [0, 0, 0, 0, 0]
-    ])
+    for i, maze in enumerate(mazes, start=1):
+        logging.info(f"Solving maze {i}/{len(mazes)} (index={maze.index}) with Pledge...")
+
+        solver = PledgeMazeSolver(maze)
+        path = solver.solve()
+
+        maze.set_solution(path)
+        maze.plot_maze(show_path=False, show_solution=True, show_position=False)
+
+
+if __name__ == "__main__":
+    setup_logging()
+    pledge_solver(file_path="input/mazes.h5", samples=0)  # 0 = load all

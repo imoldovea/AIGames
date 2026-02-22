@@ -17,7 +17,7 @@ from classical_algorithms.grpah_maze_solver import AStarMazeSolver
 from classical_algorithms.optimized_backtrack_maze_solver import OptimizedBacktrackingMazeSolver
 from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze import Maze
-from utils import setup_logging, profile_method
+from utils import setup_logging, profile_method, load_mazes
 
 PATH = 0
 WALL = 1
@@ -217,8 +217,7 @@ def save_mazes(folder, filename, mazes):
         os.remove(os.path.join(OUTPUT_FOLDER, filename))
         logging.info(f"Deleted: {os.path.join(OUTPUT_FOLDER, filename)}")
 
-    with open(folder + '/' + filename, 'wb') as f:
-        pickle.dump(mazes, f)
+    mazes = load_mazes("input/mazes.h5", samples=0)  # 0 = load all
 
 
 def display_maze(maze):

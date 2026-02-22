@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 from classical_algorithms.backtrack_maze_solver import BacktrackingMazeSolver
 from classical_algorithms.bfs_maze_solver import BFSMazeSolver
+from classical_algorithms.pladge_maze_solver import PledgeMazeSolver
 from maze_visualizer import MazeVisualizer, AnimationMode
 from styles.default_style import Theme
 from utils import (
@@ -396,15 +397,15 @@ def main():
         # ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
         # logging.info(f"A* execution time: {ps.total_tt * 1_000:.2f} ms")
         # all_solved_mazes.extend(solved_mazes)
-        #
-        # # Classical: Pledge, simplest
-        # logging.info("Running Pledge algorithm...")
-        # pr.enable()
-        # solved_mazes = solve_all_mazes(mazes, PledgeMazeSolver)
-        # pr.disable()
-        # ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
-        # logging.info(f"Pledge execution time: {ps.total_tt * 1_000:.2f} ms")
-        # all_solved_mazes.extend(solved_mazes)
+
+        # Classical: Pledge, simplest
+        logging.info("Running Pledge algorithm...")
+        pr.enable()
+        solved_mazes = solve_all_mazes(mazes, PledgeMazeSolver)
+        pr.disable()
+        ps = pstats.Stats(pr, stream=s).strip_dirs().sort_stats('cumulative')
+        logging.info(f"Pledge execution time: {ps.total_tt * 1_000:.2f} ms")
+        all_solved_mazes.extend(solved_mazes)
 
         # Print statistics on solved mazes
         solved_count = len(all_solved_mazes)

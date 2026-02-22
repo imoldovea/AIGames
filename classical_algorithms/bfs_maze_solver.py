@@ -98,9 +98,9 @@ def bfs_solver():
     """
     try:
         # Load mazes
-        mazes = load_mazes("input/mazes.h5", 10)
+        mazes = load_mazes("input/mazes.h5",samples=0)
         mazes = sorted(mazes, key=lambda maze: maze.complexity, reverse=False)
-        mazes = mazes[9:]
+        #mazes = mazes[9:]
         # Iterate through each maze in the array
         for i, maze in enumerate(mazes):
 
