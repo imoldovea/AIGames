@@ -1,276 +1,251 @@
 # grpah_maze_solver.py
+from __future__ import annotations
 
 import heapq
 import logging
-import pickle
 import traceback
-from typing import List, Tuple, Dict, Optional
-
-import numpy as np
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from maze import Maze
-from maze_solver import MazeSolver
+from maze_solver import MazeSolver, SolveResult, Pos
 from utils import setup_logging, load_mazes
 
 
 class AStarMazeSolver(MazeSolver):
     """A maze solver that uses the A* algorithm for efficient pathfinding."""
 
-    def __init__(self, maze):
-        """Initialize the solver with a maze.
+    name = "A*"
 
-        Args:
-            maze: The maze to solve.
-        """
-        self.maze = maze
-        maze.set_algorithm(self.__class__.__name__)
+    def __init__(self, maze: Maze):
+        super().__init__(maze)
 
         # Pre-compute and cache valid neighbors for each cell
-        self._neighbors_cache = self._precompute_neighbors()
+        self._neighbors_cache: Dict[Pos, List[Pos]] = self._precompute_neighbors()
 
-        # Create a numpy grid representation
-        self._grid = np.zeros((maze.rows, maze.cols), dtype=np.int8)
-        for r in range(maze.rows):
-            for c in range(maze.cols):
-                if maze.is_wall((r, c)):
-                    self._grid[r, c] = 1
-
-    def solve(self) -> Optional[List[Tuple[int, int]]]:
-        """Solve the maze using the A* algorithm.
+    def solve(self) -> SolveResult:
+        """Solve the maze using A*.
 
         Returns:
-            A list of positions from start to exit, or None if no path exists.
+            SolveResult with success/path/visited/steps/error/extra.
         """
         if self.maze.exit is None:
-            logging.warning("Maze exit is not set.")
-            return None
+            return self.make_result([], error="Maze exit is not set.")
 
-        start_position = self.maze.start_position
-        exit_position = self.maze.exit
+        try:
+            start = self.maze.start_position
+            goal = self.maze.exit
 
-        if start_position == exit_position:
-            logging.info("Start and exit positions are the same.")
-            return [start_position]
+            if start == goal:
+                return self.make_result([start], visited=1)
 
-        # Initialize the open set with start position
-        open_set = []
+            # Priority queue: (f_score, tie_breaker, position)
+            open_heap: List[Tuple[int, int, Pos]] = []
+            counter = 0
 
-        # Use counter to break ties in priority queue consistently
-        counter = 0
+            g_score: Dict[Pos, int] = {start: 0}
+            came_from: Dict[Pos, Pos] = {}
 
-        # f_score = g_score + heuristic
-        # g_score = cost from start to current
-        # Push (f_score, counter, position) to priority queue
-        heapq.heappush(open_set, (0, counter, start_position))
-        counter += 1
+            heapq.heappush(open_heap, (self._heuristic(start, goal), counter, start))
+            counter += 1
 
-        # Dictionary to track where a node came from for path reconstruction
-        came_from = {}
+            closed: Set[Pos] = set()
+            expanded = 0
+            max_open = 1
 
-        # Cost from start to each node
-        g_score = {start_position: 0}
+            while open_heap:
+                _, _, current = heapq.heappop(open_heap)
 
-        # Use a numpy array for closed set (visited nodes)
-        closed_set = np.zeros((self.maze.rows, self.maze.cols), dtype=bool)
-
-        logging.debug(f"Starting A* search from {start_position}")
-
-        while open_set:
-            # Get node with lowest f_score
-            _, _, current = heapq.heappop(open_set)
-            # Update current position in the visualization
-            # self.maze.move(current)
-
-            # Check if we've reached the exit
-            if current == exit_position:
-                logging.debug(f"Found path to exit at {current}")
-                path = self._reconstruct_path(came_from, current)
-                self.maze.path = path
-                return path
-
-            # Add to closed set
-            r, c = current
-            closed_set[r, c] = True
-
-            # Get cached neighbors
-            neighbors = self._get_cached_neighbors(current)
-
-            # Process each neighbor
-            for neighbor in neighbors:
-                nr, nc = neighbor
-
-                # Skip if already in closed set
-                if closed_set[nr, nc]:
+                if current in closed:
                     continue
 
-                # Calculate g_score for this neighbor
-                tentative_g_score = g_score[current] + 1
+                closed.add(current)
+                expanded += 1
 
-                # If this node is already in open set with better g_score, skip it
-                if neighbor in g_score and tentative_g_score >= g_score[neighbor]:
-                    continue
+                if current == goal:
+                    path = self._reconstruct_path(came_from, current)
+                    # Optional: update maze.path only if solved
+                    try:
+                        self.maze.path = path
+                    except Exception:
+                        pass
+                    return self.make_result(
+                        path,
+                        visited=expanded,
+                        extra={"max_open_set": max_open},
+                    )
 
-                # This is a better path to this neighbor
-                came_from[neighbor] = current
-                g_score[neighbor] = tentative_g_score
+                for nb in self._get_cached_neighbors(current):
+                    if nb in closed:
+                        continue
 
-                # Calculate f_score with Manhattan distance heuristic
-                f_score = tentative_g_score + self._heuristic(neighbor, exit_position)
+                    tentative_g = g_score[current] + 1
+                    if tentative_g >= g_score.get(nb, 10**12):
+                        continue
 
-                # Add to open set
-                heapq.heappush(open_set, (f_score, counter, neighbor))
-                counter += 1
+                    came_from[nb] = current
+                    g_score[nb] = tentative_g
+                    f = tentative_g + self._heuristic(nb, goal)
 
-        logging.info("No path found")
-        return None
+                    heapq.heappush(open_heap, (f, counter, nb))
+                    counter += 1
+                    if len(open_heap) > max_open:
+                        max_open = len(open_heap)
 
-    def _precompute_neighbors(self) -> Dict[Tuple[int, int], List[Tuple[int, int]]]:
-        """Precompute valid neighbors for each cell for faster lookups.
+            # No path found
+            return self.make_result([], visited=expanded, extra={"max_open_set": max_open})
 
-        Returns:
-            A dictionary mapping positions to lists of valid neighbor positions.
+        except Exception as e:
+            logging.error(f"A* solver error: {e}")
+            logging.error(traceback.format_exc())
+            return self.make_result([], error=str(e))
+
+    def solve_with_callback(
+        self,
+        callback: Optional[Callable[..., None]] = None,
+        *,
+        callback_every: int = 1,
+    ) -> SolveResult:
+        """A* with step callbacks.
+
+        Calls callback(position=..., visited=..., path=...) every N expansions.
         """
-        cache = {}
-        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # right, down, left, up
+        if self.maze.exit is None:
+            return self.make_result([], error="Maze exit is not set.")
 
+        try:
+            start = self.maze.start_position
+            goal = self.maze.exit
+
+            if start == goal:
+                result = self.make_result([start], visited=1)
+                if callback:
+                    callback(position=start, visited={start}, path=[start], result=result)
+                return result
+
+            open_heap: List[Tuple[int, int, Pos]] = []
+            counter = 0
+
+            g_score: Dict[Pos, int] = {start: 0}
+            came_from: Dict[Pos, Pos] = {}
+
+            heapq.heappush(open_heap, (self._heuristic(start, goal), counter, start))
+            counter += 1
+
+            closed: Set[Pos] = set()
+            expanded = 0
+            max_open = 1
+
+            while open_heap:
+                _, _, current = heapq.heappop(open_heap)
+
+                if current in closed:
+                    continue
+
+                closed.add(current)
+                expanded += 1
+
+                if callback and (expanded % max(1, callback_every) == 0):
+                    callback(
+                        position=current,
+                        visited=closed.copy(),
+                        path=self._reconstruct_path(came_from, current),
+                    )
+
+                if current == goal:
+                    path = self._reconstruct_path(came_from, current)
+                    result = self.make_result(path, visited=expanded, extra={"max_open_set": max_open})
+                    if callback:
+                        callback(position=current, visited=closed.copy(), path=path, result=result)
+                    return result
+
+                for nb in self._get_cached_neighbors(current):
+                    if nb in closed:
+                        continue
+
+                    tentative_g = g_score[current] + 1
+                    if tentative_g >= g_score.get(nb, 10**12):
+                        continue
+
+                    came_from[nb] = current
+                    g_score[nb] = tentative_g
+                    f = tentative_g + self._heuristic(nb, goal)
+
+                    heapq.heappush(open_heap, (f, counter, nb))
+                    counter += 1
+                    if len(open_heap) > max_open:
+                        max_open = len(open_heap)
+
+            result = self.make_result([], visited=expanded, extra={"max_open_set": max_open})
+            if callback:
+                callback(
+                    position=getattr(self.maze, "current_position", None),
+                    visited=closed.copy(),
+                    path=[],
+                    result=result,
+                )
+            return result
+
+        except Exception as e:
+            logging.error(f"A* solver callback error: {e}")
+            logging.error(traceback.format_exc())
+            return self.make_result([], error=str(e))
+
+    # ------------------------
+    # Internals
+    # ------------------------
+    def _precompute_neighbors(self) -> Dict[Pos, List[Pos]]:
+        cache: Dict[Pos, List[Pos]] = {}
         for r in range(self.maze.rows):
             for c in range(self.maze.cols):
-                if self.maze.is_wall((r, c)):
+                pos = (r, c)
+                if self.maze.is_wall(pos):
                     continue
-
-                # Calculate neighbors
-                valid_neighbors = []
-                for dr, dc in directions:
-                    nr, nc = r + dr, c + dc
-                    if (0 <= nr < self.maze.rows and
-                            0 <= nc < self.maze.cols and
-                            not self.maze.is_wall((nr, nc))):
-                        valid_neighbors.append((nr, nc))
-
-                cache[(r, c)] = valid_neighbors
-
-        logging.debug(f"Precomputed neighbors for {len(cache)} positions")
+                cache[pos] = list(self.maze.get_neighbors(pos))
         return cache
 
-    def _get_cached_neighbors(self, position: Tuple[int, int]) -> List[Tuple[int, int]]:
-        """Get cached valid neighbors for a position.
-
-        Args:
-            position: The position to get neighbors for.
-
-        Returns:
-            A list of valid neighbor positions as tuples.
-        """
-        # Use cached neighbors if available, otherwise return empty list
+    def _get_cached_neighbors(self, position: Pos) -> List[Pos]:
         return self._neighbors_cache.get(position, [])
 
-    def _heuristic(self, pos1: Tuple[int, int], pos2: Tuple[int, int]) -> int:
-        """Calculate Manhattan distance heuristic between two positions.
+    @staticmethod
+    def _heuristic(a: Pos, b: Pos) -> int:
+        # Manhattan distance
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
-        Args:
-            pos1: First position.
-            pos2: Second position.
-
-        Returns:
-            The Manhattan distance between the positions.
-        """
-        # Calculate Manhattan distance directly
-        r1, c1 = pos1
-        r2, c2 = pos2
-        return abs(r1 - r2) + abs(c1 - c2)
-
-    def _reconstruct_path(self, came_from: Dict[Tuple[int, int], Tuple[int, int]],
-                          current: Tuple[int, int]) -> List[Tuple[int, int]]:
-        """Reconstruct the path from start to current position.
-
-        Args:
-            came_from: Dictionary mapping positions to their predecessor.
-            current: The current (end) position.
-
-        Returns:
-            List of positions from start to end.
-        """
-        total_path = [current]
-
+    @staticmethod
+    def _reconstruct_path(came_from: Dict[Pos, Pos], current: Pos) -> List[Pos]:
+        path: List[Pos] = [current]
         while current in came_from:
             current = came_from[current]
-            total_path.append(current)
-
-        # Reverse to get path from start to end
-        total_path.reverse()
-
-        logging.debug(f"Reconstructed path with {len(total_path)} steps")
-        return total_path
-
-    def solve_with_callback(self, callback=None):
-        queue = deque([self.maze.start_position])
-        visited = {self.maze.start_position}
-        parent = {self.maze.start_position: None}
-
-        while queue:
-            current = queue.popleft()
-
-            # invoke callback with current position, path so far, etc.
-            if callback:
-                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
-
-            if current == self.maze.exit:
-                return self.reconstruct_path(parent, current)
-
-            for neighbor in self.maze.get_neighbors(current):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    parent[neighbor] = current
-                    queue.append(neighbor)
-
-        return []
-
-    def reconstruct_path(self, parent, current):
-        path = []
-        while current:
             path.append(current)
-            current = parent[current]
         path.reverse()
         return path
 
 
-# Example test function
+# Example test function (kept, updated)
 def solver() -> None:
-    """
-    Test function that loads an array of mazes from 'input/mazes.npy',
-    creates a Maze object using the first maze in the array, sets an exit,
-    solves the maze using the BacktrackingMazeSolver, and displays the solution.
-    """
     try:
-        # Load the numpy file containing an array of mazes
-        mazes = load_mazes("input/mazes.h5", samples=0)  # 0 = load all
+        mazes = load_mazes("input/mazes.h5", samples=0)
         logging.info(f"Loaded {len(mazes)} mazes.")
 
-        # Iterate through each maze in the array
         for i, maze in enumerate(mazes):
             logging.debug(f"Solving maze {i + 1}...")
 
-            # Instantiate the backtracking maze solver
             solver = AStarMazeSolver(maze)
-            solution = solver.solve()
+            result = solver.solve()
 
-            if solution:
-                logging.debug(f"Maze {i + 1} solution found:")
-                logging.debug(solution)
+            if result.success:
+                logging.debug(f"Maze {i + 1} solved. steps={result.steps} visited={result.visited}")
+                maze.set_solution(result.path)
+                maze.plot_maze(show_path=False, show_solution=True, show_position=False)
             else:
-                logging.debug(f"No solution found for maze {i + 1}.")
-
-            # Visualize the solved maze (with the solution path highlighted)
-            maze.set_solution(solution)
-            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
+                logging.debug(f"Maze {i + 1} NOT solved. visited={result.visited} error={result.error or '-'}")
+                maze.plot_maze(show_path=False, show_solution=False, show_position=False)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
-        raise e
+        raise
 
 
-if __name__ == '__main__':
-    # Setup logging
+if __name__ == "__main__":
     setup_logging()
-
     solver()

@@ -1,190 +1,210 @@
 # backtrack_maze_solver.py
+from __future__ import annotations
 
 import logging
 import traceback
+from time import perf_counter
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from maze import Maze
-from maze_solver import MazeSolver
+from maze_solver import MazeSolver, SolveResult, Pos
 from utils import setup_logging, load_mazes
 
 
 class BacktrackingMazeSolver(MazeSolver):
-    def __init__(self, maze):
-        """
-        Initializes the BacktrackingMazeSolver with a Maze object.
-        Args:
-            maze (Maze): The maze to solve.
-        """
-        super().__init__(maze)
-        self.maze = maze
-        maze.set_algorithm(self.__class__.__name__)
-        # Cache for neighbor calculations
-        self._neighbors_cache = {}
+    """
+    Stack-based DFS (backtracking-style) with neighbor caching.
+    Returns SolveResult (success/path/visited/steps/etc).
+    """
 
-    def solve(self):
+    name = "Backtracking"
+
+    def __init__(self, maze: Maze):
+        super().__init__(maze)
+        # Cache for neighbor calculations
+        self._neighbors_cache: Dict[Pos, List[Pos]] = {}
+
+    def solve(self) -> SolveResult:
         """
-        Attempts to solve the maze using recursive backtracking.
+        Attempts to solve the maze using DFS with caching.
 
         Returns:
-            A list of (row, col) coordinates representing the path from the start to the exit,
-            or None if no solution is found.
+            SolveResult(success, path, visited, steps, error, extra)
         """
         if self.maze.exit is None:
-            raise ValueError("Maze exit is not set.")
+            return self.make_result([], error="Maze exit is not set.")
 
-        # Pre-calculate the valid neighbors for each position to avoid redundant calculations
-        self._precompute_neighbors()
+        try:
+            # Pre-calculate valid neighbors once per solve call
+            self._neighbors_cache.clear()
+            self._precompute_neighbors()
 
-        visited = set()
-        path = []
-        solution = self._dfs(self.maze.start_position, visited, path)
+            visited: Set[Pos] = set()
+            path = self._dfs(self.maze.start_position, visited)
 
-        if solution is not None:
-            # Optionally update the maze's path to the solution found
-            self.maze.path = solution
+            # Optional: update maze.path only if solved
+            if self.is_valid_solution(path):
+                try:
+                    self.maze.path = path
+                except Exception:
+                    pass
 
-        return solution
+            return self.make_result(path, visited=len(visited))
 
-    def _precompute_neighbors(self):
+        except Exception as e:
+            logging.error(f"Backtracking solver error: {e}")
+            logging.error(traceback.format_exc())
+            return self.make_result([], error=str(e))
+
+    def solve_with_callback(
+        self,
+        callback: Optional[Callable[..., None]] = None,
+        *,
+        callback_every: int = 1,
+    ) -> SolveResult:
         """
-        Pre-compute valid neighbors for each position in the maze.
-        This reduces redundant calculations during the DFS traversal.
+        Same algorithm as solve(), but calls callback periodically.
+
+        callback signature is flexible; we pass:
+          - position: current cell
+          - visited: copy of visited set (optional)
+          - path: current reconstructed path from start to position
+          - result: (optional) only on final call
         """
+        if self.maze.exit is None:
+            return self.make_result([], error="Maze exit is not set.")
+
+        try:
+            self._neighbors_cache.clear()
+            self._precompute_neighbors()
+
+            visited: Set[Pos] = set()
+            parent: Dict[Pos, Optional[Pos]] = {self.maze.start_position: None}
+
+            stack: List[Pos] = [self.maze.start_position]
+            steps = 0
+
+            while stack:
+                position = stack.pop()
+                if position in visited:
+                    continue
+
+                visited.add(position)
+                steps += 1
+
+                if callback and (steps % max(1, callback_every) == 0):
+                    callback(
+                        position=position,
+                        visited=visited.copy(),
+                        path=self._reconstruct_path(position, parent),
+                    )
+
+                if position == self.maze.exit:
+                    path = self._reconstruct_path(position, parent)
+                    result = self.make_result(path, visited=len(visited))
+                    if callback:
+                        callback(position=position, visited=visited.copy(), path=path, result=result)
+                    return result
+
+                # Push neighbors (reversed to preserve similar exploration order as your original)
+                for nb in reversed(self._get_cached_neighbors(position)):
+                    if nb not in visited:
+                        # only set parent once (first time discovered)
+                        if nb not in parent:
+                            parent[nb] = position
+                        stack.append(nb)
+
+            # Not found
+            result = self.make_result([], visited=len(visited))
+            if callback:
+                callback(
+                    position=getattr(self.maze, "current_position", None),
+                    visited=visited.copy(),
+                    path=[],
+                    result=result,
+                )
+            return result
+
+        except Exception as e:
+            logging.error(f"Backtracking solver callback error: {e}")
+            logging.error(traceback.format_exc())
+            return self.make_result([], error=str(e))
+
+    # ------------------------
+    # Internals
+    # ------------------------
+    def _precompute_neighbors(self) -> None:
         rows, cols = self.maze.rows, self.maze.cols
         for r in range(rows):
             for c in range(cols):
-                if not self.maze.is_wall((r, c)):
-                    self._neighbors_cache[(r, c)] = list(self.maze.get_neighbors((r, c)))
+                pos = (r, c)
+                if not self.maze.is_wall(pos):
+                    self._neighbors_cache[pos] = list(self.maze.get_neighbors(pos))
 
-    def _get_cached_neighbors(self, position):
-        """
-        Return cached neighbors if available, otherwise compute them.
-        """
+    def _get_cached_neighbors(self, position: Pos) -> List[Pos]:
         if position not in self._neighbors_cache:
             self._neighbors_cache[position] = list(self.maze.get_neighbors(position))
         return self._neighbors_cache[position]
 
-    def _dfs(self, current, visited, path):
+    def _dfs(self, start: Pos, visited: Set[Pos]) -> List[Pos]:
         """
-        Helper method that performs depth-first search from the current position.
-        Optimized with caching and early exit.
+        Stack-based DFS with parent pointers (fast, avoids recursion limit).
+        Returns reconstructed path if found; else [].
         """
-        # Stack-based DFS implementation to avoid deep recursion
-        stack = [(current, None)]  # (position, parent_index)
-        parent_indices = {}
+        parent: Dict[Pos, Optional[Pos]] = {start: None}
+        stack: List[Pos] = [start]
 
         while stack:
-            position, parent_idx = stack.pop()
-
+            position = stack.pop()
             if position in visited:
                 continue
 
-            # Add position to visited set and determine path index
             visited.add(position)
 
-            # Update parent indices
-            if parent_idx is not None:
-                parent_indices[position] = parent_idx
-
-            # Animate only when necessary
-            # self.maze.move(position)
-
-            # Check if we've reached the exit
             if position == self.maze.exit:
-                # Reconstruct path
-                solution = self._reconstruct_path(position, parent_indices)
-                return solution
+                return self._reconstruct_path(position, parent)
 
-            # Add unvisited neighbors to stack
-            for neighbor in reversed(self._get_cached_neighbors(position)):
-                if neighbor not in visited:
-                    stack.append((neighbor, position))
-
-        return None
-
-    def _reconstruct_path(self, end_position, parent_indices):
-        """
-        Reconstruct the path from start to end using parent indices.
-        """
-        path = [end_position]
-        current = end_position
-
-        while current in parent_indices:
-            current = parent_indices[current]
-            path.append(current)
-
-        return list(reversed(path))
-
-    def solve_with_callback(self, callback=None):
-        queue = deque([self.maze.start_position])
-        visited = {self.maze.start_position}
-        parent = {self.maze.start_position: None}
-
-        while queue:
-            current = queue.popleft()
-
-            # invoke callback with current position, path so far, etc.
-            if callback:
-                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
-
-            if current == self.maze.exit:
-                return self.reconstruct_path(parent, current)
-
-            for neighbor in self.maze.get_neighbors(current):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    parent[neighbor] = current
-                    queue.append(neighbor)
+            for nb in reversed(self._get_cached_neighbors(position)):
+                if nb not in visited:
+                    if nb not in parent:
+                        parent[nb] = position
+                    stack.append(nb)
 
         return []
 
-    def reconstruct_path(self, parent, current):
-        path = []
-        while current:
-            path.append(current)
-            current = parent[current]
+    def _reconstruct_path(self, end_position: Pos, parent: Dict[Pos, Optional[Pos]]) -> List[Pos]:
+        path: List[Pos] = []
+        cur: Optional[Pos] = end_position
+        while cur is not None:
+            path.append(cur)
+            cur = parent.get(cur)
         path.reverse()
         return path
 
 
-# Example test function
+# Example test function (kept, but now uses SolveResult)
 def backtracking_solver() -> None:
-    """
-    Test function that loads an array of mazes from 'input/mazes.npy',
-    creates a Maze object using the first maze in the array, sets an exit,
-    solves the maze using the BacktrackingMazeSolver, and displays the solution.
-    """
     try:
-        # Load the numpy file containing an array of mazes
         mazes = load_mazes("input/mazes.h5")
-
-        # Iterate through each maze in the array
         for i, maze in enumerate(mazes):
-            # logging.debug(f"Solving maze {i + 1}...")
-
-            # Instantiate the backtracking maze solver
             solver = BacktrackingMazeSolver(maze)
-            solution = solver.solve()
+            result = solver.solve()
 
-            if solution:
-                logging.debug(f"Maze {i + 1} solution found:")
-                logging.debug(solution)
+            if result.success:
+                logging.debug(f"Maze {i + 1} solved. steps={result.steps} visited={result.visited}")
             else:
-                logging.debug(f"No solution found for maze {i + 1}.")
+                logging.debug(f"Maze {i + 1} NOT solved. error={result.error or '-'} visited={result.visited}")
 
-            # Visualize the solved maze (with the solution path highlighted)
-            maze.set_solution(solution)
-            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
+            # Visualize (only set_solution if solved)
+            if result.success:
+                maze.set_solution(result.path)
+            maze.plot_maze(show_path=False, show_solution=result.success, show_position=False)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
-        raise e
+        raise
 
 
-if __name__ == '__main__':
-    # Setup logging
+if __name__ == "__main__":
     setup_logging()
-    logger = logging.getLogger(__name__)
-    # logger.debug("Logging is configured.")
-
     backtracking_solver()

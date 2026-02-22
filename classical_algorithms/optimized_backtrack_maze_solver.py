@@ -1,248 +1,239 @@
+# optimized_backtrack_maze_solver.py
+from __future__ import annotations
+
 import logging
-import pickle
 import traceback
-from typing import List, Tuple, Dict, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
 from maze import Maze
-from maze_solver import MazeSolver
+from maze_solver import MazeSolver, SolveResult, Pos
 from utils import setup_logging, load_mazes
 
 logger = logging.getLogger(__name__)
 
 
 class OptimizedBacktrackingMazeSolver(MazeSolver):
-    """A maze solver that uses a vectorized backtracking algorithm to find a path."""
+    """
+    DFS/backtracking with:
+      - NumPy visited grid for speed
+      - cached neighbors per cell (as NumPy arrays)
+      - neighbor ordering by Manhattan distance to the goal (heuristic)
+    Returns SolveResult (benchmark-friendly).
+    """
 
-    def __init__(self, maze):
-        """Initialize the solver with a maze.
+    name = "OptimizedBacktracking"
 
-        Args:
-            maze: The maze to solve.
-        """
-        self.maze = maze
-        maze.set_algorithm(self.__class__.__name__)
+    def __init__(self, maze: Maze):
+        super().__init__(maze)
 
         # Pre-compute and cache valid neighbors for each cell
-        self._neighbors_cache = self._precompute_neighbors()
+        self._neighbors_cache: Dict[Pos, np.ndarray] = self._precompute_neighbors()
 
-        # Create numpy grid representation for vectorized operations
-        self._grid = np.zeros((maze.rows, maze.cols), dtype=np.int8)
-        for r in range(maze.rows):
-            for c in range(maze.cols):
-                if maze.is_wall((r, c)):
-                    self._grid[r, c] = 1
+    def solve(self) -> SolveResult:
+        if self.maze.exit is None:
+            return self.make_result([], error="Maze exit is not set.")
 
-    def solve(self) -> Optional[List[Tuple[int, int]]]:
-        """Solve the maze using vectorized backtracking.
+        try:
+            start = self.maze.start_position
+            goal = self.maze.exit
 
-        Returns:
-            A list of positions from start to exit, or None if no path exists.
+            if start == goal:
+                return self.make_result([start], visited=1)
+
+            visited = np.zeros((self.maze.rows, self.maze.cols), dtype=bool)
+            path: List[Pos] = []
+
+            success = self._dfs(current=start, target=goal, visited=visited, path=path)
+
+            visited_count = int(visited.sum())
+            if success:
+                try:
+                    self.maze.path = path
+                except Exception:
+                    pass
+                return self.make_result(path, visited=visited_count)
+
+            return self.make_result([], visited=visited_count)
+
+        except Exception as e:
+            logger.error(f"Optimized backtracking solver error: {e}")
+            logger.error(traceback.format_exc())
+            return self.make_result([], error=str(e))
+
+    def solve_with_callback(
+        self,
+        callback: Optional[Callable[..., None]] = None,
+        *,
+        callback_every: int = 1,
+    ) -> SolveResult:
+        """
+        Same DFS as solve(), but emits callback periodically.
+
+        callback(...) receives:
+          - position: current cell
+          - visited: either a bool grid (numpy) or a set-like (we pass counts + path)
+          - path: current path
+          - result: only on final callback
         """
         if self.maze.exit is None:
-            logger.warning("Maze exit is not set.")
-            return None
+            return self.make_result([], error="Maze exit is not set.")
 
-        start_position = self.maze.start_position
-        exit_position = self.maze.exit
+        try:
+            start = self.maze.start_position
+            goal = self.maze.exit
 
-        if start_position == exit_position:
-            logger.info("Start and exit positions are the same.")
-            return [start_position]
+            if start == goal:
+                result = self.make_result([start], visited=1)
+                if callback:
+                    callback(position=start, visited=1, path=[start], result=result)
+                return result
 
-        # Use numpy array for visited cells
-        visited = np.zeros((self.maze.rows, self.maze.cols), dtype=bool)
+            visited = np.zeros((self.maze.rows, self.maze.cols), dtype=bool)
+            path: List[Pos] = []
+            steps = 0
 
-        # Track the path
-        path = []
+            # We'll do DFS but count callback steps on node-entry
+            def dfs_cb(cur: Pos) -> None:
+                nonlocal steps
+                steps += 1
+                if callback and (steps % max(1, callback_every) == 0):
+                    callback(
+                        position=cur,
+                        visited=int(visited.sum()),
+                        path=path.copy(),
+                    )
 
-        # Start DFS with vectorized operations
+            success = self._dfs(
+                current=start,
+                target=goal,
+                visited=visited,
+                path=path,
+                on_enter=dfs_cb,
+            )
 
-        # logger.debug(f"Starting backtracking from {start_position}")
-        success = self._dfs(start_position, exit_position, visited, path)
+            visited_count = int(visited.sum())
+            if success:
+                result = self.make_result(path, visited=visited_count)
+            else:
+                result = self.make_result([], visited=visited_count)
 
-        if success:
-            self.maze.path = path
-            # logger.debug(f"Found solution path with {len(path)} steps")
-            return path
+            if callback:
+                callback(
+                    position=(path[-1] if path else getattr(self.maze, "current_position", None)),
+                    visited=visited_count,
+                    path=(path.copy() if success else []),
+                    result=result,
+                )
 
-        logger.info("No path found")
-        return None
+            return result
 
-    def _precompute_neighbors(self) -> Dict[Tuple[int, int], np.ndarray]:
-        """Precompute valid neighbors for each cell for faster lookups.
+        except Exception as e:
+            logger.error(f"Optimized backtracking callback error: {e}")
+            logger.error(traceback.format_exc())
+            return self.make_result([], error=str(e))
 
-        Returns:
-            A dictionary mapping positions to arrays of valid neighbor positions.
+    # ------------------------
+    # Internals
+    # ------------------------
+    def _precompute_neighbors(self) -> Dict[Pos, np.ndarray]:
         """
-        cache = {}
-        directions = np.array([(0, 1), (1, 0), (0, -1), (-1, 0)])  # right, down, left, up
+        Precompute valid neighbors for each cell.
+        Returns dict[pos] -> np.ndarray of neighbor positions (shape Nx2).
+        """
+        cache: Dict[Pos, np.ndarray] = {}
+        directions = np.array([(0, 1), (1, 0), (0, -1), (-1, 0)], dtype=np.int16)
 
         for r in range(self.maze.rows):
             for c in range(self.maze.cols):
                 if self.maze.is_wall((r, c)):
                     continue
 
-                # Use vectorized operations to calculate all neighbors at once
-                neighbors = np.array([r, c]) + directions
+                candidates = np.array([r, c], dtype=np.int16) + directions
+                valid: List[Pos] = []
 
-                # Filter valid neighbors
-                valid_neighbors = []
-                for nr, nc in neighbors:
-                    if (0 <= nr < self.maze.rows and
-                            0 <= nc < self.maze.cols and
-                            not self.maze.is_wall((nr, nc))):
-                        valid_neighbors.append((nr, nc))
+                for nr, nc in candidates:
+                    if 0 <= nr < self.maze.rows and 0 <= nc < self.maze.cols:
+                        if not self.maze.is_wall((int(nr), int(nc))):
+                            valid.append((int(nr), int(nc)))
 
-                cache[(r, c)] = np.array(valid_neighbors)
+                cache[(r, c)] = np.array(valid, dtype=np.int16)
 
-        # logger.debug(f"Precomputed neighbors for {len(cache)} positions")
         return cache
 
-    def _get_cached_neighbors(self, position: Tuple[int, int]) -> np.ndarray:
-        """Get cached valid neighbors for a position.
+    def _get_cached_neighbors(self, position: Pos) -> np.ndarray:
+        return self._neighbors_cache.get(position, np.empty((0, 2), dtype=np.int16))
 
-        Args:
-            position: The position to get neighbors for.
-
-        Returns:
-            An array of valid neighbor positions.
+    def _dfs(
+        self,
+        current: Pos,
+        target: Pos,
+        visited: np.ndarray,
+        path: List[Pos],
+        *,
+        on_enter: Optional[Callable[[Pos], None]] = None,
+    ) -> bool:
         """
-        # Use cached neighbors if available, otherwise return empty array
-        return self._neighbors_cache.get(position, np.array([]))
-
-    def _dfs(self, current: Tuple[int, int], target: Tuple[int, int],
-             visited: np.ndarray, path: List[Tuple[int, int]]) -> bool:
-        """Depth-first search with vectorized operations.
-
-        Args:
-            current: Current position.
-            target: Target position (exit).
-            visited: NumPy array of visited positions.
-            path: Current path being built.
-
-        Returns:
-            True if a path to the target was found, False otherwise.
+        Recursive DFS (kept from your original).
+        Uses NumPy visited and cached neighbors; sorts neighbors by heuristic.
         """
-        # Add current position to path
         path.append(current)
-
-        # Mark as visited
         r, c = current
         visited[r, c] = True
 
-        # logger.debug(f"Visiting {current}, path length: {len(path)}")
+        if on_enter:
+            on_enter(current)
 
-        # Check if we reached the target
         if current == target:
-            # logger.debug(f"Found target at {current}")
             return True
 
-        # Update the maze's current position for visualization
-        # self.maze.move(current)
-
-        # Get cached neighbors using vectorized arrays
         neighbors = self._get_cached_neighbors(current)
 
-        # Evaluate all neighbors at once when possible
-        if len(neighbors) > 0:
-            # Sort neighbors by distance to target for potential optimization
-            # This uses the Manhattan distance heuristic
+        if neighbors.size > 0:
+            # Sort by Manhattan distance to target (heuristic ordering)
             if len(neighbors) > 1:
                 tr, tc = target
                 distances = np.abs(neighbors[:, 0] - tr) + np.abs(neighbors[:, 1] - tc)
-                sorted_indices = np.argsort(distances)
-                neighbors = neighbors[sorted_indices]
+                order = np.argsort(distances)
+                neighbors = neighbors[order]
 
-            # Check each neighbor
-            for neighbor in neighbors:
-                nr, nc = neighbor
-
-                # Skip if already visited
-                if visited[nr, nc]:
+            for nr, nc in neighbors:
+                nr_i, nc_i = int(nr), int(nc)
+                if visited[nr_i, nc_i]:
                     continue
 
-                # Recursive DFS
-                if self._dfs((nr, nc), target, visited, path):
+                if self._dfs((nr_i, nc_i), target, visited, path, on_enter=on_enter):
                     return True
 
-        # Backtrack if no solution found via this path
+        # Backtrack
         path.pop()
-        # logger.debug(f"Backtracking from {current}, path length: {len(path)}")
         return False
 
-    def solve_with_callback(self, callback=None):
-        queue = deque([self.maze.start_position])
-        visited = {self.maze.start_position}
-        parent = {self.maze.start_position: None}
 
-        while queue:
-            current = queue.popleft()
-
-            # invoke callback with current position, path so far, etc.
-            if callback:
-                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
-
-            if current == self.maze.exit:
-                return self.reconstruct_path(parent, current)
-
-            for neighbor in self.maze.get_neighbors(current):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    parent[neighbor] = current
-                    queue.append(neighbor)
-
-        return []
-
-    def reconstruct_path(self, parent, current):
-        path = []
-        while current:
-            path.append(current)
-            current = parent[current]
-        path.reverse()
-        return path
-
-
-# Example test function
+# Example test function (updated)
 def solver() -> None:
-    """
-    Test function that loads an array of mazes from 'input/mazes.npy',
-    creates a Maze object using the first maze in the array, sets an exit,
-    solves the maze using the BacktrackingMazeSolver, and displays the solution.
-    """
     try:
-        # Load the numpy file containing an array of mazes
-        mazes = load_mazes("input/mazes.h5", samples=0)  # 0 = load all
+        mazes = load_mazes("input/mazes.h5", samples=0)
         logging.info(f"Loaded {len(mazes)} mazes.")
 
-        # Iterate through each maze in the array
         for i, maze in enumerate(mazes):
+            s = OptimizedBacktrackingMazeSolver(maze)
+            result = s.solve()
 
-            # logging.debug(f"Solving maze {i + 1}...")
-
-            # Instantiate the backtracking maze solver
-            solver = OptimizedBacktrackingMazeSolver(maze)
-            solution = solver.solve()
-
-            if solution:
-                logging.debug(f"Maze {i + 1} solution")
+            if result.success:
+                logging.debug(f"Maze {i + 1} solved. steps={result.steps} visited={result.visited}")
+                maze.set_solution(result.path)
+                maze.plot_maze(show_path=False, show_solution=True, show_position=False)
             else:
-                logging.debug(f"No solution found for maze {i + 1}.")
-
-            # Visualize the solved maze (with the solution path highlighted)
-            maze.set_solution(solution)
-            maze.plot_maze(show_path=False, show_solution=True, show_position=False)
+                logging.debug(f"Maze {i + 1} NOT solved. visited={result.visited} error={result.error or '-'}")
+                maze.plot_maze(show_path=False, show_solution=False, show_position=False)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
-        raise e
+        raise
 
 
-if __name__ == '__main__':
-    # Setup logging
+if __name__ == "__main__":
     setup_logging()
-    logger = logging.getLogger(__name__)
-    # logger.debug("Logging is configured.")
-
     solver()

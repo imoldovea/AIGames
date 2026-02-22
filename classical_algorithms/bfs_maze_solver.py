@@ -1,139 +1,173 @@
+# bfs_maze_solver.py
+from __future__ import annotations
+
 import logging
 import traceback
 from collections import deque
-
-from numpy.f2py.auxfuncs import throw_error
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from maze import Maze
-from maze_solver import MazeSolver
+from maze_solver import MazeSolver, SolveResult, Pos
 from utils import setup_logging, load_mazes, save_movie
 
 
 class BFSMazeSolver(MazeSolver):
-    def __init__(self, maze):
-        """
-        Initializes the BFSMazeSolver with a Maze object.
-        Args:
-            maze (Maze): The maze to solve.
-        """
+    """
+    Breadth-First Search (BFS) maze solver.
+    Returns SolveResult with consistent success definition.
+    """
+
+    name = "BFS"
+
+    def __init__(self, maze: Maze):
         super().__init__(maze)
-        self.maze = maze
-        maze.set_algorithm(self.__class__.__name__)
+        # Avoid setting algorithm here; benchmark runner should do it.
+        # But keeping it commented so it doesn't affect behaviour.
+        # try:
+        #     maze.set_algorithm(self.__class__.__name__)
+        # except Exception:
+        #     pass
 
-    def solve(self):
+    def solve(self) -> SolveResult:
+        if self.maze.exit is None:
+            return self.make_result([], error="Maze exit is not set.")
+
+        try:
+            start = self.maze.start_position
+            goal = self.maze.exit
+
+            queue: deque[Pos] = deque([start])
+            visited: Set[Pos] = {start}
+            parent: Dict[Pos, Optional[Pos]] = {start: None}
+
+            while queue:
+                current = queue.popleft()
+
+                if current == goal:
+                    path = self._reconstruct_path(parent, current)
+                    return self.make_result(path, visited=len(visited))
+
+                for neighbor in self.maze.get_neighbors(current):
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        parent[neighbor] = current
+                        queue.append(neighbor)
+
+            # No solution found
+            return self.make_result([], visited=len(visited))
+
+        except Exception as e:
+            logging.error(f"BFS solver error: {e}")
+            logging.error(traceback.format_exc())
+            return self.make_result([], error=str(e))
+
+    def solve_with_callback(
+        self,
+        callback: Optional[Callable[..., None]] = None,
+        *,
+        callback_every: int = 1,
+    ) -> SolveResult:
         """
-        Solves the maze using the Breadth-First Search (BFS) algorithm.
-
-        Returns:
-            A list of (row, col) coordinates representing the path from the start to the exit,
-            or None if no solution is found.
+        BFS with step callbacks for animation/debug.
+        Calls callback(position=..., visited=..., path=...) every N expansions.
         """
         if self.maze.exit is None:
-            raise ValueError("Maze exit is not set.")
+            return self.make_result([], error="Maze exit is not set.")
 
-        start = self.maze.start_position
-        maze_exit = self.maze.exit
+        try:
+            start = self.maze.start_position
+            goal = self.maze.exit
 
-        # Queue for BFS and dictionary to store the parent of each visited position.
-        queue = deque([start])
-        visited = {start}
-        parent = {start: None}
+            queue: deque[Pos] = deque([start])
+            visited: Set[Pos] = {start}
+            parent: Dict[Pos, Optional[Pos]] = {start: None}
 
-        # Perform BFS until the queue is empty or the exit is found.
-        while queue:
-            current = queue.popleft()
+            expansions = 0
 
-            if current == maze_exit:
-                return self.reconstruct_path(parent, current)
+            while queue:
+                current = queue.popleft()
+                expansions += 1
 
-            # Explore the neighbors.
-            for neighbor in self.maze.get_neighbors(current):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    parent[neighbor] = current
-                    queue.append(neighbor)
-                    # self.maze.move(current)
+                if callback and (expansions % max(1, callback_every) == 0):
+                    callback(
+                        position=current,
+                        visited=visited.copy(),
+                        path=self._reconstruct_path(parent, current),
+                    )
 
-        # No solution found
-        return None
+                if current == goal:
+                    path = self._reconstruct_path(parent, current)
+                    result = self.make_result(path, visited=len(visited))
+                    if callback:
+                        callback(position=current, visited=visited.copy(), path=path, result=result)
+                    return result
 
-    def solve_with_callback(self, callback=None):
-        queue = deque([self.maze.start_position])
-        visited = {self.maze.start_position}
-        parent = {self.maze.start_position: None}
+                for neighbor in self.maze.get_neighbors(current):
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        parent[neighbor] = current
+                        queue.append(neighbor)
 
-        while queue:
-            current = queue.popleft()
-
-            # invoke callback with current position, path so far, etc.
+            result = self.make_result([], visited=len(visited))
             if callback:
-                callback(position=current, visited=visited.copy(), path=self.reconstruct_path(parent, current))
+                callback(
+                    position=getattr(self.maze, "current_position", None),
+                    visited=visited.copy(),
+                    path=[],
+                    result=result,
+                )
+            return result
 
-            if current == self.maze.exit:
-                return self.reconstruct_path(parent, current)
+        except Exception as e:
+            logging.error(f"BFS solver callback error: {e}")
+            logging.error(traceback.format_exc())
+            return self.make_result([], error=str(e))
 
-            for neighbor in self.maze.get_neighbors(current):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    parent[neighbor] = current
-                    queue.append(neighbor)
-
-        return []
-
-    def reconstruct_path(self, parent, current):
-        path = []
-        while current:
-            path.append(current)
-            current = parent[current]
+    @staticmethod
+    def _reconstruct_path(parent: Dict[Pos, Optional[Pos]], current: Pos) -> List[Pos]:
+        path: List[Pos] = []
+        cur: Optional[Pos] = current
+        while cur is not None:
+            path.append(cur)
+            cur = parent.get(cur)
         path.reverse()
         return path
 
 
-# Example test function for the BFS solver
+# Example test function for the BFS solver (kept, updated for SolveResult)
 def bfs_solver():
-    """
-    Test function that loads an array of mazes from 'input/mazes.npy',
-    creates a Maze object using the first maze in the array, sets an exit,
-    solves the maze using the BFSMazeSolver, and displays the solution.
-    """
     try:
-        # Load mazes
-        mazes = load_mazes("input/mazes.h5",samples=0)
-        mazes = sorted(mazes, key=lambda maze: maze.complexity, reverse=False)
-        #mazes = mazes[9:]
-        # Iterate through each maze in the array
-        for i, maze in enumerate(mazes):
+        mazes = load_mazes("input/mazes.h5", samples=0)
+        mazes = sorted(mazes, key=lambda m: m.complexity, reverse=False)
 
+        for i, maze in enumerate(mazes):
             logging.debug(f"Solving maze {i + 1}...")
 
-            # Create a Maze object from the maze matrix
             maze.set_animate(False)
             maze.set_save_movie(True)
 
-            # Instantiate the BFS maze solver
             solver = BFSMazeSolver(maze)
-            solution = solver.solve()
+            result = solver.solve()
 
-            if solution:
-                logging.debug(f"Maze {i + 1} solution found:")
-                logging.debug(solution)
+            if result.success:
+                logging.debug(f"Maze {i + 1} solved. steps={result.steps} visited={result.visited}")
+                maze.set_solution(result.path)
+                maze.plot_maze(show_path=False, show_solution=True)
             else:
-                logging.debug(f"No solution found for maze {i + 1}.")
+                logging.debug(f"No solution found for maze {i + 1}. visited={result.visited} error={result.error or '-'}")
+                maze.plot_maze(show_path=False, show_solution=False)
 
-            # Visualize the solved maze (with the solution path highlighted)
-            maze.set_solution(solution)
-            maze.plot_maze(show_path=False, show_solution=True)
             save_movie([maze], f"output/solved_maze_{maze.index}.mp4")
-        logging.info("All mazes solved.")
+
+        logging.info("All mazes processed.")
+
     except Exception as e:
         logging.error(f"An error occurred: {e}\n\nStack Trace:{traceback.format_exc()}")
-        throw_error(e)
+        raise
 
 
-if __name__ == '__main__':
-    # setup logging
+if __name__ == "__main__":
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.debug("Logging is configured.")
-
     bfs_solver()
